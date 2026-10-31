@@ -212,10 +212,47 @@ fn git(dir: &Path) -> Command {
     c
 }
 
+/// The checkout's own config files: `.git/config`, or for a linked
+/// worktree its `config.worktree` and the main repository's `config`.
+/// `None` when one cannot be read.
+fn own_config(dir: &Path) -> Option<String> {
+    let dotgit = dir.join(".git");
+    let meta = std::fs::symlink_metadata(&dotgit).ok()?;
+    if meta.is_dir() {
+        return std::fs::read_to_string(dotgit.join("config")).ok();
+    }
+    let text = std::fs::read_to_string(&dotgit).ok()?;
+    let gitdir = PathBuf::from(text.trim().strip_prefix("gitdir:")?.trim());
+    let gitdir = if gitdir.is_absolute() { gitdir } else { dir.join(gitdir) };
+    let common = match std::fs::read_to_string(gitdir.join("commondir")) {
+        Ok(c) => {
+            let c = PathBuf::from(c.trim());
+            if c.is_absolute() { c } else { gitdir.join(c) }
+        }
+        Err(_) => gitdir.clone(),
+    };
+    let mut all = std::fs::read_to_string(common.join("config")).ok()?;
+    if let Ok(w) = std::fs::read_to_string(gitdir.join("config.worktree")) {
+        all.push_str(&w);
+    }
+    Some(all)
+}
+
+/// The checkout's own config can make git run a program: a filter, an
+/// fsmonitor, an external diff or text conversion, or an include that could
+/// add one. Skiff does not run git there; the checkout stays protected.
+fn runs_programs(config: &str) -> bool {
+    let c = config.to_ascii_lowercase();
+    ["[filter", "[include", "fsmonitor", "external", "textconv", "sshcommand"].iter().any(|k| c.contains(k))
+}
+
 /// The state of the checkout at `dir`, from `git status`.
 fn checkout(dir: &Path) -> Checkout {
     let linked = std::fs::symlink_metadata(dir.join(".git")).is_ok_and(|m| m.is_file());
-    let out = git(dir).args(["status", "--porcelain=v2", "--branch"]).output();
+    if own_config(dir).is_none_or(|c| runs_programs(&c)) {
+        return Checkout::Unknown;
+    }
+    let out = git(dir).args(["status", "--porcelain=v2", "--branch", "--ignore-submodules=all"]).output();
     let Some(out) = out.ok().filter(|o| o.status.success()) else { return Checkout::Unknown };
     let text = String::from_utf8_lossy(&out.stdout);
     let mut upstream = false;
@@ -694,7 +731,7 @@ fn plan(n: &Node, out: &mut Vec<Expected>) {
 /// delete would leave the main repository's record of it.
 fn remove_worktrees(n: &Node) -> Result<(), String> {
     if let Some(Checkout::Clean { linked: true }) = n.checkout {
-        // The check again, just before the remove.
+        // The check again, just before the remove: it reads the config again too.
         if checkout(&n.abs) != (Checkout::Clean { linked: true }) {
             return Err(format!("{} changed", n.path));
         }
@@ -1132,6 +1169,27 @@ mod tests {
         assert!(!dir.join("results/old").exists() && outside.join("keep.md").exists());
         std::fs::remove_dir_all(&dir).unwrap();
         std::fs::remove_dir_all(&outside).unwrap();
+    }
+
+    #[test]
+    fn a_checkout_whose_config_can_run_a_program_is_never_asked_and_stays() {
+        let dir = scratch("filter");
+        let a = dir.join("results/a1-task");
+        let l = ledger(&dir, &[("a1", "task", None, "done", None, &a)]);
+        let repo = a.join("copy");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]);
+        let marker = dir.join("ran");
+        let cfg = repo.join(".git/config");
+        let mut text = std::fs::read_to_string(&cfg).unwrap();
+        text.push_str(&format!("[filter \"x\"]\n\tclean = touch {}\n", marker.display()));
+        std::fs::write(&cfg, text).unwrap();
+        assert!(runs_programs(&std::fs::read_to_string(&cfg).unwrap()));
+        assert_eq!(checkout(&repo), Checkout::Unknown);
+        let u = raw(&dir, &dir.join("cache"), &l, Some(&[]), Path::new(SOCK), now_secs() + 3600);
+        assert_eq!(state_of(&u, "results/a1-task"), (Kind::Prot, "checkout"));
+        assert!(!marker.exists());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
