@@ -941,7 +941,7 @@ function drawPanel() {
         side.appendChild(kv([
           ["Owner", owner ? cardName(owner) : r.owner === "grand" ? skiffAgentName() : r.owner],
           ["State", needWord(st) ?? st, needWord(st) ? "w" : ""],
-          ["Result", r.state === "done" ? (r.result_exists ? "ready" : "none") : "not yet", "mono"],
+          ["Result", r.state === "done" ? (r.result_exists ? "ready" : r.flushed_at ? "flushed" : "none") : "not yet", "mono"],
         ]));
       }
     }

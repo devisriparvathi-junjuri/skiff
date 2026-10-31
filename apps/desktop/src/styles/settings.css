@@ -258,17 +258,55 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-table.g-instr .c-state.none .sq { background: var(--rule-strong); }
 .set-table.g-instr .c-state .dim { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-dim); }
 
-/* Disk use: TYPE | FILES | SIZE | FOLDER | action. Sub-rows indent; numbers align right. */
-.set-disk .set-row { grid-template-columns: var(--set-label) calc(96 * var(--u)) calc(112 * var(--u)) minmax(0, 1fr) var(--set-acts); }
+/* Disk use: the agent folder as a tree. NAME | SIZE | CAN FLUSH | STATE | action. Numbers align right. */
+.set-disk .set-row { grid-template-columns: minmax(0, 1.3fr) calc(96 * var(--u)) calc(112 * var(--u)) minmax(0, 1fr) var(--set-acts); }
 .set-disk .set-row > * { min-width: 0; }
 .set-disk .c-num { justify-content: flex-end; font-variant-numeric: tabular-nums; font-size: calc(13px * var(--zoom, 1)); }
-.set-disk .c-where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
-.set-disk .sub .c-name { padding-left: calc(28 * var(--u)); font-size: calc(13px * var(--zoom, 1)); font-weight: 400; color: var(--text-2); }
-.set-disk .total .c-name, .set-disk .total .c-num { font-weight: 700; }
+.set-disk .c-num.disk-can { color: var(--text); font-weight: 600; }
+.set-disk .c-num.disk-zero { color: var(--text-dim); }
+.set-disk-row { cursor: default; outline: 0; }
+.set-disk-row:hover { background: var(--bg-raised); }
+/* The current row: the current-row tint and bar. The focus line only after keys. */
+.set-disk-row.cur { background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); }
+body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset: -1px; }
+.set-disk-row .c-name { gap: calc(6 * var(--u)); font-size: calc(13px * var(--zoom, 1)); font-weight: 400; }
+.set-disk-row.root .disk-name { font-weight: 600; }
+.disk-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.disk-chev, .disk-leaf { width: calc(16 * var(--u)); height: calc(16 * var(--u)); flex-shrink: 0; }
+.disk-chev { display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--text-3); }
+.disk-chev svg { transition: transform 120ms; }
+.disk-chev.open svg { transform: rotate(90deg); }
+.set-disk .c-state { gap: calc(8 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }
+.set-disk .c-state .disk-state { flex-shrink: 0; white-space: nowrap; color: var(--text-2); }
+.set-disk .c-state .dim { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+/* The state marks: in use is the working blue, stale the done grey; protected, held and mixed are outlines. */
+.disk-mk { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; }
+.disk-mk.use { background: var(--state-working); }
+.disk-mk.stale { background: var(--state-done); }
+.disk-mk.prot { border: 1px solid var(--text-2); }
+.disk-mk.held { border: 1px dashed var(--text-2); }
+.disk-mk.mixed { border: 1px solid var(--state-done); background: linear-gradient(90deg, var(--state-done) 50%, transparent 50%); }
+/* Flush shows on the current row, a hovered row and the agent folder's row. */
+.set-disk-row:not(.cur, .root, :hover) .c-acts > * { visibility: hidden; }
+.set-disk .disk-why { font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); white-space: nowrap; }
+.set-disk .set-rm { font-variant-numeric: tabular-nums; }
 .set-disk .set-rm:disabled { opacity: 0.5; cursor: default; }
 .set-disk .set-rm:disabled:hover { border-color: var(--rule); color: var(--text-3); }
 .set-disk .set-rm:not(:disabled):is(:hover, :focus-visible) { border-color: var(--error); color: var(--error); }
 .set-disk-auto span.c-cmd { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
+/* The flush dialog: REMOVE and KEEP, one line for each reason. */
+.disk-scope { padding: calc(8 * var(--u)) calc(20 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
+.disk-list { max-height: calc(360 * var(--u)); overflow-y: auto; }
+.disk-band { height: var(--row); display: flex; align-items: center; justify-content: space-between; padding: 0 calc(20 * var(--u)); background: var(--bg-raised); border-bottom: 1px solid var(--rule); }
+.disk-band-title { font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-2); }
+.disk-band-count { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.disk-line { min-height: var(--row); display: grid; grid-template-columns: calc(8 * var(--u)) minmax(0, 1fr) auto; gap: calc(12 * var(--u)); align-items: center; padding: calc(4 * var(--u)) calc(20 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(12px * var(--zoom, 1)); }
+.disk-line-words, .disk-line-size { display: flex; flex-direction: column; min-width: 0; }
+.disk-line-why { color: var(--text); }
+.disk-line-names { color: var(--text-3); font-size: calc(11px * var(--zoom, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.disk-line-size { align-items: flex-end; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.disk-line-files { color: var(--text-dim); font-size: calc(11px * var(--zoom, 1)); }
+.disk-limit { padding: calc(10 * var(--u)) calc(20 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); border-bottom: 1px solid var(--rule); }
 
 /* skiffd activity: one grid for the whole table. STATE, SESSION and PROGRAM size to their content; WORKSPACE and FOLDER share the rest. */
 .set-daemon { flex-shrink: 0; display: grid; grid-template-columns: fit-content(calc(120 * var(--u))) fit-content(calc(300 * var(--u))) fit-content(calc(140 * var(--u))) minmax(calc(112 * var(--u)), 1fr) minmax(calc(104 * var(--u)), 1fr) calc(80 * var(--u)) calc(52 * var(--u)) calc(88 * var(--u)); min-width: 0; }

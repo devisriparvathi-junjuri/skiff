@@ -66,6 +66,10 @@ pub struct HostLedgerRow {
     /// The Host can serve the row's result (`ledger_result`): a regular
     /// file inside the ledger's folder, reached without a link.
     pub result_exists: bool,
+    /// When Settings › Disk use flushed the row's work folder. Absent from a
+    /// Host that predates it: a `ledger@1` reply without it stays readable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flushed_at: Option<String>,
 }
 
 fn grand() -> String {

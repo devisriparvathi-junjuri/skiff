@@ -1,11 +1,11 @@
-//! Settings › Disk use. The counts and flushes live in `skiff_client::disk`;
-//! this reads the folder, the ledger and the daemon's sessions for them.
-//! This computer only, also while the window shows a remote Host: a Host's
-//! own disk use needs a Host op (v2 follow-up).
+//! Settings › Disk use. The tree, the rule and the flush live in
+//! `skiff_client::disk`; this reads the folder, the ledger and the daemon's
+//! sessions for them. This computer only, also while the window shows a
+//! remote Host: a Host's own disk use needs a Host op (v2 follow-up).
 
 use serde::Serialize;
 use skiff_client::{
-    disk::{self, Removed},
+    disk::{self, Expected, Flushed},
     ledger, skipper,
 };
 use skiff_core::{config, session::SessionInfo};
@@ -13,7 +13,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::connection::App;
 
-/// The counts, with the auto flush setting for its row.
+/// The tree, with the auto flush setting for its row.
 #[derive(Serialize)]
 pub struct Usage {
     #[serde(flatten)]
@@ -34,12 +34,16 @@ async fn sessions(app: &App) -> Option<Vec<SessionInfo>> {
     skiff_client::host::local::legacy_inventory(&c).await.ok()
 }
 
-/// The folder and its cache. Makes the folder when it is missing.
-fn count(sessions: Option<Vec<SessionInfo>>) -> anyhow::Result<Usage> {
+/// The folder, its cache and the ledger. Makes the folder when it is missing.
+fn places() -> anyhow::Result<(std::path::PathBuf, std::path::PathBuf, std::path::PathBuf, u32)> {
     let cfg = config::load()?;
     let folder = skipper::make_folder(&cfg)?;
-    let cache_days = cfg.skiff_agent.cache_days();
-    let usage = disk::usage(&folder, &folder.join("cache"), &ledger::path()?, sessions.as_deref(), &skiff_core::state::socket());
+    Ok((folder.clone(), skipper::cache_dir(&cfg)?, ledger::path()?, cfg.skiff_agent.cache_days()))
+}
+
+fn count(sessions: Option<Vec<SessionInfo>>) -> anyhow::Result<Usage> {
+    let (folder, cache, ledger, cache_days) = places()?;
+    let usage = disk::usage(&folder, &cache, &ledger, sessions.as_deref(), &skiff_core::state::socket());
     let home = skipper::home().ok();
     let shown = match home.as_deref().and_then(|h| usage.folder.strip_prefix(h).ok()) {
         Some(rel) if rel.as_os_str().is_empty() => "~".to_string(),
@@ -68,41 +72,40 @@ pub async fn set_cache_days(days: u32) -> Result<(), String> {
     blocking(move || config::set_skiff_agent(config::SkiffAgentKey::CacheDays(days))).await
 }
 
+/// Flushes the items the dialog showed. The flush counts again and removes
+/// only what is still stale and unchanged. Refused when the daemon does not
+/// answer: the rule needs the session list.
 #[tauri::command]
-pub async fn flush_cache(handle: AppHandle) -> Result<Removed, String> {
-    let out = blocking(|| Ok(disk::flush_cache(&skipper::cache_dir(&config::load()?)?))).await;
-    let _ = handle.emit(crate::drops::IMAGES_CHANGED, ());
-    out
-}
-
-/// Counts again, then removes what is on both lists. Refused when the daemon
-/// does not answer: the closed work needs the session list.
-#[tauri::command]
-pub async fn flush_done(handle: AppHandle, app: State<'_, App>, expected: Vec<String>) -> Result<Removed, String> {
+pub async fn flush_disk(handle: AppHandle, app: State<'_, App>, items: Vec<Expected>) -> Result<Flushed, String> {
     let Some(s) = sessions(&app).await else {
-        return Err("Skiff cannot reach skiffd. Flush done work needs the session list.".into());
+        return Err("Skiff cannot reach skiffd. A flush needs the session list.".into());
     };
     let out = blocking(move || {
-        let fresh = count(Some(s))?.usage;
-        if let Some(e) = fresh.ledger_error {
-            anyhow::bail!("{e}");
-        }
-        Ok(disk::flush_done(&expected, &fresh))
+        let (folder, cache, ledger, _) = places()?;
+        Ok(disk::flush(&folder, &cache, &ledger, Some(&s), &skiff_core::state::socket(), &items))
     })
     .await;
     let _ = handle.emit(crate::drops::IMAGES_CHANGED, ());
     out
 }
 
-/// Runs at app start on its own thread: removes cache files older than
-/// `[skiff_agent] cache_days`. One log line, no UI.
+/// Runs at app start on its own thread: removes what the rule finds stale
+/// and older than `[skiff_agent] cache_days`. It asks skiffd for the
+/// sessions and does nothing when skiffd does not answer. One log line, no UI.
 pub fn auto_flush() {
-    let Ok(cfg) = config::load() else { return };
-    let days = cfg.skiff_agent.cache_days();
+    let Ok((folder, cache, ledger, days)) = places() else { return };
     if days == 0 {
         return;
     }
-    let Ok(cache) = skipper::cache_dir(&cfg) else { return };
-    let out = disk::flush_old(&cache, days);
-    eprintln!("auto flush: removed {} files, {} from {}", out.files, skiff_client::agent_folder::size(out.bytes), cache.display());
+    let socket = skiff_core::state::socket();
+    let sessions = tauri::async_runtime::block_on(async {
+        let c = skiff_client::Client::connect(&socket).await.ok()?;
+        c.list_sessions().await.ok()
+    });
+    let Some(s) = sessions else {
+        eprintln!("auto flush: skiffd did not answer; nothing removed");
+        return;
+    };
+    let out = disk::flush_old(&folder, &cache, &ledger, Some(&s), &socket, days);
+    eprintln!("auto flush: removed {} files, {} from {}", out.files, skiff_client::agent_folder::size(out.bytes), folder.display());
 }

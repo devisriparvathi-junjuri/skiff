@@ -146,8 +146,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const button = a instanceof HTMLButtonElement && a.closest(".set-main") && (tab === "disk" || a.classList.contains("set-sort") || a.classList.contains("set-sink")) ? a.dataset.key ?? a.textContent : null;
     // A selected skiffd session row keeps the keys too; an ended one hands them to the current row.
     const row = a instanceof HTMLElement && a.classList.contains("set-daemon-row") ? a.dataset.id ?? null : null;
+    // A Disk use tree row keeps the keys on the current row: a move, an open or a count.
+    const diskRow = a instanceof HTMLElement && a.classList.contains("set-disk-row") && tab === "disk";
     draw();
     if (row !== null) (root.querySelector<HTMLElement>(`.set-daemon-row[data-id="${CSS.escape(row)}"]`) ?? root.querySelector<HTMLElement>(`.set-daemon-row[tabindex="0"]`))?.focus();
+    if (diskRow) root.querySelector<HTMLElement>(`.set-disk-row[tabindex="0"]`)?.focus();
     if (button !== null) {
       const stops = [...root.querySelectorAll<HTMLButtonElement>(".set-main button:not(:disabled, .set-x)")];
       (stops.find((b) => (b.dataset.key ?? b.textContent) === button) ?? stops[0])?.focus();

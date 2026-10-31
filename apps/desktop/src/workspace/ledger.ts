@@ -92,6 +92,8 @@ export interface Entry {
   elsewhere?: boolean;
   /** The Host can show the result. */
   result_exists: boolean;
+  /** When Settings › Disk use flushed the row's work folder. */
+  flushed_at?: string | null;
 }
 
 /** Where a task stands, from its row and its pane. */
@@ -527,7 +529,9 @@ function line(r: Entry, st: State, label: string, a: Acts, o: { plan?: boolean; 
     });
     acts.append(b);
   }
-  row.append(mark(r), h("span", "lg-title", titleOf(r)), h("span", o.plan ? "lg-n" : "lg-pane", label));
+  // Disk use removed the work folder: the row stays, and says so.
+  const flushed = !need && !r.result_exists && !!r.flushed_at;
+  row.append(mark(r), h("span", "lg-title", titleOf(r)), h("span", o.plan ? "lg-n" : "lg-pane", flushed ? "Result flushed" : label));
   if (o.count) row.append(h("span", "lg-n", o.count));
   row.append(acts);
   if (a.click) row.addEventListener("click", a.click);
@@ -574,8 +578,8 @@ function unitRows(u: Unit, fin: boolean): HTMLElement[] {
 
 /** What the list draws. The panel is rebuilt only when it changes. */
 function signature(x: Sections): string {
-  const look = (l: Look): unknown[] => [l.r.id, l.r.state, l.r.title, l.r.task, l.r.updated_at, l.r.closed_at, l.r.result_exists, l.st, l.where, opens(l), l.kids?.map(look)];
-  const unit = (u: Unit) => [u.r.id, u.st, u.r.title, u.r.task, u.r.updated_at, u.r.closed_at, u.r.result_exists, u.look ? look(u.look) : null, u.kids?.map(look)];
+  const look = (l: Look): unknown[] => [l.r.id, l.r.state, l.r.title, l.r.task, l.r.updated_at, l.r.closed_at, l.r.result_exists, l.r.flushed_at, l.st, l.where, opens(l), l.kids?.map(look)];
+  const unit = (u: Unit) => [u.r.id, u.st, u.r.title, u.r.task, u.r.updated_at, u.r.closed_at, u.r.result_exists, u.r.flushed_at, u.look ? look(u.look) : null, u.kids?.map(look)];
   const tags = S.projects.map((p) => [p.name, p.short, accent(p)]);
   const skippers = [...sessions.keys()].map((id) => [id, coordinatorOf(id)]).filter(([, scope]) => scope);
   return JSON.stringify([error, scopeLabel(), filter(), tags, skippers, x.working.map(unit), x.open.map(unit), x.finished.map(unit)]);
