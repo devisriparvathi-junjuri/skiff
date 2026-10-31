@@ -162,7 +162,8 @@ Task types is the list of types. This file lists none.
     worktrees. `skiff ledger dir UID` prints the folder.
 - If the child cannot write outside its repository, use a path in that
   repository. Record it with `skiff ledger update ID --result PATH`.
-- `skiff ledger prune` and `rm` keep the result files.
+- `skiff ledger prune` and `rm` keep the work folders and result files. Add
+  `--flush` only when the user asks to remove the files too.
 - Do not report a task as done from the pane state alone. Read the result.
 - Claude Code shows a prompt suggestion in gray in an empty input box. `peek`
   shows no color, so the suggestion looks like typed text after `❯`. It is not

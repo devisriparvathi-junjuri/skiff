@@ -1299,6 +1299,41 @@ fn prune(db: &mut Connection, caller: &Caller, secs: i64, yes: bool) -> Result<V
     Ok(gone)
 }
 
+/// Flushes the work folders `dirs` by the Disk use rule (see
+/// [`skiff_client::disk`]), before their rows go. Prints what went, and each
+/// folder that stays with the reason. Without the session list nothing goes.
+fn flush_folders(socket: &Path, sessions: Option<&[SessionInfo]>, dirs: &[PathBuf]) -> Result<()> {
+    let file = path()?;
+    let folder = file.parent().context("the ledger has no folder")?;
+    let (out, stays) = skiff_client::disk::flush_work(folder, &folder.join("cache"), &file, sessions, socket, dirs);
+    if out.files > 0 || out.rows > 0 {
+        println!("flushed {} {}, {}", out.files, if out.files == 1 { "file" } else { "files" }, skiff_client::agent_folder::size(out.bytes));
+    }
+    for (d, why) in stays {
+        println!("kept {}: {why}", d.display());
+    }
+    for e in out.errors {
+        println!("kept: {e}");
+    }
+    Ok(())
+}
+
+/// The files and bytes under `dir`, never through a link.
+fn folder_size(dir: &Path) -> (u64, u64) {
+    let mut out = (0, 0);
+    let mut todo = vec![dir.to_path_buf()];
+    while let Some(d) = todo.pop() {
+        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+            match std::fs::symlink_metadata(e.path()) {
+                Ok(m) if m.is_dir() => todo.push(e.path()),
+                Ok(m) => out = (out.0 + 1, out.1 + if m.file_type().is_symlink() { 0 } else { m.len() }),
+                Err(_) => {}
+            }
+        }
+    }
+    out
+}
+
 /// The state `ledger add` stores. `--send` adds the task as pending and
 /// sends it. Else a task waits for `ledger send`, and a plan is sent.
 fn add_state(st: Option<&str>, plan: bool, send: bool) -> Result<&str> {
@@ -1539,22 +1574,35 @@ async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
             let n = reopen(&mut db, &caller, &ids)?;
             println!("reopened {n} {}", work_word(n));
         }
-        LedgerCmd::Prune { older_than, yes } => {
+        LedgerCmd::Prune { older_than, yes, flush } => {
             let secs = age(&older_than)?;
             let mut db = open()?;
             let caller = check_writer(socket, &db, person).await?;
-            let mut gone = prune(&mut db, &caller, secs, yes)?;
+            let sessions = live(socket).await;
+            // The rows first, so the rule still sees them while it judges their folders.
+            let mut gone = prune(&mut db, &caller, secs, false)?;
             if gone.is_empty() {
                 println!("no work was closed more than {older_than} ago. Nothing changed");
                 return Ok(0);
             }
+            let dirs: Vec<PathBuf> = gone.iter().filter_map(|r| r.work_dir.as_deref().map(PathBuf::from)).collect();
+            if yes && flush {
+                flush_folders(socket, sessions.as_deref(), &dirs)?;
+            }
+            let gone_now = if yes { prune(&mut db, &caller, secs, true)? } else { Vec::new() };
             let n = gone.len();
-            mark_live(socket, live(socket).await.as_deref(), &mut gone);
+            mark_live(socket, sessions.as_deref(), &mut gone);
             print_rows(&tree(gone), true);
             if yes {
-                println!("removed {n} {}. The result files stay", rows_word(n));
+                let n = gone_now.len();
+                println!("removed {n} {}. {}", rows_word(n), if flush { "Files outside the work folders stay" } else { "The work folders and result files stay" });
             } else {
-                println!("would remove {n} {}. Nothing changed. Run again with --yes to remove them", rows_word(n));
+                let (files, bytes) = dirs.iter().map(|d| folder_size(d)).fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+                println!(
+                    "would remove {n} {}. Nothing changed. Their work folders hold {files} files ({}). Run again with --yes to remove the rows, and add --flush to flush their folders",
+                    rows_word(n),
+                    skiff_client::agent_folder::size(bytes)
+                );
             }
         }
         LedgerCmd::Show { id, json } => {
@@ -1590,7 +1638,7 @@ async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
                 }
             }
         }
-        LedgerCmd::Rm { id } => {
+        LedgerCmd::Rm { id, flush } => {
             let db = open()?;
             let caller = check_writer(socket, &db, person).await?;
             let row = one(&db, &id)?;
@@ -1601,8 +1649,17 @@ async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
                     bail!("{} {id} still has {n} tasks. Remove them first", row.kind);
                 }
             }
-            // The row only: a result file stays where it is.
+            if flush {
+                if let Some(d) = &row.work_dir {
+                    flush_folders(socket, live(socket).await.as_deref(), &[PathBuf::from(d)])?;
+                }
+            }
+            // The row. Without --flush, its folder and result file stay where they are.
             db.execute("DELETE FROM tasks WHERE id = ?1", [row.id])?;
+            match (&row.work_dir, flush) {
+                (Some(d), false) if Path::new(d).exists() => println!("removed {} {}. Its work folder stays: {d}", kind_word(&row.kind), row.uid),
+                _ => println!("removed {} {}", kind_word(&row.kind), row.uid),
+            }
         }
     }
     Ok(0)
@@ -2383,6 +2440,44 @@ mod tests {
         assert_eq!((r.result_path.as_deref(), r.work_dir.as_deref()), (Some("/r/old.md"), None));
         db.execute("UPDATE tasks SET flushed_at = 'now' WHERE uid = 'ab12cd34'", []).unwrap();
         assert_eq!(one(&db, "ab12cd34").unwrap().flushed_at.as_deref(), Some("now"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn prune_with_a_flush_takes_the_done_folders_and_keeps_one_that_just_changed() {
+        let dir = scratch("prune-flush").canonicalize().unwrap();
+        let file = dir.join("ledger.db");
+        let mut db = open_at(&file).unwrap();
+        let (_, old, _, _) = insert(&mut db, &file, New { state: "done".into(), ..task("old work") }).unwrap();
+        let (_, fresh, _, _) = insert(&mut db, &file, New { state: "done".into(), ..task("fresh work") }).unwrap();
+        let (_, open, _, _) = insert(&mut db, &file, task("open work")).unwrap();
+        let dirs_of: std::collections::HashMap<String, PathBuf> =
+            [&old, &fresh, &open].into_iter().map(|u| (u.clone(), PathBuf::from(one(&db, u).unwrap().work_dir.unwrap()))).collect();
+        let folder = |uid: &str| dirs_of[uid].clone();
+        let age = |p: &Path, secs: u64| {
+            std::fs::File::options().write(true).open(p).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(secs)).unwrap();
+        };
+        for (uid, secs) in [(&old, 3600), (&fresh, 300), (&open, 3600)] {
+            std::fs::write(folder(uid).join("result.md"), "r").unwrap();
+            std::fs::create_dir_all(folder(uid).join("shots")).unwrap();
+            std::fs::write(folder(uid).join("shots/a.png"), "png").unwrap();
+            age(&folder(uid).join("result.md"), secs);
+            age(&folder(uid).join("shots/a.png"), secs);
+        }
+        close(&mut db, &Caller::Person, &[old.clone(), fresh.clone()]).unwrap();
+        db.execute("UPDATE tasks SET closed_at = '2000-01-01T00:00:00Z' WHERE closed_at IS NOT NULL", []).unwrap();
+        // The listing names the closed work only; its folders are judged before the rows go.
+        let gone = prune(&mut db, &Caller::Person, 86_400, false).unwrap();
+        let dirs: Vec<PathBuf> = gone.iter().filter_map(|r| r.work_dir.as_deref().map(PathBuf::from)).collect();
+        assert_eq!(dirs, [folder(&old), folder(&fresh)]);
+        let (out, stays) = skiff_client::disk::flush_work(&dir, &dir.join("cache"), &file, Some(&[]), Path::new("/tmp/here.sock"), &dirs);
+        assert_eq!(out.files, 2);
+        assert!(!folder(&old).exists());
+        assert_eq!(stays, [(folder(&fresh), "it changed in the last 15 minutes".to_string())]);
+        // Then the rows go; the kept folder and the open work stay.
+        assert_eq!(prune(&mut db, &Caller::Person, 86_400, true).unwrap().len(), 2);
+        assert!(one(&db, &old).is_err() && folder(&open).join("result.md").exists());
+        assert!(dir.join("results").join(format!("{fresh}-fresh-work/result.md")).exists());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
