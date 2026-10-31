@@ -219,9 +219,15 @@ enum Cmd {
     /// Mark a session seen, as focusing its pane does.
     Seen { session: String },
     /// Stop sessions.
+    #[command(
+        after_help = "kill refuses a session that has an open ledger task (pending, sent, blocked or interrupted), from any Skipper. It names each such session with the task's uid and title, and stops none of the sessions. Close the task with `skiff ledger update UID --state done`, or use --force.\nExit codes:\n  0  killed\n  1  error\n  10  a session has an open ledger task. Nothing was killed."
+    )]
     Kill {
         #[arg(required = true)]
         sessions: Vec<String>,
+        /// Kill even a session that has an open ledger task.
+        #[arg(long)]
+        force: bool,
     },
     /// Named splits of sessions.
     #[command(subcommand, visible_alias = "g")]
@@ -693,7 +699,7 @@ fn main() {
     }
 }
 
-/// The exit code. Only `wait`, `events` and `send` return other than 0.
+/// The exit code. Only `wait`, `events`, `send` and `kill` return other than 0.
 async fn run(cli: Cli) -> Result<i32> {
     let socket = cli.socket.unwrap_or_else(skiff_core::socket::socket_path);
     // The state follows the socket: only the live one uses the person's files.
@@ -755,6 +761,9 @@ async fn run(cli: Cli) -> Result<i32> {
         let o = sessions::Send { text, enter: *enter, raw: *raw, shell: *shell };
         return sessions::send(&c, session, o).await;
     }
+    if let Cmd::Kill { sessions: ids, force } = &cli.cmd {
+        return sessions::kill(&c, &socket, ids, *force).await;
+    }
     match cli.cmd {
         Cmd::Ls { json } => sessions::ls(&c, json).await,
         Cmd::New { name, cwd, agent, task_type, model, role, group, split, json, command } => {
@@ -763,13 +772,12 @@ async fn run(cli: Cli) -> Result<i32> {
         }
         Cmd::Group(g) => group(&c, g).await,
         Cmd::Rename { session, name } => sessions::rename(&c, &session, &name).await,
-        Cmd::Kill { sessions: ids } => sessions::kill(&c, &ids).await,
         Cmd::Attach { session, .. } => attach::attach(&c, &session, None).await,
         Cmd::Peek { session, lines } => peek::peek(&c, &session, lines).await,
         Cmd::Seen { session } => sessions::seen(&c, &session).await,
         Cmd::Agents { json } => info::agents(&c, json).await,
         Cmd::Theme { cmd: ThemeCmd::Session { cmd } } => theme::session(&c, cmd).await,
-        Cmd::Status { .. } | Cmd::Daemon(_) | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Ledger { .. } | Cmd::Wait { .. } | Cmd::Events { .. } | Cmd::Watch { .. } | Cmd::Send { .. } | Cmd::Skipper { .. } => {
+        Cmd::Status { .. } | Cmd::Daemon(_) | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Ledger { .. } | Cmd::Wait { .. } | Cmd::Events { .. } | Cmd::Watch { .. } | Cmd::Send { .. } | Cmd::Kill { .. } | Cmd::Skipper { .. } => {
             unreachable!()
         }
     }

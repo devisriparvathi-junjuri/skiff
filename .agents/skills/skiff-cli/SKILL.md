@@ -59,7 +59,7 @@ Use the report to show the user what is open. Use the JSON to pick a target or m
 | Follow state changes | `skiff events --json [S...] [--timeout SECS]` |
 | Rename, clear the name | `skiff rename S "name"`, `skiff rename S ""` |
 | Mark seen | `skiff seen S` |
-| Stop | `skiff kill S...` |
+| Stop | `skiff kill S... [--force]` |
 | Groups | `g new [--name N] [--cwd DIR] [--dir row\|col] [S...]`, `g add G S [--split right\|down\|left\|up] [--of S]`, `g rm G S`, `g rename G N`, `g delete G...` |
 | Themes | `skiff theme ls`, `theme session\|project\|app set ... ID`, `clear` |
 | Open with | `skiff open-with ls`, `set KEY "CMD"`, `clear KEY`. Keys: `diff`, `text`, `markdown`, `html` |
@@ -275,6 +275,7 @@ skiff peek "$id" -n 80
 - Never signal skiffd (`kill`, `pkill`, `killall`). skiffd ignores SIGTERM and SIGINT from its own panes and logs the sender.
 - Run `skiff daemon stop` or `skiff daemon reload` only when the user asks. `stop` ends every session.
 - Do not `kill` a session, or take it out of its group, unless the user named it or you started it in this task.
+- `kill` refuses a session with an open ledger task (pending, sent, blocked or interrupted), from any Skipper. It names each session with the task uid and title, kills none of the given sessions, and exits 10. Close the task first. Use `--force` only when the user asks.
 - Do not `send` to a session you did not start unless the user asked. A request in this conversation counts. A standing permission in the instructions file of your own folder also counts, such as the Skiff agent's `AGENTS.md`.
 - A standing permission covers `send` only. It does not cover `kill`, removal from a group, approvals or theme changes. Every `send` and `wait` refusal still applies.
 - Only a person answers an approval. On exit 3 from `send` or `wait`, tell the user the pane's name and id. End the turn. Do not answer the prompt. Do not retry until the user says so.

@@ -12,7 +12,7 @@ use skiff_core::{
     tasks::Start,
 };
 
-use crate::{callsign::callsign, groups, layout::Side, print, resolve, watch};
+use crate::{callsign::callsign, groups, layout::Side, ledger, print, resolve, watch};
 
 /// Sessions in a stable order: oldest first, then by id. Tools in the app's
 /// peek are not sessions to the user, so they are left out.
@@ -458,14 +458,31 @@ pub async fn seen(c: &Client, arg: &str) -> Result<()> {
     c.seen(&s.id).await
 }
 
-/// Resolves every argument first, so a typo kills nothing.
-pub async fn kill(c: &Client, args: &[String]) -> Result<()> {
+/// `kill`'s exit code when a session has an open ledger task.
+pub const KILL_HELD: i32 = 10;
+
+/// Resolves every argument first, so a typo kills nothing. A session with an
+/// open ledger task stops the whole kill, unless `force`.
+pub async fn kill(c: &Client, socket: &Path, args: &[String], force: bool) -> Result<i32> {
     let all = c.list_sessions().await?;
     let mut ids: Vec<String> = Vec::new();
     for a in args {
         let id = resolve::session(&all, a)?.id.clone();
         if !ids.contains(&id) {
             ids.push(id);
+        }
+    }
+    if !force {
+        let open = ledger::open_tasks()?;
+        let held = held(&ids, &open, socket);
+        if !held.is_empty() {
+            for (id, r) in &held {
+                let name = all.iter().find(|s| &s.id == *id).map(resolve::display_name).unwrap_or_default();
+                let title = r.title.as_deref().unwrap_or(&r.task);
+                eprintln!("skiff: {name} ({}) has open task {}: {title}", print::short_id(id), r.uid);
+            }
+            eprintln!("skiff: nothing killed. Close the tasks, or use --force.");
+            return Ok(KILL_HELD);
         }
     }
     let mut failed = 0;
@@ -478,7 +495,19 @@ pub async fn kill(c: &Client, args: &[String]) -> Result<()> {
     if failed > 0 {
         bail!("{failed} of {} sessions not killed", ids.len());
     }
-    Ok(())
+    Ok(0)
+}
+
+/// Each of `ids` with an open task in `open` on this socket. A stored pane id
+/// may be a prefix. A task on another daemon names another pane.
+fn held<'a>(ids: &'a [String], open: &'a [ledger::Row], here: &Path) -> Vec<(&'a String, &'a ledger::Row)> {
+    ids.iter()
+        .flat_map(|id| {
+            open.iter()
+                .filter(move |r| r.socket_other_than(here).is_none() && r.pane_id.as_deref().is_some_and(|p| id.starts_with(p)))
+                .map(move |r| (id, r))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -486,7 +515,7 @@ mod tests {
     use skiff_core::session::{SessionInfo, SessionState};
     use std::path::Path;
 
-    use super::{agent_line, front_refusal, numbered, refusal, New};
+    use super::{agent_line, front_refusal, held, numbered, refusal, New};
     use skiff_core::{
         config::{TaskRow, TaskTypes},
         project::AgentInfo,
@@ -498,6 +527,17 @@ mod tests {
 
     fn new(agent: Option<&str>, task_type: Option<&str>) -> New {
         New { name: None, cwd: None, agent: agent.map(Into::into), task_type: task_type.map(Into::into), model: None, role: None, command: vec![] }
+    }
+
+    #[test]
+    fn kill_is_held_by_an_open_task_on_this_daemon() {
+        let here = Path::new("/run/skiff.sock");
+        let ids = vec!["aaaa1111ffff".to_string(), "bbbb2222ffff".to_string()];
+        let other = crate::ledger::Row { socket: Some("/run/other.sock".into()), ..crate::watch::tests::row(2, "u2", "bbbb2222", "sent", None) };
+        let open = [crate::watch::tests::row(1, "u1", "aaaa1111", "blocked", None), other];
+        let held = held(&ids, &open, here);
+        // A stored prefix matches; a task on another daemon names another pane.
+        assert_eq!(held.iter().map(|(id, r)| (id.as_str(), r.uid.as_str())).collect::<Vec<_>>(), [("aaaa1111ffff", "u1")]);
     }
 
     #[test]
