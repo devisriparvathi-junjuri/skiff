@@ -343,9 +343,49 @@ struct Signals {
     /// Live panes' folders inside the agent folder, but not a Skipper's own.
     cwds: Vec<(PathBuf, String)>,
     pinned: HashSet<PathBuf>,
+    /// The result files of rows that are not done, by their exact path: a
+    /// row from before work folders, or one with `--result` elsewhere.
+    results: HashMap<PathBuf, Verdict>,
     cache: PathBuf,
     /// The session list and the ledger were read: without them nothing is stale.
     sure: Option<&'static str>,
+}
+
+/// A row is not done: a task or hand-off that is not `done`, or a plan with
+/// a task that is not done, or with no task.
+fn not_done(r: &ledger::Row, rows: &[ledger::Row]) -> bool {
+    if r.is_plan() {
+        let kids: Vec<&ledger::Row> = rows.iter().filter(|k| k.parent.as_deref() == Some(r.uid.as_str())).collect();
+        kids.is_empty() || kids.iter().any(|k| k.state != "done")
+    } else {
+        r.state != "done"
+    }
+}
+
+fn title_of(r: &ledger::Row) -> String {
+    r.title.clone().filter(|t| !t.trim().is_empty()).unwrap_or_else(|| r.task.lines().next().unwrap_or("").to_string())
+}
+
+fn open_why(r: &ledger::Row) -> &'static str {
+    if r.is_plan() {
+        "plan-open"
+    } else if r.state == "sent" {
+        "working"
+    } else {
+        "open"
+    }
+}
+
+/// The result files of the rows that are not done. The ledger names each
+/// path, so the match is exact.
+fn open_results(rows: &[ledger::Row]) -> HashMap<PathBuf, Verdict> {
+    rows.iter()
+        .filter(|r| not_done(r, rows))
+        .filter_map(|r| {
+            let p = Path::new(r.result_path.as_deref()?).canonicalize().ok()?;
+            Some((p, Verdict::new(Kind::Use, open_why(r)).label(title_of(r))))
+        })
+        .collect()
 }
 
 /// The work folders of the ledger's rows, each with its live verdict.
@@ -353,11 +393,9 @@ fn units(rows: &[ledger::Row], sessions: Option<&[SessionInfo]>, socket: &Path) 
     let mut out = HashMap::new();
     for r in rows {
         let Some(dir) = r.work_dir.as_deref().and_then(|d| Path::new(d).canonicalize().ok()) else { continue };
-        let title = r.title.clone().filter(|t| !t.trim().is_empty()).unwrap_or_else(|| r.task.lines().next().unwrap_or("").to_string());
-        let kids: Vec<&ledger::Row> = rows.iter().filter(|k| k.parent.as_deref() == Some(r.uid.as_str())).collect();
-        let open = if r.is_plan() { kids.is_empty() || kids.iter().any(|k| k.state != "done") } else { r.state != "done" };
-        let live = if open {
-            Some(Verdict::new(Kind::Use, if r.is_plan() { "plan-open" } else if r.state == "sent" { "working" } else { "open" }).label(title.clone()))
+        let title = title_of(r);
+        let live = if not_done(r, rows) {
+            Some(Verdict::new(Kind::Use, open_why(r)).label(title.clone()))
         } else if r.socket_other_than(socket).is_some() {
             // Its pane is on another skiffd: it cannot be checked from here.
             Some(Verdict::new(Kind::Use, "pane-working").label("another skiffd"))
@@ -454,6 +492,9 @@ fn judge_loose(f: &Node, sig: &Signals) -> Verdict {
     }
     if sig.pinned.contains(&f.abs) {
         return Verdict::new(Kind::Prot, "pinned");
+    }
+    if let Some(v) = sig.results.get(&f.abs) {
+        return v.clone();
     }
     if sig.now - f.mtime < HOLD_LOOSE {
         return Verdict { changed: Some(f.mtime), ..Verdict::new(Kind::Held, "changed") };
@@ -579,6 +620,7 @@ fn raw(folder: &Path, cache: &Path, ledger_file: &Path, sessions: Option<&[Sessi
         units: units(&rows, sessions, socket),
         cwds,
         pinned: crate::cache::kept(cache),
+        results: open_results(&rows),
         cache: cache.canonicalize().unwrap_or_else(|_| cache.to_path_buf()),
         sure: if sessions.is_none() {
             Some("no-daemon")
@@ -938,6 +980,27 @@ mod tests {
         plan(&u.tree, &mut items);
         let paths: Vec<_> = items.iter().map(|e| e.path.as_str()).collect();
         assert_eq!(paths, ["results/2026-10-01-old.md", "scratch"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_result_file_of_an_older_row_that_is_not_done_stays_past_a_day() {
+        let dir = scratch("older-row");
+        let l = ledger(&dir, &[]);
+        let (open, done) = (dir.join("results/2026-10-01-ab12cd34-long.md"), dir.join("results/2026-10-01-cd34ef56-over.md"));
+        write(&open, "wip", 3 * 86_400);
+        write(&done, "r", 3 * 86_400);
+        let db = Connection::open(&l).unwrap();
+        for (uid, st, p) in [("ab12cd34", "sent", &open), ("cd34ef56", "done", &done)] {
+            db.execute(
+                "INSERT INTO tasks (uid, kind, project, task, sent_at, state, updated_at, title, result_path) VALUES (?1, 'task', '', 't', 'x', ?2, 'x', 'Long', ?3)",
+                rusqlite::params![uid, st, p.to_string_lossy()],
+            )
+            .unwrap();
+        }
+        let u = at(&dir, &l, &[]);
+        assert_eq!(state_of(&u, "results/2026-10-01-ab12cd34-long.md"), (Kind::Use, "working"));
+        assert_eq!(state_of(&u, "results/2026-10-01-cd34ef56-over.md"), (Kind::Stale, "no-folder"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
