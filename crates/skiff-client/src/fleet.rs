@@ -245,6 +245,13 @@ pub async fn rename(c: &Client, old: &str, new: &str) -> Result<()> {
             "UPDATE tasks SET result_path = ?2 || substr(result_path, length(?1) + 1) WHERE substr(result_path, 1, length(?1) + 1) = ?1 || '/'",
             params![pa, pb],
         )?;
+        let work_dirs: i64 = tx.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name = 'work_dir'", [], |r| r.get(0))?;
+        if work_dirs > 0 {
+            tx.execute(
+                "UPDATE tasks SET work_dir = ?2 || substr(work_dir, length(?1) + 1) WHERE substr(work_dir, 1, length(?1) + 1) = ?1 || '/'",
+                params![pa, pb],
+            )?;
+        }
         if fs.is_some() {
             let text = format!("The fleet {old} is {new} now. Your folder is {pb}. Read SKIPPER.md there again.");
             tx.execute("INSERT INTO notes (owner, text, at) VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))", params![b, text])?;

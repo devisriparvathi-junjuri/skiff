@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   closed_at   TEXT,
   gone_at     TEXT,
   owner       TEXT NOT NULL DEFAULT 'grand',
-  reopened_at TEXT
+  reopened_at TEXT,
+  work_dir    TEXT,
+  flushed_at  TEXT
 );
 ";
 
@@ -130,6 +132,8 @@ fn open_at(file: &Path) -> Result<Connection> {
 ///   Skippers, the grand Skipper owned every row.
 /// - 9 to 10: `reopened_at`. No work has it: work that is done and reported
 ///   closes at the next write (see [`auto_close`]).
+/// - 10 to 11: `work_dir` and `flushed_at`. No row has them: a row from
+///   before work folders keeps its result path, with no folder.
 fn migrate(db: &mut Connection) -> Result<()> {
     add_column(db, "socket", |tx| {
         tx.execute("UPDATE tasks SET socket = ?1 WHERE kind = 'task'", [state::live_socket().display().to_string()])?;
@@ -140,7 +144,9 @@ fn migrate(db: &mut Connection) -> Result<()> {
     add_column(db, "closed_at", |_| Ok(()))?;
     add_column(db, "gone_at", |_| Ok(()))?;
     add_owner(db)?;
-    add_column(db, "reopened_at", |_| Ok(()))
+    add_column(db, "reopened_at", |_| Ok(()))?;
+    add_column(db, "work_dir", |_| Ok(()))?;
+    add_column(db, "flushed_at", |_| Ok(()))
 }
 
 /// The 8 to 9 step. SQLite cannot change a CHECK in place, so the rows move
@@ -155,8 +161,8 @@ fn add_owner(db: &mut Connection) -> Result<()> {
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
     if !has(&tx)? {
         let old = "id, uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, reported_at, title, closed_at, gone_at";
-        // Version 9's shape: `reopened_at` comes in the next step.
-        tx.execute_batch(&TASKS.replace("IF NOT EXISTS tasks", "tasks_9").replace(",\n  reopened_at TEXT", ""))?;
+        // Version 9's shape: the later columns come in the next steps.
+        tx.execute_batch(&TASKS.replace("IF NOT EXISTS tasks", "tasks_9").replace(",\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", ""))?;
         tx.execute_batch(&format!("INSERT INTO tasks_9 ({old}, owner) SELECT {old}, 'grand' FROM tasks; DROP TABLE tasks; ALTER TABLE tasks_9 RENAME TO tasks;"))?;
     }
     tx.commit()?;
@@ -233,24 +239,46 @@ fn slug(text: &str) -> String {
     }
 }
 
-/// Where a row's result goes when `add` names no path, in `results`: the
-/// folder next to the ledger, or a project Skipper's (see [`results_dir`]):
+/// A row's work folder, in `results`: the folder next to the ledger, or a
+/// project or fleet Skipper's (see [`results_dir`]). Everything for the task
+/// goes in it. The name is `<uid>-<slug>`, from the title, else the task
+/// text, and never changes:
 ///
-/// - a plan: `<date>-<uid>-<slug>/plan.md`, a folder of its own;
-/// - a task in a plan: `<uid>-<slug>.md` in the plan's folder;
-/// - any other task: `<date>-<uid>-<slug>.md`.
+/// - a plan, a hand-off, or a task with no plan: `<results>/<uid>-<slug>/`;
+/// - a task in a plan or under a hand-off: `<uid>-<slug>/` in that row's
+///   folder (see [`container_folder`]).
 ///
-/// The date is today's, local time. Nothing is made on disk.
-fn result_path(results: &Path, date: &str, uid: &str, task: &str, plan: bool, parent: Option<&Row>) -> PathBuf {
-    let results = results.to_path_buf();
-    let name = format!("{uid}-{}", slug(task));
-    if plan {
-        return results.join(format!("{date}-{name}")).join("plan.md");
+/// Nothing is made on disk.
+fn work_folder(results: &Path, uid: &str, label: &str, container: Option<&Row>) -> PathBuf {
+    let name = format!("{uid}-{}", slug(label));
+    match container {
+        Some(p) => container_folder(results, p).join(name),
+        None => results.join(name),
     }
-    match parent {
-        Some(p) => plan_folder(&results, p).join(format!("{name}.md")),
-        None => results.join(format!("{date}-{name}.md")),
+}
+
+/// The result in a work folder: `plan.md` for a plan, else `result.md`.
+fn result_in(folder: &Path, plan: bool) -> PathBuf {
+    folder.join(if plan { "plan.md" } else { "result.md" })
+}
+
+/// The title, else the task text: what a work folder's slug comes from.
+fn label<'a>(title: Option<&'a str>, task: &'a str) -> &'a str {
+    title.map(str::trim).filter(|t| !t.is_empty()).unwrap_or(task)
+}
+
+/// The folder a task under `p` goes in: `p`'s work folder, or for a row from
+/// before work folders, the plan folder it had (see [`plan_folder`]).
+fn container_folder(results: &Path, p: &Row) -> PathBuf {
+    match &p.work_dir {
+        Some(d) => PathBuf::from(d),
+        None => plan_folder(results, p),
     }
+}
+
+/// Makes a work folder. The ledger records it only when this works.
+fn make_work_folder(dir: &Path) -> Result<()> {
+    std::fs::create_dir_all(dir).with_context(|| format!("make the work folder {}", dir.display()))
 }
 
 /// The results folder of `owner`'s rows: `results/` next to the ledger for
@@ -265,8 +293,9 @@ pub fn results_dir(ledger: &Path, owner: &str) -> PathBuf {
     }
 }
 
-/// The folder of the plan's `plan.md`, or the folder of a hand-off's tasks.
-/// A plan whose result is elsewhere gets the folder it would have had.
+/// For a row from before work folders: the folder of the plan's `plan.md`,
+/// or the folder of a hand-off's tasks. A plan whose result is elsewhere
+/// gets the folder it would have had.
 fn plan_folder(results: &Path, p: &Row) -> PathBuf {
     if let Some(dir) = p.result_path.as_deref().map(Path::new).filter(|r| r.file_name() == Some("plan.md".as_ref())).and_then(Path::parent) {
         return dir.to_path_buf();
@@ -470,14 +499,16 @@ fn join(db: &Connection, file: &Path, arg: &str) -> Result<Row> {
         return one(db, &r.uid);
     }
     let uid = new_uid(db)?;
-    let date: String = db.query_row("SELECT date('now', 'localtime')", [], |r| r.get(0))?;
-    let result = result_path(&results_dir(file, &r.owner), &date, &uid, &r.task, true, None).display().to_string();
+    // The new plan gets its own folder. The task's folder stays where it is.
+    let dir = work_folder(&results_dir(file, &r.owner), &uid, label(r.title.as_deref(), &r.task), None);
+    make_work_folder(&dir)?;
+    let result = result_in(&dir, true).display().to_string();
     db.execute(
         &format!(
-            "INSERT INTO tasks (uid, kind, project, task, sent_at, state, result_path, ref, updated_at, type, title, owner)
-             VALUES (?1, 'plan', ?2, ?3, ?4, 'sent', ?5, ?6, {NOW}, ?7, ?8, ?9)"
+            "INSERT INTO tasks (uid, kind, project, task, sent_at, state, result_path, ref, updated_at, type, title, owner, work_dir)
+             VALUES (?1, 'plan', ?2, ?3, ?4, 'sent', ?5, ?6, {NOW}, ?7, ?8, ?9, ?10)"
         ),
-        params![uid, r.project, r.task, r.sent_at, result, r.reference, r.task_type, r.title, r.owner],
+        params![uid, r.project, r.task, r.sent_at, result, r.reference, r.task_type, r.title, r.owner, dir.display().to_string()],
     )?;
     db.execute(&format!("UPDATE tasks SET parent = ?2, closed_at = NULL, updated_at = {NOW} WHERE id = ?1"), params![r.id, uid])?;
     one(db, &uid)
@@ -657,8 +688,14 @@ fn print_one(r: &Row, closed: Option<&str>) {
         ("work", r.bucket.unwrap_or_default().to_string()),
         ("closed", closed.unwrap_or("no").to_string()),
     ]);
+    if let Some(d) = &r.work_dir {
+        f.push(("folder", d.clone()));
+    }
     if let Some(p) = &r.result_path {
         f.push(("result", p.clone()));
+    }
+    if let Some(x) = &r.flushed_at {
+        f.push(("flushed", x.clone()));
     }
     if let Some(x) = &r.title {
         f.push(("title", x.clone()));
@@ -695,22 +732,19 @@ struct New {
     handoff: bool,
 }
 
-/// Adds a row with a new uid, and its default result path unless it names
-/// one. A parent is joined as [`join`] does. Returns the id, the uid, the
-/// result path and the plan's uid.
+/// Adds a row with a new uid, and makes its work folder (see
+/// [`work_folder`]). The result path is `result.md` in it (`plan.md` for a
+/// plan) unless the row names one. A parent is joined as [`join`] does.
+/// Returns the id, the uid, the result path and the plan's uid.
 fn insert(db: &mut Connection, file: &Path, n: New) -> Result<(i64, String, String, Option<String>)> {
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let parent = n.parent.as_deref().map(|p| join(&tx, file, p)).transpose()?;
     let uid = new_uid(&tx)?;
-    let result = match n.result {
-        Some(r) => r,
-        None => {
-            let date: String = tx.query_row("SELECT date('now', 'localtime')", [], |r| r.get(0))?;
-            // A hand-off's result goes with the project Skipper's, not in the plan's folder.
-            let (results, above) = if n.handoff { (results_dir(file, &n.project), None) } else { (results_dir(file, &n.owner), parent.as_ref()) };
-            result_path(&results, &date, &uid, &n.task, n.plan, above).display().to_string()
-        }
-    };
+    // A hand-off's folder goes with the project Skipper's, not in the plan's folder.
+    let (results, above) = if n.handoff { (results_dir(file, &n.project), None) } else { (results_dir(file, &n.owner), parent.as_ref()) };
+    let dir = work_folder(&results, &uid, label(n.title.as_deref(), &n.task), above);
+    make_work_folder(&dir)?;
+    let result = n.result.unwrap_or_else(|| result_in(&dir, n.plan).display().to_string());
     let kind = match (n.plan, n.handoff) {
         (true, _) => "plan",
         (_, true) => "handoff",
@@ -718,10 +752,26 @@ fn insert(db: &mut Connection, file: &Path, n: New) -> Result<(i64, String, Stri
     };
     tx.execute(
         &format!(
-            "INSERT INTO tasks (uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, title, owner)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, {NOW}, ?8, ?9, ?10, {NOW}, ?11, ?12, ?13, ?14)"
+            "INSERT INTO tasks (uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, title, owner, work_dir)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, {NOW}, ?8, ?9, ?10, {NOW}, ?11, ?12, ?13, ?14, ?15)"
         ),
-        params![uid, kind, parent.as_ref().map(|p| &p.uid), n.pane_id, n.pane_gen, n.project, n.task, n.state, result, n.reference, n.task_type, n.socket, n.title, n.owner],
+        params![
+            uid,
+            kind,
+            parent.as_ref().map(|p| &p.uid),
+            n.pane_id,
+            n.pane_gen,
+            n.project,
+            n.task,
+            n.state,
+            result,
+            n.reference,
+            n.task_type,
+            n.socket,
+            n.title,
+            n.owner,
+            dir.display().to_string()
+        ],
     )?;
     let id = tx.last_insert_rowid();
     tx.commit()?;
@@ -1017,14 +1067,16 @@ fn message(row: &Row) -> String {
     let task = row.task.trim();
     if row.is_handoff() {
         let path = row.result_path.as_deref().unwrap_or("your results folder");
+        let folder = row.work_dir.as_deref().map(|d| format!(" Put everything for this hand-off in {d}. Your tasks for it get their folders in it.")).unwrap_or_default();
         return format!(
-            "Hand-off {uid}: {task} Add your tasks for it with --parent {uid}. When they are done, write the result to {path}, then run: skiff ledger update {uid} --state done --result {path}",
+            "Hand-off {uid}: {task}{folder} Add your tasks for it with --parent {uid}. When they are done, write the result to {path}, then run: skiff ledger update {uid} --state done --result {path}",
             uid = row.uid
         );
     }
-    match row.result_path.as_deref() {
-        Some(p) => format!("{task} Write your result to {p}."),
-        None => task.to_string(),
+    match (row.work_dir.as_deref(), row.result_path.as_deref()) {
+        (Some(d), Some(p)) => format!("{task} Put everything for this task in {d}: the result, screenshots, scratch copies and worktrees. Write your result to {p}."),
+        (None, Some(p)) => format!("{task} Write your result to {p}."),
+        _ => task.to_string(),
     }
 }
 
@@ -1262,7 +1314,7 @@ fn add_state(st: Option<&str>, plan: bool, send: bool) -> Result<&str> {
 /// Runs one `skiff ledger` command. After a command that writes, work that
 /// is done and reported closes by itself (see [`auto_close`]).
 pub async fn run(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
-    let writes = !matches!(cmd, LedgerCmd::Ls { .. } | LedgerCmd::Show { .. });
+    let writes = !matches!(cmd, LedgerCmd::Ls { .. } | LedgerCmd::Show { .. } | LedgerCmd::Dir { .. });
     let code = run_one(socket, cmd, person).await?;
     if writes {
         for r in auto_close(&mut open()?)? {
@@ -1298,7 +1350,8 @@ async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
             };
             let new = New { plan: is_plan, parent, pane_id, pane_gen, project, task, title, state: st, result, reference, task_type, socket: here, owner, handoff: false };
             let (id, uid, result, plan) = insert(&mut db, &file, new)?;
-            println!("id {id}\nuid {uid}\nresult {result}");
+            let dir = one(&db, &uid)?.work_dir.unwrap_or_default();
+            println!("id {id}\nuid {uid}\nfolder {dir}\nresult {result}");
             if let Some(p) = plan {
                 // A task under a hand-off names the hand-off.
                 println!("{} {p}", one(&db, &p).map(|r| r.kind).unwrap_or_else(|_| "plan".into()));
@@ -1356,7 +1409,8 @@ async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
                 handoff: true,
             };
             let (id, uid, result, plan) = insert(&mut db, &file, new)?;
-            println!("id {id}\nuid {uid}\nresult {result}");
+            let dir = one(&db, &uid)?.work_dir.unwrap_or_default();
+            println!("id {id}\nuid {uid}\nfolder {dir}\nresult {result}");
             if let Some(p) = plan {
                 // A task under a hand-off names the hand-off.
                 println!("{} {p}", one(&db, &p).map(|r| r.kind).unwrap_or_else(|_| "plan".into()));
@@ -1520,6 +1574,20 @@ async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
                 print::json(&r)?;
             } else {
                 print_one(&r, closed.as_deref());
+            }
+        }
+        LedgerCmd::Dir { id } => {
+            let r = one(&open()?, &id)?;
+            match (&r.work_dir, &r.result_path) {
+                (Some(d), _) => println!("{d}"),
+                (None, Some(p)) => {
+                    eprintln!("skiff: row {} is from before work folders and has none. Its result: {p}", r.uid);
+                    return Ok(1);
+                }
+                (None, None) => {
+                    eprintln!("skiff: row {} is from before work folders and has none", r.uid);
+                    return Ok(1);
+                }
             }
         }
         LedgerCmd::Rm { id } => {
@@ -1833,7 +1901,6 @@ mod tests {
         let dir = scratch("join");
         let file = dir.join("ledger.db");
         let mut db = open_at(&file).unwrap();
-        let date: String = db.query_row("SELECT date('now', 'localtime')", [], |r| r.get(0)).unwrap();
         let first = New { state: "done".into(), title: Some("Build 177".into()), reference: Some("#177".into()), task_type: Some("build".into()), ..task("Build issue 177") };
         let (_, lone, lone_path, none) = insert(&mut db, &file, first).unwrap();
         assert_eq!(none, None);
@@ -1846,9 +1913,12 @@ mod tests {
         assert!(p.is_plan() && p.closed_at.is_none() && t.closed_at.is_none());
         assert_eq!((p.task.as_str(), p.title.as_deref(), p.reference.as_deref(), p.task_type.as_deref()), ("Build issue 177", Some("Build 177"), Some("#177"), Some("build")));
         assert_eq!((t.parent.as_deref(), t.result_path.as_deref()), (Some(p.uid.as_str()), Some(lone_path.as_str())));
-        let folder = dir.join("results").join(format!("{date}-{}-build-issue-177", p.uid));
-        assert_eq!(p.result_path.as_deref(), Some(folder.join("plan.md").to_str().unwrap()));
-        assert_eq!(check_path, folder.join(format!("{check}-check-the-app.md")).display().to_string());
+        // The new plan has its own folder, named from the title. The lone task's folder stays.
+        let folder = dir.join("results").join(format!("{}-build-177", p.uid));
+        assert_eq!((p.work_dir.as_deref(), p.result_path.as_deref()), (folder.to_str(), Some(folder.join("plan.md").to_str().unwrap())));
+        assert_eq!(check_path, folder.join(format!("{check}-check-the-app")).join("result.md").display().to_string());
+        assert_eq!(t.work_dir, Some(dir.join("results").join(format!("{lone}-build-177")).display().to_string()));
+        assert!(folder.is_dir() && dir.join("results").join(format!("{lone}-build-177")).is_dir());
 
         // A second follow-up names the plan, and a closed plan opens.
         db.execute("UPDATE tasks SET state = 'done' WHERE uid = ?1", [&check]).unwrap();
@@ -2235,20 +2305,22 @@ mod tests {
         let dir = scratch("plan");
         let file = dir.join("ledger.db");
         let mut db = open_at(&file).unwrap();
-        let date: String = db.query_row("SELECT date('now', 'localtime')", [], |r| r.get(0)).unwrap();
         let (_, lone, lone_path, _) = insert(&mut db, &file, task("Fix the login bug!")).unwrap();
         let plan_row = New { plan: true, pane_id: None, pane_gen: None, reference: Some("JIRA-12".into()), ..task("Release 0.7: notes & builds") };
         let (pid, puid, plan_path, _) = insert(&mut db, &file, plan_row).unwrap();
         let (_, a, a_path, _) = insert(&mut db, &file, New { parent: Some(puid.clone()), ..task("Write the release notes") }).unwrap();
         let (_, b, b_path, _) = insert(&mut db, &file, New { parent: Some(pid.to_string()), ..task("Build the Linux packages") }).unwrap();
         let results = dir.join("results");
-        assert_eq!(lone_path, results.join(format!("{date}-{lone}-fix-the-login-bug.md")).display().to_string());
-        let folder = results.join(format!("{date}-{puid}-release-0-7-notes-builds"));
+        assert_eq!(lone_path, results.join(format!("{lone}-fix-the-login-bug")).join("result.md").display().to_string());
+        let folder = results.join(format!("{puid}-release-0-7-notes-builds"));
         assert_eq!(plan_path, folder.join("plan.md").display().to_string());
-        assert_eq!(a_path, folder.join(format!("{a}-write-the-release-notes.md")).display().to_string());
-        assert_eq!(b_path, folder.join(format!("{b}-build-the-linux-packages.md")).display().to_string());
-        // `add` makes no file.
-        assert!(!results.exists());
+        assert_eq!(a_path, folder.join(format!("{a}-write-the-release-notes")).join("result.md").display().to_string());
+        assert_eq!(b_path, folder.join(format!("{b}-build-the-linux-packages")).join("result.md").display().to_string());
+        // `add` makes each work folder, and no file.
+        for d in [results.join(format!("{lone}-fix-the-login-bug")), folder.join(format!("{a}-write-the-release-notes"))] {
+            assert!(d.is_dir() && std::fs::read_dir(&d).unwrap().next().is_none(), "{}", d.display());
+        }
+        assert_eq!(one(&db, &a).unwrap().work_dir, Some(folder.join(format!("{a}-write-the-release-notes")).display().to_string()));
         // A task in a plan names its plan.
         let (_, x, _, plan) = insert(&mut db, &file, New { parent: Some(a.clone()), ..task("x") }).unwrap();
         assert_eq!(plan.as_deref(), Some(puid.as_str()));
@@ -2260,6 +2332,57 @@ mod tests {
         assert!(p.is_plan() && p.pane_id.is_none() && p.reference.as_deref() == Some("JIRA-12"));
         // The watcher gets the open tasks, not the plan.
         assert_eq!(open_tasks_at(&file).unwrap().len(), 3);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_hand_off_gets_a_folder_with_its_project_and_an_old_plan_keeps_its_folder() {
+        let dir = scratch("handoff-dir");
+        let file = dir.join("ledger.db");
+        let mut db = open_at(&file).unwrap();
+        let (_, p, _, _) = insert(&mut db, &file, New { plan: true, pane_id: None, title: Some("Ship it".into()), ..task("p") }).unwrap();
+        // A hand-off under Admiral's plan goes with the project Skipper's results, not in the plan's folder.
+        let (_, h, h_path, _) = insert(&mut db, &file, New { parent: Some(p.clone()), handoff: true, project: "web".into(), title: Some("Fix web".into()), ..task("h") }).unwrap();
+        let h_dir = dir.join("projects/web/results").join(format!("{h}-fix-web"));
+        assert_eq!(h_path, h_dir.join("result.md").display().to_string());
+        // The project Skipper's task under it nests in it.
+        let (_, k, k_path, _) = insert(&mut db, &file, New { parent: Some(h.clone()), owner: "web".into(), ..task("Do the fix") }).unwrap();
+        assert_eq!(k_path, h_dir.join(format!("{k}-do-the-fix")).join("result.md").display().to_string());
+        assert!(h_dir.join(format!("{k}-do-the-fix")).is_dir());
+        // A named result path stays, and the folder is still made.
+        let (_, n, n_path, _) = insert(&mut db, &file, New { result: Some("/elsewhere/r.md".into()), ..task("named") }).unwrap();
+        assert_eq!(n_path, "/elsewhere/r.md");
+        assert!(dir.join("results").join(format!("{n}-named")).is_dir());
+        // A plan from before work folders: a new task goes in the folder it had.
+        db.execute("UPDATE tasks SET work_dir = NULL, result_path = ?2 WHERE uid = ?1", params![p, dir.join("results/2026-10-01-old-plan/plan.md").display().to_string()]).unwrap();
+        let (_, t, t_path, _) = insert(&mut db, &file, New { parent: Some(p.clone()), ..task("late") }).unwrap();
+        assert_eq!(t_path, dir.join("results/2026-10-01-old-plan").join(format!("{t}-late")).join("result.md").display().to_string());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_version_10_ledger_takes_work_dir_and_flushed_at_in_place_and_keeps_its_rows() {
+        let dir = scratch("v10");
+        let file = dir.join("ledger.db");
+        {
+            let v10 = TASKS.replace(",\n  work_dir    TEXT,\n  flushed_at  TEXT", "");
+            assert_ne!(v10, TASKS);
+            let db = Connection::open(&file).unwrap();
+            db.execute_batch(&v10).unwrap();
+            db.execute(
+                "INSERT INTO tasks (uid, kind, project, task, sent_at, state, result_path, updated_at) VALUES ('ab12cd34', 'task', 'p', 'old', 'x', 'done', '/r/old.md', 'x')",
+                [],
+            )
+            .unwrap();
+            // A reader takes the version 10 file: the new columns read as empty.
+            let r = skiff_client::ledger::rows(&db, "", None).unwrap();
+            assert_eq!((r[0].work_dir.as_deref(), r[0].flushed_at.as_deref()), (None, None));
+        }
+        let db = open_at(&file).unwrap();
+        let r = one(&db, "ab12cd34").unwrap();
+        assert_eq!((r.result_path.as_deref(), r.work_dir.as_deref()), (Some("/r/old.md"), None));
+        db.execute("UPDATE tasks SET flushed_at = 'now' WHERE uid = 'ab12cd34'", []).unwrap();
+        assert_eq!(one(&db, "ab12cd34").unwrap().flushed_at.as_deref(), Some("now"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -2312,7 +2435,15 @@ mod tests {
         let (same, restarted) = (pane(1000), pane(2000));
         assert_eq!(unsendable(&r, Some(&same)), None);
         assert!(unsendable(&r, None).unwrap().contains("gone"));
-        assert_eq!(message(&r), format!("fix the tests Write your result to {result}."));
+        let folder = dir.join("results").join(format!("{uid}-fix-the-tests"));
+        assert_eq!(result, folder.join("result.md").display().to_string());
+        assert_eq!(
+            message(&r),
+            format!("fix the tests Put everything for this task in {}: the result, screenshots, scratch copies and worktrees. Write your result to {result}.", folder.display())
+        );
+        // A row from before work folders keeps the old text.
+        let old = Row { work_dir: None, ..r.clone() };
+        assert_eq!(message(&old), format!("fix the tests Write your result to {result}."));
         r.state = "sent".into();
         assert!(unsendable(&r, Some(&same)).unwrap().contains("not pending"));
         // A restart interrupted it: it can go again.

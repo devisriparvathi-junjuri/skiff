@@ -22,11 +22,19 @@ pub const GONE: &str = "gone";
 /// The schema version, in `user_version`. 4 added `tasks.socket` and
 /// `owner`, 5 added `tasks.reported_at`, 6 added `tasks.title`, 7 added
 /// `tasks.closed_at`, 8 added `tasks.gone_at`, 9 added `tasks.owner` and the
-/// `handoff` kind, 10 added `tasks.reopened_at`; an older file from version 3
-/// on takes each in place, with its rows.
-pub const VERSION: i64 = 10;
+/// `handoff` kind, 10 added `tasks.reopened_at`, 11 added `tasks.work_dir`
+/// and `tasks.flushed_at`; an older file from version 3 on takes each in
+/// place, with its rows. The readers take a version 10 file: the version 11
+/// columns read as empty there.
+pub const VERSION: i64 = 11;
 
 pub const COLUMNS: &str = "id, uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, reported_at, title, closed_at, gone_at, owner";
+
+/// The version 11 columns, or empty values on an older file.
+fn columns_11(db: &Connection) -> rusqlite::Result<&'static str> {
+    let n: i64 = db.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name IN ('work_dir', 'flushed_at')", [], |r| r.get(0))?;
+    Ok(if n == 2 { "work_dir, flushed_at" } else { "NULL, NULL" })
+}
 
 /// The owner of the grand Skipper's rows. A project Skipper's rows have its
 /// project's name.
@@ -83,6 +91,13 @@ pub struct Row {
     /// The coordinator whose row it is: [`GRAND`], or the project of a
     /// project Skipper. Only it, or the person, changes the row.
     pub owner: String,
+    /// The row's work folder, which `skiff ledger add` made: everything for
+    /// the task goes in it, the result too. `None`: a row from before work
+    /// folders, whose result path stands alone.
+    pub work_dir: Option<String>,
+    /// When Settings › Disk use flushed the work folder. The row stays; the
+    /// panel shows "Result flushed" in place of a missing result.
+    pub flushed_at: Option<String>,
     /// [`WORKING`], [`OPEN`] or [`FINISHED`], for the whole work. Set by
     /// [`buckets`].
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -279,7 +294,7 @@ pub fn open_read(file: &Path) -> Result<Connection> {
 }
 
 pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) -> Result<Vec<Row>> {
-    let sql = format!("SELECT {COLUMNS} FROM tasks {where_} ORDER BY id");
+    let sql = format!("SELECT {COLUMNS}, {} FROM tasks {where_} ORDER BY id", columns_11(db)?);
     let mut st = db.prepare(&sql)?;
     let map = |r: &rusqlite::Row| {
         Ok(Row {
@@ -303,6 +318,8 @@ pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) ->
             closed_at: r.get(17)?,
             gone_at: r.get(18)?,
             owner: r.get(19)?,
+            work_dir: r.get(20)?,
+            flushed_at: r.get(21)?,
             bucket: None,
             agent_on: false,
             elsewhere: false,
