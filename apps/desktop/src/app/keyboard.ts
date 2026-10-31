@@ -132,11 +132,15 @@ function roveTarget(): HTMLElement | undefined {
 /** Moves the one highlight to the current row. The row of the pane on screen, when it is another one, carries `shown`. */
 export function markCurrent() {
   const items = listItems();
-  const cur = currentRow(items);
+  // A row in rename is its name field, not a list item. It stays the current row until the rename ends.
+  const editing = document.querySelector<HTMLElement>("#sidebar-scroll .renaming");
+  const cur = editing ? undefined : currentRow(items);
   for (const x of items) x.classList.toggle("current", x === cur);
+  editing?.classList.add("current");
   for (const x of document.querySelectorAll<HTMLElement>("#sidebar-scroll [data-session]")) x.classList.toggle("shown", !!S.focused && x.dataset.session === S.focused && x !== cur);
   // The worktree marker goes with it: on the project row, no worktree is marked.
-  if (cur) for (const w of document.querySelectorAll("#sidebar-scroll .wt")) w.classList.toggle("selected", !!cur && w.contains(cur));
+  const mark = editing ?? cur;
+  if (mark) for (const w of document.querySelectorAll("#sidebar-scroll .wt")) w.classList.toggle("selected", w.contains(mark));
 }
 
 /**

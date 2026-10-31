@@ -20,7 +20,7 @@ import { fleetMenu, groupMenu, projectMenu, rowMenu, skiffAgentMenu, worktreeMen
 
 import { launchMenu } from "../app/panels";
 
-import { renameRow, startRename, startSessionRename } from "./rename";
+import { renameRow, renamingKey, startRename, startSessionRename } from "./rename";
 
 import { findRow, itemKey, listItems } from "../app/keyboard";
 import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
@@ -764,6 +764,9 @@ function restoreHover() {
 
 function restoreFocus(side: HTMLElement, activeKey: string | undefined, caret: Caret | null, near: string[]) {
   restoreHover();
+  // The row whose rename begins is now its name field, which takes the keys. It
+  // has not gone: the rows near it must not become the current one.
+  if (activeKey && activeKey === renamingKey()) return;
   if (activeKey) {
     const first = [...side.querySelectorAll<HTMLElement>("[data-key], [data-session], [data-wt], [data-group]")]
       .find((el) => (el.dataset.key ?? el.dataset.session ?? el.dataset.wt ?? el.dataset.group) === activeKey);
@@ -801,6 +804,7 @@ function groupRow(g: Group, hasPrevious = false, hasNext = false): HTMLElement {
   const lead = sessions.get(g.focus ?? ids[0]);
   row.style.setProperty("--pc", accent(lead ? place(lead)?.project : null));
   if (S.renaming?.id === g.id) {
+    row.classList.add("renaming");
     const input = groupRenameInput(g);
     row.append(glyph(g.layout), input);
     return row;
