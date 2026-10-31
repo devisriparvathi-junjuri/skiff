@@ -458,6 +458,29 @@ pub async fn seen(c: &Client, arg: &str) -> Result<()> {
     c.seen(&s.id).await
 }
 
+/// The exit code of `new` or `group new` from a Skipper with no `--name`.
+pub const UNNAMED: i32 = 2;
+
+/// The hint for an unnamed session or group from a Skipper.
+pub fn name_rule(group: bool) -> &'static str {
+    if group {
+        "a Skipper names each group: --name after the work it holds. Nothing started."
+    } else {
+        "a Skipper names each session: --name \"#N feature\" for one issue (#136 kanban and calendar), else 2 to 4 words for the task, without the project name. Nothing started."
+    }
+}
+
+/// The caller (`$SKIFF_SESSION`) is a Skipper: Admiral, or a project or
+/// fleet Skipper. A shell pane, an agent pane or a shell outside Skiff is not.
+pub async fn coordinator_calls(c: &Client) -> Result<bool> {
+    let Some(me) = std::env::var("SKIFF_SESSION").ok().filter(|s| !s.is_empty()) else { return Ok(false) };
+    Ok(c.list_sessions().await?.iter().find(|s| s.id == me).is_some_and(is_coordinator))
+}
+
+fn is_coordinator(s: &SessionInfo) -> bool {
+    s.coordinator || s.skipper.is_some()
+}
+
 /// `kill`'s exit code when a session has an open ledger task.
 pub const KILL_HELD: i32 = 10;
 
@@ -515,7 +538,7 @@ mod tests {
     use skiff_core::session::{SessionInfo, SessionState};
     use std::path::Path;
 
-    use super::{agent_line, front_refusal, held, numbered, refusal, New};
+    use super::{agent_line, front_refusal, held, is_coordinator, numbered, refusal, New};
     use skiff_core::{
         config::{TaskRow, TaskTypes},
         project::AgentInfo,
@@ -538,6 +561,17 @@ mod tests {
         let held = held(&ids, &open, here);
         // A stored prefix matches; a task on another daemon names another pane.
         assert_eq!(held.iter().map(|(id, r)| (id.as_str(), r.uid.as_str())).collect::<Vec<_>>(), [("aaaa1111ffff", "u1")]);
+    }
+
+    #[test]
+    fn only_a_skipper_must_name_what_it_starts() {
+        let shell = s("shell", SessionState::Idle, None);
+        let agent = s("agent", SessionState::Idle, None);
+        let admiral = SessionInfo { coordinator: true, ..agent.clone() };
+        let project = SessionInfo { skipper: Some("skiff".into()), ..agent.clone() };
+        let fleet = SessionInfo { skipper: Some("fleet:work".into()), ..agent.clone() };
+        assert!(!is_coordinator(&shell) && !is_coordinator(&agent));
+        assert!(is_coordinator(&admiral) && is_coordinator(&project) && is_coordinator(&fleet));
     }
 
     #[test]

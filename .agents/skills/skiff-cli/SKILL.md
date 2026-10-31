@@ -20,6 +20,8 @@ Do these steps once per task, before the first other command.
 - A session is a full id, a unique id prefix, or the name the sidebar shows. A group is an id, a prefix or a name.
 - An argument that matches more than one session is an error that lists them. Pick the id and run again.
 - `skiff new --agent` with no `--name` gives the agent a random call sign, such as `Corsair Cutlass`. `skiff new --type T` names it after the type: `review`, then `review 2`. A shell has no name. The sidebar shows its title or program.
+- A Skipper (Admiral, a project or a fleet Skipper) must give `--name` to `skiff new` and `skiff group new`. Without it, both exit 2 and start nothing. A person in a shell pane or outside Skiff is not checked.
+- Name a session for one issue `#N feature`, with a short feature name from the issue title: `#136 kanban and calendar`. Name any other session with 2 to 4 words that say the task. Leave out the project name: the sidebar shows it. Name a group after the work it holds.
 - Names change and can repeat. Use ids in scripts.
 
 ## Session report

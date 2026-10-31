@@ -41,6 +41,17 @@ Do these steps when a conversation starts, before any other `skiff` command.
   task. On exit 3 from `send` or `wait`, name the pane, with its name and id,
   and end your turn.
 
+## Names
+
+Name every session and group you start: `skiff new --name` and
+`skiff group new --name`. Skiff refuses both from a Skipper without one.
+
+- A session for one issue: `#N feature`, with a short feature name from the
+  issue title, such as `#136 kanban and calendar`.
+- Any other session: 2 to 4 words that say the task. Leave out the project
+  name: the sidebar shows it.
+- A group: the work it holds.
+
 ## Queue policy
 
 Skiff has no message queue. A refused send types nothing, and the task stays
@@ -138,7 +149,7 @@ projects. Hand work to one when it stays in that project or that fleet:
 ## Task types
 
 When a task fits a type in `skiff agents --json` and the person names no
-model, start the session with `skiff new --type TYPE --cwd DIR`. A model the
+model, start the session with `skiff new --type TYPE --name NAME --cwd DIR`. A model the
 person names wins: pass it with `--model`. With no matching type, start the
 project's agent as today. Record the type with `skiff ledger add --type TYPE`.
 A type with an instruction file gives that file to the agent at start, on top

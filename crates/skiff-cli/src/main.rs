@@ -63,7 +63,7 @@ enum Cmd {
     },
     /// Start a session and print its id.
     #[command(
-        after_help = "--type starts a task type from Settings › Task types ([skiff_agent.tasks] in projects.toml): its agent, with its model flag. With no --name, the session takes the type's name, numbered when one runs (review, review 2).\nWith no row for the type, it exits 1 and starts nothing.\n--model replaces the row's model for this session. A custom agent takes its model in its command, so it refuses --model.\nThe type's instruction file, types/TYPE.md in the agent folder, goes to the agent at start: claude --append-system-prompt-file, codex -c developer_instructions, grok --rules, opencode OPENCODE_CONFIG_CONTENT, kimi --agent-file. An empty file is none. gemini, hermes and custom agents cannot take one: --type exits 1 and starts nothing.\n`skiff agents` lists the types with the command each one starts."
+        after_help = "--type starts a task type from Settings › Task types ([skiff_agent.tasks] in projects.toml): its agent, with its model flag. With no --name, the session takes the type's name, numbered when one runs (review, review 2).\nFrom a Skipper (Admiral, a project or a fleet Skipper), new and `group new` need --name: with none, they exit 2 and start nothing. Name a session for one issue `#N feature`, such as `#136 kanban and calendar`; any other session 2 to 4 words that say the task, without the project name; a group after the work it holds.\nWith no row for the type, it exits 1 and starts nothing.\n--model replaces the row's model for this session. A custom agent takes its model in its command, so it refuses --model.\nThe type's instruction file, types/TYPE.md in the agent folder, goes to the agent at start: claude --append-system-prompt-file, codex -c developer_instructions, grok --rules, opencode OPENCODE_CONFIG_CONTENT, kimi --agent-file. An empty file is none. gemini, hermes and custom agents cannot take one: --type exits 1 and starts nothing.\n`skiff agents` lists the types with the command each one starts."
     )]
     New {
         /// The session's name.
@@ -699,7 +699,8 @@ fn main() {
     }
 }
 
-/// The exit code. Only `wait`, `events`, `send` and `kill` return other than 0.
+/// The exit code. Only `wait`, `events`, `send`, `kill`, and `new` or
+/// `group new` from a Skipper, return other than 0.
 async fn run(cli: Cli) -> Result<i32> {
     let socket = cli.socket.unwrap_or_else(skiff_core::socket::socket_path);
     // The state follows the socket: only the live one uses the person's files.
@@ -763,6 +764,17 @@ async fn run(cli: Cli) -> Result<i32> {
     }
     if let Cmd::Kill { sessions: ids, force } = &cli.cmd {
         return sessions::kill(&c, &socket, ids, *force).await;
+    }
+    let unnamed = match &cli.cmd {
+        Cmd::New { name: None, .. } => Some(false),
+        Cmd::Group(GroupCmd::New { name: None, .. }) => Some(true),
+        _ => None,
+    };
+    if let Some(group) = unnamed {
+        if sessions::coordinator_calls(&c).await? {
+            eprintln!("skiff: {}", sessions::name_rule(group));
+            return Ok(sessions::UNNAMED);
+        }
     }
     match cli.cmd {
         Cmd::Ls { json } => sessions::ls(&c, json).await,
