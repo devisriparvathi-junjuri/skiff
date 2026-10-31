@@ -274,25 +274,28 @@ fn plain_key(section: &str, key: &str) -> bool {
     }
 }
 
-/// Every section and key of `text` is on [`plain_key`]'s list.
-fn plain_config(text: &str) -> bool {
-    let mut section = String::new();
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
-            continue;
-        }
-        if let Some(h) = line.strip_prefix('[') {
-            let Some(h) = h.split(']').next() else { return false };
-            section = h.split(|c: char| c.is_whitespace() || c == '"' || c == '.').next().unwrap_or("").to_ascii_lowercase();
-            continue;
-        }
-        let key = line.split('=').next().unwrap_or("").trim().to_ascii_lowercase();
-        if !plain_key(&section, &key) {
-            return false;
-        }
-    }
-    true
+/// Every key of the config file `f` is on [`plain_key`]'s list. git parses
+/// the file (it runs nothing, and follows no include); a file git cannot
+/// read is not plain.
+fn plain_config(f: &Path) -> bool {
+    let out = Command::new("git")
+        .args(["config", "--no-includes", "--null", "--list", "--file"])
+        .arg(f)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env_remove("GIT_DIR")
+        .output();
+    let Some(out) = out.ok().filter(|o| o.status.success()) else { return false };
+    plain_keys(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// `git config --null --list` output: each entry is the key, a line break,
+/// and the value. `section.key` or `section.subsection.key`.
+fn plain_keys(list: &str) -> bool {
+    list.split('\0').filter(|e| !e.is_empty()).all(|e| {
+        let full = e.split('\n').next().unwrap_or("").to_ascii_lowercase();
+        let (section, key) = (full.split('.').next().unwrap_or(""), full.rsplit('.').next().unwrap_or(""));
+        full.contains('.') && plain_key(section, key)
+    })
 }
 
 /// The repository of `dir` when its own config is plain; else `None`.
@@ -304,10 +307,8 @@ fn plain_repo(dir: &Path) -> Option<Repo> {
             files.push(w);
         }
     }
-    for f in files {
-        if !plain_config(&std::fs::read_to_string(f).ok()?) {
-            return None;
-        }
+    if !files.iter().all(|f| plain_config(f)) {
+        return None;
     }
     Some(r)
 }
@@ -1248,9 +1249,18 @@ mod tests {
         let mut text = std::fs::read_to_string(&cfg).unwrap();
         text.push_str(&format!("[filter \"x\"]\n\tclean = touch {}\n", marker.display()));
         std::fs::write(&cfg, text).unwrap();
-        assert!(!plain_config(&std::fs::read_to_string(&cfg).unwrap()));
-        assert!(plain_config("[core]\n\trepositoryformatversion = 0\n[remote \"origin\"]\n\turl = x\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n"));
-        assert!(!plain_config("[include]\n\tpath = other\n") && !plain_config("[core]\n\tfsmonitor = run\n") && !plain_config("[remote \"o\"]\n\tpromisor = true\n"));
+        assert!(!plain_config(&cfg));
+        // git parses: a key on the header's line, an include or a promisor is not plain.
+        let file = |name: &str, text: &str| {
+            let f = dir.join(name);
+            std::fs::write(&f, text).unwrap();
+            f
+        };
+        assert!(plain_config(&file("ok", "[core]\n\trepositoryformatversion = 0\n[remote \"origin\"]\n\turl = x\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n")));
+        assert!(!plain_config(&file("same-line", "[core] fsmonitor = run\n")));
+        assert!(!plain_config(&file("include", "[include]\n\tpath = other\n")));
+        assert!(!plain_config(&file("promisor", "[remote \"o\"]\n\tpromisor = true\n")));
+        assert!(!plain_config(&file("broken", "[core\n")));
         assert_eq!(checkout(&repo), Checkout::Unknown);
         let u = raw(&dir, &dir.join("cache"), &l, Some(&[]), Path::new(SOCK), now_secs() + 3600);
         assert_eq!(state_of(&u, "results/a1-task"), (Kind::Prot, "checkout"));
