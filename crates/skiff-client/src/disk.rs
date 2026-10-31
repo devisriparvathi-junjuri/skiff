@@ -201,29 +201,48 @@ fn mtime(m: &std::fs::Metadata) -> i64 {
     m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
-/// git for a checkout Skiff did not make: no lock, and none of the
-/// checkout's own settings that run a program (an fsmonitor or a hook).
-fn git(dir: &Path) -> Command {
+/// git for a checkout Skiff did not make, pinned to its repository: no
+/// search for another one, no lock, no lazy fetch, and none of the
+/// checkout's settings that run a program (an fsmonitor or a hook).
+fn git(r: &Repo) -> Command {
     let mut c = Command::new("git");
-    c.args(["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C"])
-        .arg(dir)
+    c.args(["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"])
+        .arg(format!("--git-dir={}", r.gitdir.display()))
+        .arg(format!("--work-tree={}", r.work.display()))
+        .current_dir(&r.work)
         .env("GIT_OPTIONAL_LOCKS", "0")
-        .env("GIT_CONFIG_NOSYSTEM", "1");
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_NO_LAZY_FETCH", "1")
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE");
     c
 }
 
-/// The checkout's own config files: `.git/config`, or for a linked
-/// worktree its `config.worktree` and the main repository's `config`.
-/// `None` when one cannot be read.
-fn own_config(dir: &Path) -> Option<String> {
+/// A checkout's repository, found by hand, never by a search.
+struct Repo {
+    work: PathBuf,
+    /// The checkout's git folder: `.git`, or a linked worktree's.
+    gitdir: PathBuf,
+    /// The main repository's git folder.
+    common: PathBuf,
+    /// A linked worktree: it goes with `git worktree remove`.
+    linked: bool,
+}
+
+/// The repository of the checkout at `dir`. `None` when `.git` is not a
+/// git folder with a HEAD, or a `gitdir:` file that names one.
+fn repo(dir: &Path) -> Option<Repo> {
     let dotgit = dir.join(".git");
     let meta = std::fs::symlink_metadata(&dotgit).ok()?;
-    if meta.is_dir() {
-        return std::fs::read_to_string(dotgit.join("config")).ok();
-    }
-    let text = std::fs::read_to_string(&dotgit).ok()?;
-    let gitdir = PathBuf::from(text.trim().strip_prefix("gitdir:")?.trim());
-    let gitdir = if gitdir.is_absolute() { gitdir } else { dir.join(gitdir) };
+    let (gitdir, linked) = if meta.is_dir() {
+        (dotgit, false)
+    } else if meta.is_file() {
+        let text = std::fs::read_to_string(&dotgit).ok()?;
+        let g = PathBuf::from(text.trim().strip_prefix("gitdir:")?.trim());
+        (if g.is_absolute() { g } else { dir.join(g) }, true)
+    } else {
+        return None;
+    };
     let common = match std::fs::read_to_string(gitdir.join("commondir")) {
         Ok(c) => {
             let c = PathBuf::from(c.trim());
@@ -231,28 +250,73 @@ fn own_config(dir: &Path) -> Option<String> {
         }
         Err(_) => gitdir.clone(),
     };
-    let mut all = std::fs::read_to_string(common.join("config")).ok()?;
-    if let Ok(w) = std::fs::read_to_string(gitdir.join("config.worktree")) {
-        all.push_str(&w);
+    if !gitdir.join("HEAD").is_file() || !common.join("config").is_file() {
+        return None;
     }
-    Some(all)
+    Some(Repo { work: dir.to_path_buf(), gitdir, common, linked })
 }
 
-/// The checkout's own config can make git run a program: a filter, an
-/// fsmonitor, an external diff or text conversion, or an include that could
-/// add one. Skiff does not run git there; the checkout stays protected.
-fn runs_programs(config: &str) -> bool {
-    let c = config.to_ascii_lowercase();
-    ["[filter", "[include", "fsmonitor", "external", "textconv", "sshcommand"].iter().any(|k| c.contains(k))
+/// The config sections and keys a plain checkout has. Anything else, such
+/// as a filter, an include, an fsmonitor or a promisor remote, could make
+/// git run a program or reach out: Skiff then does not run git there.
+fn plain_key(section: &str, key: &str) -> bool {
+    match section {
+        "core" => matches!(
+            key,
+            "repositoryformatversion" | "filemode" | "bare" | "logallrefupdates" | "ignorecase" | "precomposeunicode" | "symlinks" | "autocrlf" | "eol" | "safecrlf"
+        ),
+        "remote" => matches!(key, "url" | "pushurl" | "fetch" | "push" | "tagopt" | "mirror" | "prune"),
+        "branch" => matches!(key, "remote" | "merge" | "rebase" | "pushremote" | "description"),
+        "user" => matches!(key, "name" | "email" | "signingkey"),
+        "extensions" => matches!(key, "worktreeconfig" | "objectformat"),
+        "lfs" => matches!(key, "repositoryformatversion" | "access" | "locksverify"),
+        _ => false,
+    }
+}
+
+/// Every section and key of `text` is on [`plain_key`]'s list.
+fn plain_config(text: &str) -> bool {
+    let mut section = String::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
+        if let Some(h) = line.strip_prefix('[') {
+            let Some(h) = h.split(']').next() else { return false };
+            section = h.split(|c: char| c.is_whitespace() || c == '"' || c == '.').next().unwrap_or("").to_ascii_lowercase();
+            continue;
+        }
+        let key = line.split('=').next().unwrap_or("").trim().to_ascii_lowercase();
+        if !plain_key(&section, &key) {
+            return false;
+        }
+    }
+    true
+}
+
+/// The repository of `dir` when its own config is plain; else `None`.
+fn plain_repo(dir: &Path) -> Option<Repo> {
+    let r = repo(dir)?;
+    let mut files = vec![r.common.join("config")];
+    for w in [r.gitdir.join("config.worktree"), r.common.join("config.worktree")] {
+        if w.exists() {
+            files.push(w);
+        }
+    }
+    for f in files {
+        if !plain_config(&std::fs::read_to_string(f).ok()?) {
+            return None;
+        }
+    }
+    Some(r)
 }
 
 /// The state of the checkout at `dir`, from `git status`.
 fn checkout(dir: &Path) -> Checkout {
-    let linked = std::fs::symlink_metadata(dir.join(".git")).is_ok_and(|m| m.is_file());
-    if own_config(dir).is_none_or(|c| runs_programs(&c)) {
-        return Checkout::Unknown;
-    }
-    let out = git(dir).args(["status", "--porcelain=v2", "--branch", "--ignore-submodules=all"]).output();
+    let Some(r) = plain_repo(dir) else { return Checkout::Unknown };
+    let linked = r.linked;
+    let out = git(&r).args(["status", "--porcelain=v2", "--branch", "--ignore-submodules=all"]).output();
     let Some(out) = out.ok().filter(|o| o.status.success()) else { return Checkout::Unknown };
     let text = String::from_utf8_lossy(&out.stdout);
     let mut upstream = false;
@@ -735,10 +799,10 @@ fn remove_worktrees(n: &Node) -> Result<(), String> {
         if checkout(&n.abs) != (Checkout::Clean { linked: true }) {
             return Err(format!("{} changed", n.path));
         }
-        let common = git(&n.abs).args(["rev-parse", "--path-format=absolute", "--git-common-dir"]).output().map_err(|e| e.to_string())?;
-        let common = PathBuf::from(String::from_utf8_lossy(&common.stdout).trim());
-        let main = common.parent().ok_or_else(|| format!("{}: no main repository", n.path))?;
-        let out = git(main).args(["worktree", "remove"]).arg(&n.abs).output().map_err(|e| e.to_string())?;
+        let r = plain_repo(&n.abs).ok_or_else(|| format!("{}: not a plain git checkout", n.path))?;
+        let main = r.common.parent().ok_or_else(|| format!("{}: no main repository", n.path))?.to_path_buf();
+        let main = Repo { work: main, gitdir: r.common.clone(), common: r.common.clone(), linked: false };
+        let out = git(&main).args(["worktree", "remove"]).arg(&n.abs).output().map_err(|e| e.to_string())?;
         if !out.status.success() {
             return Err(format!("git worktree remove {}: {}", n.path, String::from_utf8_lossy(&out.stderr).trim()));
         }
@@ -1184,7 +1248,9 @@ mod tests {
         let mut text = std::fs::read_to_string(&cfg).unwrap();
         text.push_str(&format!("[filter \"x\"]\n\tclean = touch {}\n", marker.display()));
         std::fs::write(&cfg, text).unwrap();
-        assert!(runs_programs(&std::fs::read_to_string(&cfg).unwrap()));
+        assert!(!plain_config(&std::fs::read_to_string(&cfg).unwrap()));
+        assert!(plain_config("[core]\n\trepositoryformatversion = 0\n[remote \"origin\"]\n\turl = x\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n"));
+        assert!(!plain_config("[include]\n\tpath = other\n") && !plain_config("[core]\n\tfsmonitor = run\n") && !plain_config("[remote \"o\"]\n\tpromisor = true\n"));
         assert_eq!(checkout(&repo), Checkout::Unknown);
         let u = raw(&dir, &dir.join("cache"), &l, Some(&[]), Path::new(SOCK), now_secs() + 3600);
         assert_eq!(state_of(&u, "results/a1-task"), (Kind::Prot, "checkout"));
