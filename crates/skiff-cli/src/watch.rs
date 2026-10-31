@@ -1533,6 +1533,8 @@ mod tests {
             closed_at: None,
             gone_at: None,
             owner: ledger::GRAND.into(),
+            work_dir: None,
+            flushed_at: None,
             bucket: None,
             agent_on: false,
             elsewhere: false,

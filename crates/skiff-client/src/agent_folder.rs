@@ -527,7 +527,7 @@ fn copy_tree(from: &Path, to: &Path) -> Result<()> {
 
 /// Copies the ledger with SQLite, so a write at the same time leaves a
 /// consistent copy, and leaves the old file as it is. In the copy, a result
-/// path in the old folder moves to the new one, except for a task that still
+/// path or a work folder in the old folder moves to the new one, except for a task that still
 /// runs: its child writes the old path.
 fn copy_ledger(src: &Path, dst: &Path, old: &[PathBuf], new: &Path, panes: &Panes) -> Result<()> {
     let from = read_only(src)?;
@@ -538,18 +538,22 @@ fn copy_ledger(src: &Path, dst: &Path, old: &[PathBuf], new: &Path, panes: &Pane
     let copy = Connection::open(dst).with_context(|| format!("open {}", dst.display()))?;
     let gen = if has_column(&copy, "pane_gen")? { "pane_gen" } else { "NULL" };
     type Row = (i64, String, String, Option<String>, Option<i64>);
-    let rows: Vec<Row> = copy
-        .prepare(&format!("SELECT id, result_path, state, pane_id, {gen} FROM tasks WHERE result_path IS NOT NULL"))?
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
-        .collect::<Result<_, _>>()?;
     let tx = copy.unchecked_transaction()?;
-    for (id, path, state, pane, g) in rows {
-        if runs(&state, pane.as_deref(), g, panes) {
-            continue;
-        }
-        let moved = old.iter().find_map(|o| Path::new(&path).strip_prefix(o).ok().map(|rest| new.join(rest)));
-        if let Some(p) = moved {
-            tx.execute("UPDATE tasks SET result_path = ?2 WHERE id = ?1", rusqlite::params![id, p.to_string_lossy()])?;
+    // The result path, then the work folder (from ledger version 11), the same way.
+    let cols: &[&str] = if has_column(&tx, "work_dir")? { &["result_path", "work_dir"] } else { &["result_path"] };
+    for col in cols {
+        let rows: Vec<Row> = tx
+            .prepare(&format!("SELECT id, {col}, state, pane_id, {gen} FROM tasks WHERE {col} IS NOT NULL"))?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
+            .collect::<Result<_, _>>()?;
+        for (id, path, state, pane, g) in rows {
+            if runs(&state, pane.as_deref(), g, panes) {
+                continue;
+            }
+            let moved = old.iter().find_map(|o| Path::new(&path).strip_prefix(o).ok().map(|rest| new.join(rest)));
+            if let Some(p) = moved {
+                tx.execute(&format!("UPDATE tasks SET {col} = ?2 WHERE id = ?1"), rusqlite::params![id, p.to_string_lossy()])?;
+            }
         }
     }
     tx.commit()?;

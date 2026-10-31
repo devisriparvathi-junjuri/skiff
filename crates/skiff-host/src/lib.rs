@@ -529,6 +529,7 @@ fn ledger_rows(all: Option<&[SessionInfo]>) -> Result<Vec<HostLedgerRow>, Error>
                 bucket,
                 elsewhere,
                 result_exists,
+                flushed_at: r.flushed_at,
             }
         })
         .collect())

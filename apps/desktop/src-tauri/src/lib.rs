@@ -189,8 +189,7 @@ pub fn run() {
             ledger::ledger_rows,
             ledger::ledger_result,
             disk::disk_usage,
-            disk::flush_cache,
-            disk::flush_done,
+            disk::flush_disk,
             disk::set_cache_days,
             commands::list_sessions,
             commands::daemon_metrics,
@@ -366,7 +365,7 @@ mod tests {
             "list_groups", "session_screen", "save_group", "delete_group", "order_groups", "subscribe_output", "ack_output", "unsubscribe_output", "subscribe_events",
             "workspace_read", "workspace_revision", "workspace_write", "workspace_launch_file", "workspace_took",
             // This computer's Disk use and Images, whichever Host is shown. A drop or an Insert on a remote Host's pane goes to that Host.
-            "disk_usage", "flush_cache", "flush_done", "set_cache_days",
+            "disk_usage", "flush_disk", "set_cache_days",
             "drop_files", "clipboard_image", "images", "image_thumb", "image_insert", "image_pin", "image_delete", "open_image", "agent_cache_flags",
             // This app's own updater and restart, whichever Host is shown.
             "update_off", "relaunch_app"];
