@@ -123,7 +123,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "7d3c849f2d288f6c046271ebc5d2ffce87e9f52d1519a65f75cf7cb3133b786a"
+    "sha256": "ad2f718c02ab79a59753bf70de457a500d3277efe19065c5d40dba7a62679129"
   },
   "apps/desktop/src-tauri/src/drops.rs": {
     "ownership": "client policy: reads dropped files and this computer's clipboard and cache; a remote Host gets each file through drops@1",
@@ -191,7 +191,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "fd6d77c61fbbf9292fe016f86fcf649fc6a4367400f96db62b396f32eda3f006"
+    "sha256": "352533fa79995089fde9bdf7b04b6f4ecbb2d8b3a8aa521c11f323fd095e9e1d"
   },
   "apps/desktop/src-tauri/src/main.rs": {
     "ownership": "client policy (#189): this app's own command-line flags; no Host data",
@@ -512,7 +512,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "922c6f6695861eea1a2f3fabf31f64ad7c09301d48504b4bbda876202088dec7"
+    "sha256": "39d0d190fd4b1b58722bf93dc6ee3b04ae74f313950930662bf6fd24f6e9e478"
   },
   "apps/desktop/src/appearance/hostProgress.ts": {
     "ownership": "client policy (#166): progress of this client's own SSH install/update job (skiff:host-step) and its cancel_install; the Host is not there yet, so no HostConnection",
@@ -549,7 +549,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "6762a2a87a242dbc0ef8691f3b12ad51c7d5b75e0c96b1167ab165ae5b77c03b"
+    "sha256": "e784a8807fe04c9c99585f5b465528e9ac0cc5b75608a812f4de9d91c6e28723"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",
@@ -854,7 +854,7 @@
     "reasons": [
       "@tauri-apps/api/event"
     ],
-    "sha256": "d92d145d62ed04c7270c3474d9321a8ca872ea6d6e606d7a86c8a204d4689d55"
+    "sha256": "aa40cf77edda103514a4e148c7403161cd24ea1b64059becccdd1682c8d83cda"
   },
   "apps/desktop/src/workspace/menus.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -872,7 +872,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "038be7a31638cfe4ec5bbc2902e992608d79ab45d9b5cb93a9d8288be1a4f876"
+    "sha256": "5b9a2dc2b59e4efb4606959d67b32447ee010df8610e809bda7243cc50753dc7"
   },
   "apps/desktop/src/workspace/missionMotion.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
