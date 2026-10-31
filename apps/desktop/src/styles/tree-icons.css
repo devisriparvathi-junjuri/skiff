@@ -2,6 +2,8 @@
 .agent-icon { width: calc(14 * var(--u)); height: calc(14 * var(--u)); flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
 .agent-icon svg { display: block; }
 .session-row.renaming { background: var(--bg-deep); box-shadow: inset 0 -1px 0 var(--state-working); }
+/* The row in rename keeps the current-row highlight and the field's underline. */
+#sidebar-scroll .session-row.renaming.current { box-shadow: inset 2px 0 0 var(--pc), inset 0 -1px 0 var(--state-working); }
 .session-row input.rename-session {
   flex-grow: 1; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 0; outline: 0;
   background: transparent; color: var(--text); font: calc(12px * var(--zoom, 1)) var(--font);

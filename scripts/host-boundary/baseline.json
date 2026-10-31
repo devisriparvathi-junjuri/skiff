@@ -372,7 +372,7 @@
       "local provider: apps/desktop/src/workspace/tree.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "80e544a57d40026ac3c99bb2e9745cc53af4fabb113baa8c90f3d8872a26ab1d"
+    "sha256": "5cef66c2ec390d06f806483786bf0b6b1f8512fe90ca0f1c6036ec01e44d56f4"
   },
   "apps/desktop/src/app/modes.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -936,7 +936,7 @@
       "local provider: apps/desktop/src/appearance/agentIcon.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "bd795851825f683bbf3a949cb50b75c53f29ba4a95c57289e93da588ca46b7d4"
+    "sha256": "daf183d989d92dff650515c582bdda14b6b6dd9b6bae2f049614b460c0cb9a2c"
   },
   "apps/desktop/src/workspace/selection.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -976,7 +976,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "ad6a4419692c06b54459bf25f994b1cdea795d8ebf7d550da1ac62f2f5081d31"
+    "sha256": "24897bb9351540d9d38a58039dd0d3bd4aa7e147ec84b4ab22090a940030d5a8"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

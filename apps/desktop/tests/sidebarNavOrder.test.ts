@@ -44,6 +44,7 @@ function keyboard(rows: Row[]) {
     window: target(),
     document: {
       body: { classList: { add() {}, remove() {}, toggle() {} } },
+      querySelector: () => null,
       querySelectorAll: (sel: string) => (sel.startsWith("#sidebar-scroll .fleet-pick") ? rows : []),
     },
     requestAnimationFrame: (run: () => void) => run(),
