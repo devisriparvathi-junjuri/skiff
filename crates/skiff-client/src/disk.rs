@@ -201,15 +201,21 @@ fn mtime(m: &std::fs::Metadata) -> i64 {
     m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
-/// The state of the checkout at `dir`, from `git status`. It takes no lock.
+/// git for a checkout Skiff did not make: no lock, and none of the
+/// checkout's own settings that run a program (an fsmonitor or a hook).
+fn git(dir: &Path) -> Command {
+    let mut c = Command::new("git");
+    c.args(["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C"])
+        .arg(dir)
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .env("GIT_CONFIG_NOSYSTEM", "1");
+    c
+}
+
+/// The state of the checkout at `dir`, from `git status`.
 fn checkout(dir: &Path) -> Checkout {
     let linked = std::fs::symlink_metadata(dir.join(".git")).is_ok_and(|m| m.is_file());
-    let out = Command::new("git")
-        .args(["-C"])
-        .arg(dir)
-        .args(["status", "--porcelain=v2", "--branch"])
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .output();
+    let out = git(dir).args(["status", "--porcelain=v2", "--branch"]).output();
     let Some(out) = out.ok().filter(|o| o.status.success()) else { return Checkout::Unknown };
     let text = String::from_utf8_lossy(&out.stdout);
     let mut upstream = false;
@@ -692,15 +698,10 @@ fn remove_worktrees(n: &Node) -> Result<(), String> {
         if checkout(&n.abs) != (Checkout::Clean { linked: true }) {
             return Err(format!("{} changed", n.path));
         }
-        let common = Command::new("git")
-            .arg("-C")
-            .arg(&n.abs)
-            .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
-            .output()
-            .map_err(|e| e.to_string())?;
+        let common = git(&n.abs).args(["rev-parse", "--path-format=absolute", "--git-common-dir"]).output().map_err(|e| e.to_string())?;
         let common = PathBuf::from(String::from_utf8_lossy(&common.stdout).trim());
         let main = common.parent().ok_or_else(|| format!("{}: no main repository", n.path))?;
-        let out = Command::new("git").arg("-C").arg(main).args(["worktree", "remove"]).arg(&n.abs).output().map_err(|e| e.to_string())?;
+        let out = git(main).args(["worktree", "remove"]).arg(&n.abs).output().map_err(|e| e.to_string())?;
         if !out.status.success() {
             return Err(format!("git worktree remove {}: {}", n.path, String::from_utf8_lossy(&out.stderr).trim()));
         }
@@ -712,6 +713,13 @@ fn remove_worktrees(n: &Node) -> Result<(), String> {
     Ok(())
 }
 
+/// The folder that holds `p` is still the real folder the walk saw: no
+/// part of the path became a link since. The walk never follows a link, so
+/// each path it gives has a real folder above it.
+fn same_parent(p: &Path) -> bool {
+    p.parent().is_some_and(|d| d.canonicalize().is_ok_and(|c| c == d))
+}
+
 /// Removes the files of `n` that did not change since `newest`, one at a
 /// time, then the folders that are now empty, deepest first.
 fn remove_files(n: &Node, newest: i64, out: &mut Flushed) {
@@ -719,7 +727,13 @@ fn remove_files(n: &Node, newest: i64, out: &mut Flushed) {
         for c in &n.children {
             remove_files(c, newest, out);
         }
-        let _ = std::fs::remove_dir(&n.abs);
+        if same_parent(&n.abs) {
+            let _ = std::fs::remove_dir(&n.abs);
+        }
+        return;
+    }
+    if !same_parent(&n.abs) {
+        out.kept += 1;
         return;
     }
     let Ok(m) = std::fs::symlink_metadata(&n.abs) else { return };
@@ -1116,6 +1130,26 @@ mod tests {
         let out = flush_at(&dir, &dir.join("cache"), &l, Some(&[]), Path::new(SOCK), &items, now_secs() + 2 * 86_400);
         assert_eq!(out.files, 2);
         assert!(!dir.join("results/old").exists() && outside.join("keep.md").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&outside).unwrap();
+    }
+
+    #[test]
+    fn a_folder_swapped_for_a_link_after_the_count_is_not_followed() {
+        let dir = scratch("swap");
+        let outside = scratch("swap-target");
+        write(&outside.join("x.md"), "keep", 0);
+        let l = ledger(&dir, &[]);
+        write(&dir.join("results/old/x.md"), "x", 0);
+        let u = raw(&dir, &dir.join("cache"), &l, Some(&[]), Path::new(SOCK), now_secs() + 2 * 86_400);
+        let n = find(&u.tree, "results/old").unwrap().clone();
+        // Another process swaps the folder for a link to elsewhere.
+        std::fs::remove_dir_all(dir.join("results/old")).unwrap();
+        std::os::unix::fs::symlink(&outside, dir.join("results/old")).unwrap();
+        let mut out = Flushed::default();
+        remove_files(&n, i64::MAX, &mut out);
+        assert_eq!((out.files, out.kept), (0, 1));
+        assert!(outside.join("x.md").exists());
         std::fs::remove_dir_all(&dir).unwrap();
         std::fs::remove_dir_all(&outside).unwrap();
     }
