@@ -512,7 +512,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "ffa5b5c75ca468aec384de50422c98fb1df0c3ad5a2f8fcbcfa67093f90f3267"
+    "sha256": "922c6f6695861eea1a2f3fabf31f64ad7c09301d48504b4bbda876202088dec7"
   },
   "apps/desktop/src/appearance/hostProgress.ts": {
     "ownership": "client policy (#166): progress of this client's own SSH install/update job (skiff:host-step) and its cancel_install; the Host is not there yet, so no HostConnection",
@@ -556,7 +556,7 @@
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "a246012328eab648b286570aacfb8e909efbb9106773246b591032b5542d9d40"
+    "sha256": "ccbe587c685361f7cd287575167c6967860985ea95039b271738543da644f95e"
   },
   "apps/desktop/src/appearance/skiffFolderDialog.ts": {
     "ownership": "Host caller (#166 R7): folder preview and change through hostInvoke(skipper_config); the system picker and reveal are this client's own, used only on This Mac",
