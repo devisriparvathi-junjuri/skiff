@@ -151,12 +151,15 @@ Task types is the list of types. This file lists none.
 
 - A child reports when it ends its turn with the result on screen or in a file.
   Read short results with `skiff peek`.
-- `skiff ledger add` prints a result path in `results/` in this folder, and
-  `--send` gives the child that path. It makes no file.
-  - A task with no plan: `results/<date>-<uid>-<slug>.md`.
-  - A plan: the folder `results/<date>-<uid>-<slug>/`. Write the plan's notes
-    in `plan.md` in that folder.
-  - A task in a plan: `<uid>-<slug>.md` in the plan's folder.
+- `skiff ledger add` makes a work folder for the row in `results/` in this
+  folder, and prints the folder and the result path. `--send` gives the child
+  both. It makes no file in the folder.
+  - A plan, or a task with no plan: `results/<uid>-<slug>/`. Write the plan's
+    notes in `plan.md` there.
+  - A task in a plan: `<uid>-<slug>/` in the plan's folder.
+  - The result goes in `result.md` in the task's folder. Everything else for
+    the task goes in the folder too: screenshots, scratch copies and
+    worktrees. `skiff ledger dir UID` prints the folder.
 - If the child cannot write outside its repository, use a path in that
   repository. Record it with `skiff ledger update ID --result PATH`.
 - `skiff ledger prune` and `rm` keep the result files.

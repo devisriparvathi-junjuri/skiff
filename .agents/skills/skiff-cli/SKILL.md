@@ -219,9 +219,10 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 | `ledger reopen UID...` | Open closed work again, or keep open work open. Use it for work that waits on the person. |
 | `ledger prune [--older-than 7d] [--yes]` | Remove closed work. Without `--yes` it only prints it. |
 | `ledger rm UID` | Remove one row now. |
+| `ledger dir UID` | Print the row's work folder. |
 
-- `add` prints the id, the uid and the result path. It makes no file. A task needs `--pane`. A plan has none.
-- `--send` and `ledger send` add " Write your result to PATH." to the task text. Do not put the path in `--task`.
+- `add` makes the row's work folder and prints the id, the uid, the folder and the result path. It makes no file in the folder. A task needs `--pane`. A plan has none.
+- `--send` and `ledger send` add " Put everything for this task in FOLDER: the result, screenshots, scratch copies and worktrees. Write your result to PATH." to the task text. Do not put the folder or the path in `--task`.
 - Both run every `send` check and exit with its code. Exit 0 sets `sent`. Exit 8 sets `blocked`. A refusal leaves the task `pending`.
 - `ledger send` exits 1 and types nothing for a task that is `sent`, `blocked` or `done`, for a plan, for a gone pane, or for a task on another daemon.
 - Give every task and plan a `--title` of 3 to 6 words, such as `--title "Fix found-set count"`. Without one, the Ledger panel uses the first sentence of the task.
@@ -234,11 +235,13 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 - After each `ledger` command that writes, Skiff closes the work whose tasks are all done and reported, and prints one line for each to stderr. Work that `ledger reopen` named is not closed until a task in it changes state, is added, or moves into it.
 - `prune` removes only closed work, with its tasks. `rm` and `prune` keep the result files.
 
-Result paths, in `results/` in the agent folder, in `projects/<project>/results/` for a project Skipper's rows and a hand-off to it, or in `fleets/<fleet>/results/` for a fleet Skipper's:
+Work folders: `add` and `handoff` make one folder for each row, in `results/` in the agent folder, in `projects/<project>/results/` for a project Skipper's rows and a hand-off to it, or in `fleets/<fleet>/results/` for a fleet Skipper's. The name is `<uid>-<slug>`, from the title. It never changes.
 
-- A task with no plan: `results/<date>-<uid>-<slug>.md`.
-- A plan: the folder `results/<date>-<uid>-<slug>/`, with its notes in `plan.md`.
-- A task in a plan: `<uid>-<slug>.md` in the plan's folder.
+- A plan, or a task with no plan: `results/<uid>-<slug>/`. A plan's notes go in `plan.md` there. A task's result goes in `result.md` there.
+- A task in a plan: `<uid>-<slug>/` in the plan's folder, with `result.md`.
+- A hand-off: `<uid>-<slug>/` in the project's or fleet's `results/`, with `result.md`. The tasks under it get their folders in it.
+- Put everything for a task in its folder: the result, screenshots, scratch copies and worktrees. `ledger dir UID` prints it. Settings › Disk use flushes a done task's folder as one unit.
+- A row from before work folders keeps its old result path and has no folder.
 
 ### The watcher
 
