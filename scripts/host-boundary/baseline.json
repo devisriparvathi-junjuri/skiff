@@ -448,7 +448,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/appearance/appTheme.ts"
     ],
-    "sha256": "cff6d2b34983a4320111e2c68fd8f66d67a912edf4883d910e8a4c26d3f2aba8"
+    "sha256": "be22cf7341925993b691a206a0ec3b6c138f1d70ed2bec486d788d886097aa6b"
   },
   "apps/desktop/src/app/updater.ts": {
     "ownership": "client policy (#183): this app's own update from the release's latest.json, its version and relaunch; no Host data",
