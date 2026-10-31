@@ -57,7 +57,6 @@ export function skiffAgentSection(
 
   const name = textRow("Main", set.name ?? "", DEFAULT_NAME, (v) => save({ key: "name", value: v || null }));
   const skipperName = textRow("Project/Fleet", set.skipper_name ?? "", "Skipper", (v) => save({ key: "skipper_name", value: v || null }));
-  skipperName.classList.add("set-skipper-name");
 
   const main = mainName(set.name);
   const pick = agentPick(`${main}'s agent`, choices, null);
@@ -119,7 +118,9 @@ export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTM
     const change = h("button", "set-rm", "Change…");
     change.type = "button";
     change.addEventListener("click", () => setAvatarDialog(scope || null, `Avatar: ${label}`, redraw));
-    row.append(h("span", "c-name", label), face, change);
+    const acts = h("span", "c-acts");
+    acts.append(change);
+    row.append(h("span", "c-name", label), face, acts);
     return row;
   });
   return [sectionHead("Avatars", undefined, String(scopes.length)), ...rows];
@@ -159,8 +160,9 @@ export function instructionsSection(set: SkiffAgentSettings, acts: InstructionAc
         { key: "file", head: "FILE", name: "file", kind: "preview", get: (f) => f.file },
         { key: "status", head: "STATUS", name: "status", kind: "lead", draw: fileState },
       ],
+      // The buttons go straight into the end cell, so they line up with every other row's.
       status: (f) => {
-        const box = h("span", "c-acts");
+        const box = document.createDocumentFragment();
         if (!acts.editable) return box;
         const edit = h("button", "set-rm", "Edit");
         edit.type = "button";
@@ -274,7 +276,7 @@ function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] 
   path.value = set.configured;
   path.title = set.configured;
   path.setAttribute("aria-label", "Skiff agent folder");
-  const acts = h("span", "c-mode set-folder-acts");
+  const acts = h("span", "c-acts");
   const copy = h("button", "set-rm", "Copy path");
   copy.type = "button";
   copy.addEventListener("click", () => void copyText(set.configured).catch(showError));

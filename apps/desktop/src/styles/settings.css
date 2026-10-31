@@ -16,10 +16,30 @@
 .set-head { position: sticky; top: 0; z-index: 2; background: var(--bg); height: calc(80 * var(--u)); flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; gap: calc(4 * var(--u)); padding: 0 calc(24 * var(--u)); border-bottom: 1px solid var(--rule); }
 .set-h { font-size: calc(18px * var(--zoom, 1)); font-weight: 700; }
 .set-sub { font-size: calc(13px * var(--zoom, 1)); color: var(--text-3); }
+/*
+ * One grid for every Settings row (#205). A row starts with a --set-label
+ * column and ends with a --set-end column; the content takes the width
+ * between. A table that has a status before its buttons splits the end
+ * column: the status, then --set-acts for the buttons. A narrow pane takes
+ * smaller columns, so the content keeps its room.
+ */
+#settings { --set-label: calc(200 * var(--u)); --set-end: calc(380 * var(--u)); --set-acts: calc(160 * var(--u)); }
+.set-main { container: set-main / inline-size; }
+@container set-main (max-width: 800px) { .set-main > * { --set-label: calc(160 * var(--u)); --set-end: calc(300 * var(--u)); } }
 .set-row { height: var(--row); flex-shrink: 0; display: grid; grid-template-columns: 72px 200px minmax(0, 1fr) 220px; align-items: center; border-bottom: 1px solid var(--rule); }
 .set-row > * { display: flex; align-items: center; height: 100%; padding: 0 calc(12 * var(--u)); }
 .set-row > * + * { border-left: 1px solid var(--rule); }
 .set-row .c-on { justify-content: center; padding: 0; }
+/*
+ * Row actions: the last cell of a row. Its buttons sit at the row's right
+ * edge, 12 in from it, 8 apart. Text before them (a status, "At next start")
+ * stays at the left of the cell. A switch in the end column sits at the
+ * right edge too.
+ */
+.set-row > .c-acts { gap: calc(8 * var(--u)); justify-content: flex-end; min-width: 0; }
+.set-row > .c-acts > button { flex-shrink: 0; margin-left: 0; }
+.set-row > .c-acts > button:first-of-type { margin-left: auto; }
+.set-row > button.set-switch:last-child { justify-content: flex-end; }
 .set-cols { font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; color: var(--text-3); }
 .set-agent { color: var(--text-3); }
 .set-agent.on { color: var(--text); }
@@ -41,8 +61,7 @@
 .set-agent input.c-name { width: 100%; min-width: 0; border: 0; border-left: 1px solid var(--rule); border-radius: 0; outline: 0; background: transparent; color: inherit; font: 500 calc(14px * var(--zoom, 1)) var(--font); }
 .set-agent input.c-name::placeholder { color: var(--text-dim); font-weight: 400; }
 .set-agent input.c-name:focus { box-shadow: inset 0 -2px 0 var(--state-working); }
-.set-open { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) calc(160 * var(--u)); }
-.set-open.set-skipper-name { grid-template-columns: calc(280 * var(--u)) minmax(0, 1fr) calc(160 * var(--u)); }
+.set-open { grid-template-columns: var(--set-label) minmax(0, 1fr) var(--set-end); }
 .set-open select.c-mode, .set-open select.c-cmd { width: 100%; padding-right: calc(28 * var(--u)); border-left: 1px solid var(--rule); }
 .set-names-box { flex: 1 0 auto; min-height: calc(320 * var(--u)); display: flex; flex-direction: column; }
 .set-names-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; }
@@ -50,7 +69,7 @@
 .set-names-col + .set-names-col { border-left: 1px solid var(--rule); }
 .set-names-label { height: var(--row); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(12 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
 .set-names-col textarea { flex: 1; min-height: 0; width: 100%; resize: none; border: 0; border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font-size: calc(13px * var(--zoom, 1)); padding: calc(8 * var(--u)) calc(12 * var(--u)); }
-.set-opacity { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) calc(120 * var(--u)); }
+.set-opacity { grid-template-columns: var(--set-label) minmax(0, 1fr) var(--set-end); }
 .set-opacity .c-name { font-size: calc(13px * var(--zoom, 1)); color: var(--text-2); }
 .set-opacity .c-cmd { width: 100%; min-width: 0; box-sizing: border-box; border: 0; border-left: 1px solid var(--rule); border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font: calc(13px * var(--zoom, 1)) var(--font); text-align: left; }
 .switch { width: calc(28 * var(--u)); height: calc(14 * var(--u)); position: relative; border: 1px solid var(--rule-strong); background: var(--bg-deep); }
@@ -70,7 +89,7 @@
 /* Settings › Skippers. */
 .set-open span.c-cmd { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(13px * var(--zoom, 1)); }
 .set-open .c-mode { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
-.set-agent button.set-switch { justify-content: center; border: 0; background: transparent; }
+.set-agent button.set-switch { border: 0; background: transparent; }
 .set-agent button.set-switch:hover:not(:disabled) { background: var(--bg-panel); }
 .set-agent.missing button.set-switch { cursor: not-allowed; }
 /*
@@ -84,13 +103,11 @@
 .set-band-count { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Settings tables (appearance/rowTable.ts): Agents and Task types. Each cell is a span; a field fills its cell. */
 .set-table { flex-shrink: 0; display: flex; flex-direction: column; }
-.set-table.g-agents .set-row { grid-template-columns: calc(72 * var(--u)) calc(200 * var(--u)) minmax(0, 1fr) calc(320 * var(--u)); }
-/* Model fits a full id; Instructions holds the size and Edit; the width left over goes after the last column. */
-.set-table.g-tasks .set-row { grid-template-columns: calc(180 * var(--u)) calc(140 * var(--u)) calc(200 * var(--u)) calc(160 * var(--u)) calc(160 * var(--u)) minmax(0, 1fr); }
-.set-table.g-tasks .set-row > .c-end { border-right: 1px solid var(--rule); }
+.set-table.g-agents .set-row { grid-template-columns: calc(72 * var(--u)) var(--set-label) minmax(0, 1fr) var(--set-end); }
+/* Type and Model share the width; Instructions holds the size, then Edit at its right; − and Add are in the end column. */
+.set-table.g-tasks .set-row { grid-template-columns: minmax(0, 1fr) calc(140 * var(--u)) minmax(0, 1fr) calc(160 * var(--u)) var(--set-acts); }
 .set-table.g-tasks .set-row > .c-lead { justify-content: flex-start; padding: 0 calc(12 * var(--u)); }
 .set-table.g-tasks .c-file { display: flex; align-items: center; gap: calc(8 * var(--u)); width: 100%; }
-.set-table.g-tasks .c-file .set-rm { margin-left: 0; }
 .set-table.g-tasks .c-state { font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
 .set-table.g-tasks .c-state .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
 .set-table.g-tasks .c-state.none { color: var(--text-dim); }
@@ -141,12 +158,11 @@
 .set-table .c-kept { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); }
 .set-table .c-remove:hover, body.kbd .set-table .c-remove:focus { border-color: var(--error); color: var(--error); }
 /* Settings › Skippers › Folder: the path to copy, its buttons, and an error row under it only when the folder is not usable. */
-.set-folder { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) auto; }
+.set-folder { grid-template-columns: var(--set-label) minmax(0, 1fr) minmax(var(--set-end), max-content); }
 /* The path is a read-only field: it reads as text, not as a field to type in. */
 .set-folder input.set-path { background: transparent; color: var(--text); text-overflow: ellipsis; cursor: text; }
 .set-folder input.set-path:focus { box-shadow: none; }
 body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rule-strong); }
-.set-folder-acts { gap: calc(8 * var(--u)); }
 /* Settings › Hosts: the list, and the Add and Edit form. */
 .set-head-words { display: flex; flex-direction: column; gap: calc(4 * var(--u)); min-width: 0; }
 /* One grid for the header and every row: mark, Name, Server, Skiff, State, menu. */
@@ -188,7 +204,7 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-back { align-self: flex-start; padding: 0; border: 0; background: transparent; color: var(--text-3); font: calc(12px * var(--zoom, 1)) var(--font); }
 .set-back:hover { color: var(--text); }
 .set-host-field input.c-cmd { height: 100%; padding: 0 calc(12 * var(--u)); }
-.set-host-field { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr); }
+.set-host-field { grid-template-columns: var(--set-label) minmax(0, 1fr); }
 /* Under the check list: the switch in the mark column, the label from the step column on. */
 .set-auto-update { grid-template-columns: calc(40 * var(--u)) minmax(0, 1fr); }
 .set-auto-update .c-text { font-size: calc(13px * var(--zoom, 1)); cursor: pointer; }
@@ -231,27 +247,24 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-open .c-split > input.c-cmd { padding: 0 calc(12 * var(--u)); }
 .set-open .c-split > .c-note { display: flex; align-items: center; padding: 0 calc(12 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); }
 /* Settings › Skippers › Instructions: SCOPE | FILE | STATUS | Edit, Reset…. Teal: a file the person edited. */
-.set-table.g-instr .set-row { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) calc(260 * var(--u)) calc(200 * var(--u)); }
+.set-table.g-instr .set-row { grid-template-columns: var(--set-label) minmax(0, 1fr) calc(var(--set-end) - var(--set-acts)) var(--set-acts); }
 .set-table.g-instr .set-row > .c-lead { justify-content: flex-start; padding: 0 calc(12 * var(--u)); }
 .set-table.g-instr .c-scope { font-size: calc(14px * var(--zoom, 1)); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .set-table.g-instr .c-kind { margin-left: calc(8 * var(--u)); font-size: calc(11px * var(--zoom, 1)); font-weight: 400; color: var(--text-dim); }
-.set-table.g-instr .c-state { font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
+.set-table.g-instr .c-state { min-width: 0; overflow: hidden; font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
 .set-table.g-instr .c-state .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
 .set-table.g-instr .c-state.tpl .sq { background: var(--text-dim); }
 .set-table.g-instr .c-state.none { color: var(--text-dim); }
 .set-table.g-instr .c-state.none .sq { background: var(--rule-strong); }
-.set-table.g-instr .c-state .dim { color: var(--text-dim); }
-.set-table.g-instr .c-acts { display: flex; gap: calc(8 * var(--u)); margin-left: auto; }
-.set-table.g-instr .c-acts .set-rm { margin-left: 0; }
+.set-table.g-instr .c-state .dim { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-dim); }
 
 /* Disk use: TYPE | FILES | SIZE | FOLDER | action. Sub-rows indent; numbers align right. */
-.set-disk .set-row { grid-template-columns: calc(200 * var(--u)) calc(96 * var(--u)) calc(112 * var(--u)) minmax(0, 1fr) calc(180 * var(--u)); }
+.set-disk .set-row { grid-template-columns: var(--set-label) calc(96 * var(--u)) calc(112 * var(--u)) minmax(0, 1fr) var(--set-acts); }
 .set-disk .set-row > * { min-width: 0; }
 .set-disk .c-num { justify-content: flex-end; font-variant-numeric: tabular-nums; font-size: calc(13px * var(--zoom, 1)); }
 .set-disk .c-where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
 .set-disk .sub .c-name { padding-left: calc(28 * var(--u)); font-size: calc(13px * var(--zoom, 1)); font-weight: 400; color: var(--text-2); }
 .set-disk .total .c-name, .set-disk .total .c-num { font-weight: 700; }
-.set-disk .c-act { justify-content: flex-end; }
 .set-disk .set-rm:disabled { opacity: 0.5; cursor: default; }
 .set-disk .set-rm:disabled:hover { border-color: var(--rule); color: var(--text-3); }
 .set-disk .set-rm:not(:disabled):is(:hover, :focus-visible) { border-color: var(--error); color: var(--error); }
@@ -270,7 +283,7 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-daemon .c-name { font-size: calc(13px * var(--zoom, 1)); color: var(--text); }
 .set-daemon .c-state { gap: calc(8 * var(--u)); }.set-daemon .c-num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 .set-daemon-row.out { box-shadow: inset 2px 0 0 var(--error); }.set-daemon .bad { color: var(--error-text); }
-.set-daemon .c-acts { gap: calc(8 * var(--u)); justify-content: flex-end; }.set-daemon .set-rm { margin-left: 0; }
+.set-daemon .set-rm { margin-left: 0; }
 .set-daemon .set-rm:disabled { opacity: 0.5; cursor: default; }
 .set-daemon .set-rm:disabled:hover { border-color: var(--rule); color: var(--text-3); }
 /* A selected row: the current-row tint and bar. A row out of the workspace keeps its red bar. */

@@ -81,8 +81,8 @@ export interface RowTableSpec<R> {
   rows: R[];
   id: (row: R) => string;
   rowClass?: (row: R) => string;
-  /** What shows in the end cell before the −, such as the agent's status. */
-  status?: (row: R) => HTMLElement;
+  /** What shows in the end cell before the −: the agent's status, or the row's own buttons. */
+  status?: (row: R) => Node;
   /** Why a row's − is off, short, after the status in the end cell: "Admiral +3". Null: it can go. */
   kept?: (row: R) => string | null;
   /** The draft's preview column, as the person types. */
@@ -210,7 +210,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
       }
       row.appendChild(cell);
     }
-    const end = h("span", "c-status c-end");
+    const end = h("span", "c-status c-end c-acts");
     end.setAttribute("role", "cell");
     if (spec.status) end.appendChild(spec.status(r));
     const kept = spec.kept?.(r) ?? null;
@@ -303,7 +303,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
     }
     draft.appendChild(cell);
   }
-  const end = h("span", "c-status c-end");
+  const end = h("span", "c-status c-end c-acts");
   end.setAttribute("role", "cell");
   // Never disabled: an add that cannot go says why on the line. While a save runs it is aria-disabled and does nothing.
   const addText = `Add ${spec.noun}`;

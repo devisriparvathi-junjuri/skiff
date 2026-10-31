@@ -122,7 +122,7 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
     return r;
   };
   const button = (label: string, off: boolean, click: () => void) => {
-    const cell = h("span", "c-act");
+    const cell = h("span", "c-acts");
     const b = h("button", "set-rm", label);
     b.type = "button";
     b.disabled = off;
