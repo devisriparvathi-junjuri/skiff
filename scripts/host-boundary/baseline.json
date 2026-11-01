@@ -36,7 +36,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "00a8b04162f2a82c2d25cedeb47cabc338faf070d4bfa79a2d763c15a2a1f181"
+    "sha256": "323d2509315126157ac71ffcc07f6a9162f14b13f89e0ee1236f0f9283f01808"
   },
   "apps/desktop/src-tauri/src/config.rs": {
     "ownership": "agent settings (#166 R8): a remote Host's through HostConnection (agent_config@1); This Mac's [agents] stays the legacy local adapter, read back from the config it writes (installed state from skiffd): migrate in M1\u2013M6; Skipper avatars (skipper_avatars, set_skipper_avatar) read and write avatar.toml in This Mac's Skipper folders: LOCAL_ONLY",
@@ -116,14 +116,21 @@
     "ownership": "legacy local adapter/caller: this computer's agent folder, ledger and cache for Disk use; migrate behind a Host op",
     "reasons": [
       "agent_folder",
+      "canonicalize",
       "config",
+      "env",
+      "fs",
+      "is_dir",
+      "is_file",
       "ledger",
+      "metadata",
+      "process",
       "skiff_agent",
       "skiff_client",
       "skiff_core",
       "skipper"
     ],
-    "sha256": "ad2f718c02ab79a59753bf70de457a500d3277efe19065c5d40dba7a62679129"
+    "sha256": "0f4155ede71100f717595a23dcec96a86d91fad7ec3a2cf3c779d52aaaab1c07"
   },
   "apps/desktop/src-tauri/src/drops.rs": {
     "ownership": "client policy: reads dropped files and this computer's clipboard and cache; a remote Host gets each file through drops@1",
@@ -191,7 +198,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "352533fa79995089fde9bdf7b04b6f4ecbb2d8b3a8aa521c11f323fd095e9e1d"
+    "sha256": "4f4d5991aa88f074e839d80aa1f60c926b58819d19504ae38a0e7f28e9ba2ef1"
   },
   "apps/desktop/src-tauri/src/main.rs": {
     "ownership": "client policy (#189): this app's own command-line flags; no Host data",
@@ -512,7 +519,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "39d0d190fd4b1b58722bf93dc6ee3b04ae74f313950930662bf6fd24f6e9e478"
+    "sha256": "88da08c22384c7e267564373c19372f5343fac70ef9da94fd2796497baef75de"
   },
   "apps/desktop/src/appearance/hostProgress.ts": {
     "ownership": "client policy (#166): progress of this client's own SSH install/update job (skiff:host-step) and its cancel_install; the Host is not there yet, so no HostConnection",
@@ -549,7 +556,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "e784a8807fe04c9c99585f5b465528e9ac0cc5b75608a812f4de9d91c6e28723"
+    "sha256": "013a076e1f400bde13a16d7939982084529d4b8843f141e81c68801fe788143d"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",

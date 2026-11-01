@@ -237,7 +237,7 @@ pub(crate) enum Opened {
     NoApp { message: String },
 }
 
-async fn run_plan(plan: skiff_core::open::Plan, cwd: PathBuf, file: PathBuf) -> Result<Opened, String> {
+pub(crate) async fn run_plan(plan: skiff_core::open::Plan, cwd: PathBuf, file: PathBuf) -> Result<Opened, String> {
     use skiff_core::open::Plan;
     tokio::task::spawn_blocking(move || match plan {
         Plan::Run(script) => Ok(Opened::Run { script, cwd }),
@@ -373,14 +373,14 @@ pub(crate) async fn reveal_file(path: PathBuf) -> Result<(), String> {
 
 /// Shows the file selected in its folder.
 #[cfg(target_os = "macos")]
-fn reveal(path: &std::path::Path) -> anyhow::Result<()> {
+pub(crate) fn reveal(path: &std::path::Path) -> anyhow::Result<()> {
     skiff_core::open::launch("open -R", path)
 }
 
 /// Asks the file manager to select the file over D-Bus. A file manager
 /// without FileManager1 opens the folder instead.
 #[cfg(target_os = "linux")]
-fn reveal(path: &std::path::Path) -> anyhow::Result<()> {
+pub(crate) fn reveal(path: &std::path::Path) -> anyhow::Result<()> {
     use gtk::{gio::{self, prelude::FileExt}, glib::ToVariant};
     let shown = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE).and_then(|bus| {
         let uri = gio::File::for_path(path).uri().to_string();

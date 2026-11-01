@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { h } from "../ui/dom";
 import { actionDialog } from "../ui/dialogParts";
+import { rune } from "../ui/runes";
 import { size } from "./skiffFolderDialog";
 import { canFlush, expected, find, groups, idleReason, plan, rowState, visibleRows, type DiskNode, type Expected } from "./diskTree";
 
@@ -26,6 +27,19 @@ interface Flushed {
   kept: number;
   rows: number;
   errors: string[];
+}
+
+/** `disk_open`'s answer: what `open_file` says. */
+type Opened = { kind: "run"; script: string; cwd: string } | { kind: "default" } | { kind: "no_app"; message: string };
+
+/**
+ * How the rows open and show what they name. `local`: false while a remote
+ * Host is shown, where this computer's openers are refused. `peek` runs an
+ * Open with command in the peek: Settings closes for it.
+ */
+export interface DiskOpen {
+  local: boolean;
+  peek: (script: string, cwd: string, name: string) => void;
 }
 
 /** The page's state. It survives every redraw of Settings. */
@@ -121,14 +135,39 @@ function askFlush(s: DiskState, n: DiskNode, redraw: () => void) {
   });
 }
 
+/**
+ * A file row's click: `disk_open` checks that the file is in the agent
+ * folder, then opens it as Settings › Open with says. It changes nothing.
+ */
+async function openFile(s: DiskState, n: DiskNode, redraw: () => void, o: DiskOpen) {
+  try {
+    const out = await invoke<Opened>("disk_open", { path: n.path });
+    if (out.kind === "run") return o.peek(out.script, out.cwd, n.name);
+    if (out.kind === "default") return;
+    s.error = out.message;
+  } catch (e) {
+    s.error = String(e);
+  }
+  redraw();
+}
+
+/** A folder row's Show in file manager: `disk_reveal` checks that the folder is in the agent folder. */
+function revealFolder(s: DiskState, n: DiskNode, redraw: () => void) {
+  invoke("disk_reveal", { path: n.path }).catch((e) => {
+    s.error = String(e);
+    redraw();
+  });
+}
+
 const CHEVRON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
 
 /**
  * Settings › Disk use: the Skiff agent's folder as a tree. SIZE, CAN FLUSH,
  * STATE and Flush on each row; the rule is in `skiff_client::disk`.
- * `setDays` saves `[skiff_agent] cache_days`.
+ * A click on a file row opens the file. A folder row has Show in file
+ * manager. `setDays` saves `[skiff_agent] cache_days`.
  */
-export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days: number) => void): HTMLElement[] {
+export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days: number) => void, opener: DiskOpen): HTMLElement[] {
   const u = s.usage;
   const head = h("div", "set-head");
   const title = h("div", "set-h", "Disk use");
@@ -200,11 +239,28 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
         });
         acts.append(b);
       } else acts.append(h("span", "disk-why", idleReason(n, u.now)));
+      if (n.dir && opener.local) {
+        const b = h("button", "set-rm set-ico");
+        b.type = "button";
+        b.dataset.key = `reveal:${n.path}`;
+        b.title = "Show in file manager";
+        b.setAttribute("aria-label", "Show in file manager");
+        b.appendChild(rune("indicators-square-arrow-out-up-right"));
+        b.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const moved = s.cur !== n.path;
+          s.cur = n.path;
+          revealFolder(s, n, redraw);
+          if (moved) redraw();
+        });
+        acts.append(b);
+      }
       r.append(name, h("span", "c-num", size(n.bytes)), h("span", "c-num" + (flush ? " disk-can" : " disk-zero"), flush ? size(flush) : "—"), state, acts);
       r.addEventListener("click", () => {
-        if (s.cur === n.path) return;
+        const moved = s.cur !== n.path;
         s.cur = n.path;
-        redraw();
+        if (!n.dir && opener.local) void openFile(s, n, redraw, opener);
+        if (moved) redraw();
       });
       r.addEventListener("dblclick", () => toggle(n));
       table.append(r);

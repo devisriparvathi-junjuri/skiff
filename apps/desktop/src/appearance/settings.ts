@@ -217,7 +217,16 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     if (tab === "disk") {
       const main = h("div", "set-main");
-      main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days)));
+      // A file opens as Settings › Open with says. In the peek, Settings
+      // closes and opens again on this tab when the peek ends.
+      const opener = {
+        local: !isRemote(),
+        peek: (script: string, cwd: string, name: string) => {
+          close();
+          peekText(script, cwd, `${cwd}/${name}`, () => void settings.open("disk"));
+        },
+      };
+      main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days), opener));
       root.replaceChildren(nav, pinClose(main));
       return;
     }

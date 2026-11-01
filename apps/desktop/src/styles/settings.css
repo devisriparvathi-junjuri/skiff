@@ -293,6 +293,8 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
 .set-disk .set-rm:disabled { opacity: 0.5; cursor: default; }
 .set-disk .set-rm:disabled:hover { border-color: var(--rule); color: var(--text-3); }
 .set-disk .set-rm:not(:disabled):is(:hover, :focus-visible) { border-color: var(--error); color: var(--error); }
+/* Show in file manager changes nothing: it is not red. */
+.set-disk .set-rm.set-ico:not(:disabled):is(:hover, :focus-visible) { border-color: var(--text-3); color: var(--text); }
 .set-disk-auto span.c-cmd { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
 /* The flush dialog: REMOVE and KEEP, one line for each reason. */
 .disk-scope { padding: calc(8 * var(--u)) calc(20 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
