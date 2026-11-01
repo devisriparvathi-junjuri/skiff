@@ -130,7 +130,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "a7e296b0d4b6eda5a38520000a18bf67bf062115a94c64cf86d37a38ff0d66fd"
+    "sha256": "0f4155ede71100f717595a23dcec96a86d91fad7ec3a2cf3c779d52aaaab1c07"
   },
   "apps/desktop/src-tauri/src/drops.rs": {
     "ownership": "client policy: reads dropped files and this computer's clipboard and cache; a remote Host gets each file through drops@1",

@@ -107,10 +107,11 @@ fn agent_path(rel: String) -> anyhow::Result<std::path::PathBuf> {
 }
 
 /// The passive document types a file row may send to the OS default app.
-/// Any other file needs a Settings › Open with command.
+/// Any other file needs a Settings › Open with command. HTML, SVG and XML
+/// can run scripts in a browser, so they are not on the list.
 const PASSIVE: &[&str] = &[
-    "md", "markdown", "txt", "text", "log", "json", "jsonl", "yaml", "yml", "toml", "csv", "tsv", "xml", "html", "htm",
-    "diff", "patch", "png", "jpg", "jpeg", "gif", "webp", "svg", "pdf",
+    "md", "markdown", "txt", "text", "log", "json", "jsonl", "yaml", "yml", "toml", "csv", "tsv",
+    "diff", "patch", "png", "jpg", "jpeg", "gif", "webp", "pdf",
 ];
 
 /// The OS default app may take `file`: its extension is in [`PASSIVE`], and
@@ -210,7 +211,7 @@ mod tests {
         let base = std::env::temp_dir().join(format!("skiff-disk-passive-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
-        for (name, mode) in [("result.md", 0o644), ("Shot.PNG", 0o600), ("go.command", 0o644), ("Site.webloc", 0o644), ("tool", 0o755), ("notes.txt", 0o744), ("odd.xyz", 0o644)] {
+        for (name, mode) in [("result.md", 0o644), ("Shot.PNG", 0o600), ("go.command", 0o644), ("Site.webloc", 0o644), ("tool", 0o755), ("notes.txt", 0o744), ("odd.xyz", 0o644), ("page.html", 0o644), ("pic.svg", 0o644)] {
             let f = base.join(name);
             std::fs::write(&f, "x").unwrap();
             std::fs::set_permissions(&f, std::fs::Permissions::from_mode(mode)).unwrap();
@@ -218,7 +219,7 @@ mod tests {
         for f in ["result.md", "Shot.PNG"] {
             assert!(passive(&base.join(f)), "{f}");
         }
-        for f in ["go.command", "Site.webloc", "tool", "notes.txt", "odd.xyz"] {
+        for f in ["go.command", "Site.webloc", "tool", "notes.txt", "odd.xyz", "page.html", "pic.svg"] {
             assert!(!passive(&base.join(f)), "{f}");
         }
         std::fs::remove_dir_all(&base).unwrap();
