@@ -1,4 +1,5 @@
 import { hostCan, hostInvoke } from "../app/hostCaps";
+import { hostName } from "../app/hosts";
 import { isMac } from "../app/keys";
 import { confirmAction } from "../ui/confirm";
 import { h } from "../ui/dom";
@@ -92,7 +93,8 @@ function compare(a: SessionInfo, b: SessionInfo): number {
 
 export function daemonActivitySection(s: ActivityState, redraw: () => void, reveal: (id: string, closed: boolean) => void): HTMLElement[] {
   const head = h("div", "set-head"), title = h("div", "set-h", "skiffd activity"); title.id = "set-h-activity";
-  head.append(title, h("div", "set-sub mono", "This computer"));
+  // The page shows the selected Host: "This computer (name)" or the remote Host's name.
+  head.append(title, h("div", "set-sub mono", hostName()));
   const band = h("div", "set-band set-daemon-band");
   const m = s.metrics;
   const version = m?.version ?? s.version;
@@ -103,7 +105,13 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
   // Sink kills the selected sessions. It asks first.
   const sink = h("button", "set-rm set-sink"); sink.type = "button"; sink.dataset.key = "sink";
   sink.addEventListener("click", () => void sinkPicked());
-  band.append(h("span", "", version ? `skiffd ${version}` : "skiffd"), h("span", "", `Up ${up}`), h("span", "", `${s.list.length} sessions`), h("span", "", `Memory ${m?.memory_bytes ? bytes(m.memory_bytes) : "—"}`), count, sink);
+  // A Host without daemon metrics, such as a remote Host, has no Up and no Memory.
+  const metrics = hostCan("daemon_metrics");
+  band.append(h("span", "", version ? `skiffd ${version}` : "skiffd"));
+  if (metrics) band.append(h("span", "", `Up ${up}`));
+  band.append(h("span", "", `${s.list.length} sessions`));
+  if (metrics) band.append(h("span", "", `Memory ${m?.memory_bytes ? bytes(m.memory_bytes) : "—"}`));
+  band.append(count, sink);
   const table = h("div", "set-daemon");
   // A grid of rows to select: click, Shift+click, Ctrl+click (⌘ on macOS), and the keys in onKey below.
   table.setAttribute("role", "grid");

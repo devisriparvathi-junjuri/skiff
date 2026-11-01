@@ -507,11 +507,12 @@
     "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",
     "reasons": [
       "local provider: apps/desktop/src/app/hostCaps.ts",
+      "local provider: apps/desktop/src/app/hosts.ts",
       "local provider: apps/desktop/src/app/skiffAgent.ts",
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/app/stateQueries.ts"
     ],
-    "sha256": "bf17246bf3f3cea253973de1bcd8553177ecfe605fc2471c783f4838c87c57ff"
+    "sha256": "573e04a5575ad1cf5e4be0c6e5de28a1fef68b28efe889b6d8539aa9eb854598"
   },
   "apps/desktop/src/appearance/diskUse.ts": {
     "ownership": "client policy: Disk use counts this computer's agent folder only; a Host's disk use needs a Host op (v2 follow-up)",
