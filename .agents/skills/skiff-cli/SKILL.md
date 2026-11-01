@@ -247,11 +247,14 @@ Work folders: `add` and `handoff` make one folder for each row, in `results/` in
 
 `skiff watch` runs while a Skipper runs: the Skiff agent, or a project or fleet Skipper. Each `[watch]` line goes to the coordinator that owns the task. A project Skipper hears of its own tasks; Admiral hears of its own, and once of each hand-off a project Skipper reports. It types one `[watch]` line into the coordinator when a ledger pane ends a turn, exits, restarts or is gone, or is idle with a pending task. It types only while the agent is idle and its input box is empty. A `waiting` pane gives the person a desktop notification and gives the agent nothing.
 
+A plan holds the turn ends of its tasks. While a task in the plan still runs, a pane that ends its turn on a `sent` task of the plan gives no line. When every task in the plan has ended, the watcher types one line for the plan: `[watch] plan UID: 3 of 3 tasks ended: pane NAME ID, ...`. A task has ended when it is `done` or `blocked`, or `sent` and its pane is idle, exited, restarted or gone. A `pending` task, a pane that works or waits, and a hand-off that is not done still run. A pane that exits, restarts or is gone, or is idle with a pending task, still gives its own line at once. A task with no plan works as before.
+
 1. Read each pane that a `[watch]` line names with `skiff peek`.
 2. Then run `skiff seen S`. An unread pane is named again on the next run.
 3. A gone pane cannot be marked seen. The `[watch]` line names the tasks that skiff set `done` with it. Tell the person, then run `skiff ledger report UID...`. To run a task again, reassign it with `skiff ledger update UID --pane S --state pending`.
 4. On `[watch] N done tasks not reported`, run `skiff ledger ls --unreported` and report them.
 5. On `[watch] the P Skipper reported hand-off UID`, read the hand-off's result, tell the person, then run `skiff ledger report UID`.
+6. On `[watch] plan UID: N of M tasks ended`, read each pane it names and mark it seen. Set each task `done` with its result, tell the person in one report, then run `skiff ledger report UID`.
 
 ### The Ledger panel
 
