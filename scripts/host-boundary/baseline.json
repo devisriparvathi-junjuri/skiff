@@ -782,7 +782,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "5d0258bd91dd034c78e2d6ec6a212d68a0d4cbac5031dbca8ade2565e3790b03"
+    "sha256": "ea26d9ec04713ed525e10cedc21f58988478ee5577937c52b0aacae23717f294"
   },
   "apps/desktop/src/ui/launchMenu.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

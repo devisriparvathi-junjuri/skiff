@@ -42,7 +42,7 @@ type Shortcut = [section: string, what: string, key: string];
 
 /** Keyboard controls that do not come from the configurable action keymap. */
 const FIXED_SHORTCUTS: Shortcut[] = [
-  ["Projects", "Project 1 through 9, counted down the list: its Skipper, else its first pane. Folded fleets do not count. In Mission control and the Skippers list, Skipper 1 through 9", isMac ? "⌘+Option+1…9" : "Ctrl+Shift+1…9"],
+  ["Projects", "Project 1 through 9, counted down the list: its Skipper, else its first pane. Folded fleets do not count. In Mission control and the Skippers list, Skipper 1 through 9, counted down the Skippers list", isMac ? "⌘+Option+1…9" : "Ctrl+Shift+1…9"],
   ["Session list", "Open or fold the focused project or fleet", "Enter / Space / ← / →"],
   ["Session list", "Close or remove the project from the project row", "Delete / Backspace"],
   ["Session list", "Open or close the focused worktree", "Enter / Space"],

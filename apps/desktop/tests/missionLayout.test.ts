@@ -196,6 +196,12 @@ test("a project in a fleet stays inside the frame: clamped above and left, and t
   assert.deepEqual(free.cards.get("ad"), { ...base.cards.get("ad")!, x: base.cards.get("ad")!.x + 50, y: base.cards.get("ad")!.y - 50 });
 });
 
+test("Skipper numbers follow the tree: projects in no fleet first, as the Skippers list counts them", () => {
+  // Issue #201: one project in no fleet, one fleet, each with a Skipper. Ctrl+Shift+1 must pick the same one in both places.
+  const g: G.Graph = { admiral: "ad", fleets: [{ key: "fleet:web", name: "web", skipper: "sk-web", projects: [project("shop", ["s1"], { skipper: "sk-shop" })] }], projects: [project("solo", ["s2"], { skipper: "sk-solo" }), project("other", ["s3"])] };
+  assert.deepEqual(G.skipperOrder(g), ["sk-solo", "sk-web", "sk-shop"]);
+});
+
 test("the keys move along the tree: parent, children, siblings", () => {
   const g = graph();
   assert.deepEqual(G.navChildren(g, "ad"), ["sk-web", "sk-skiff", "project:gesher", "project:other"]);
