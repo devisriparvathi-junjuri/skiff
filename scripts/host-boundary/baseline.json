@@ -607,6 +607,14 @@
     ],
     "sha256": "14df6ed23189e7c1b4964e1df7c8e2e14afe3c21fd335b0d15c870134f990700"
   },
+  "apps/desktop/src/entry.ts": {
+    "ownership": "client policy (#199): the page entry reads this client's own language (get_appearance, the local client config) before it imports main.ts; no Host data",
+    "reasons": [
+      "@tauri-apps/api/core",
+      "invoke"
+    ],
+    "sha256": "5d8fbd7cddde0c356089fdcc0abfe191724228f8651a627e8976b60c9bebc37b"
+  },
   "apps/desktop/src/main.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
     "reasons": [
