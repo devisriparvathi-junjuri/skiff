@@ -106,39 +106,41 @@ fn agent_path(rel: String) -> anyhow::Result<std::path::PathBuf> {
     inside(&skipper::folder(&config::load()?)?, &rel)
 }
 
-/// Extensions the OS default app runs as a program, or that start one.
-const RUNS: &[&str] = &[
-    "app", "command", "tool", "terminal", "webloc", "fileloc", "inetloc", "url", "desktop", "jar", "pkg", "mpkg", "dmg",
-    "scpt", "scptd", "applescript", "workflow", "action", "shortcut", "prefpane", "osax", "kext", "plugin", "bundle",
-    "sh", "bash", "zsh", "csh", "ksh", "fish", "py", "rb", "pl", "php", "js", "exe", "bat", "cmd", "ps1", "appimage", "run",
+/// The passive document types a file row may send to the OS default app.
+/// Any other file needs a Settings › Open with command.
+const PASSIVE: &[&str] = &[
+    "md", "markdown", "txt", "text", "log", "json", "jsonl", "yaml", "yml", "toml", "csv", "tsv", "xml", "html", "htm",
+    "diff", "patch", "png", "jpg", "jpeg", "gif", "webp", "svg", "pdf",
 ];
 
-/// The OS default app can run `file` as a program: an execute bit, or an
-/// extension in [`RUNS`]. A click on its row never opens it in the default app.
-fn runs(file: &std::path::Path) -> bool {
+/// The OS default app may take `file`: its extension is in [`PASSIVE`], and
+/// it has no execute bit.
+fn passive(file: &std::path::Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     let exec = std::fs::metadata(file).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(true);
     let ext = file.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
-    exec || ext.is_some_and(|e| RUNS.contains(&e.as_str()))
+    !exec && ext.is_some_and(|e| PASSIVE.contains(&e.as_str()))
 }
 
-/// A file row's click: opens the file as Settings › Open with says, by
-/// [`crate::commands::open_file`]. Only a file inside the agent folder. With
-/// no Open with command for it, a file that [`runs`] is refused: the default
-/// app would start it.
+/// A file row's click: opens the file as Settings › Open with says, with the
+/// plan of [`crate::commands::open_file`]. Only a file inside the agent
+/// folder. With no Open with command for it, only a [`passive`] file goes to
+/// the default app. The plan is made once, after the check, and runs as made.
 #[tauri::command]
 pub async fn disk_open(path: String) -> Result<Opened, String> {
-    let file = blocking(move || {
+    use skiff_core::open::{plan_file, Plan};
+    let (file, plan) = blocking(move || {
         let file = agent_path(path)?;
         anyhow::ensure!(file.is_file(), "{} is not a file", file.display());
         let open = config::client::load().map(|c| c.open).unwrap_or_default();
-        let default = matches!(skiff_core::open::plan_file(&file, &open), skiff_core::open::Plan::Default);
+        let plan = plan_file(&file, &open);
         let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        anyhow::ensure!(!(default && runs(&file)), "{name} can run as a program. Skiff does not open it from Disk use.");
-        Ok(file)
+        anyhow::ensure!(!matches!(plan, Plan::Default) || passive(&file), "Skiff does not open {name} from Disk use. Set a command for it in Settings › Open with.");
+        Ok((file, plan))
     })
     .await?;
-    crate::commands::open_file(file).await
+    let cwd = file.parent().map(std::path::PathBuf::from).unwrap_or_else(|| "/".into());
+    crate::commands::run_plan(plan, cwd, file).await
 }
 
 /// A folder row's Show in file manager: the folder shows selected in its
@@ -177,7 +179,7 @@ pub fn auto_flush() {
 
 #[cfg(test)]
 mod tests {
-    use super::{inside, runs};
+    use super::{inside, passive};
 
     #[test]
     fn a_path_from_the_tree_stays_in_the_agent_folder() {
@@ -203,19 +205,21 @@ mod tests {
     }
 
     #[test]
-    fn a_file_that_can_run_never_goes_to_the_default_app() {
+    fn only_a_passive_file_goes_to_the_default_app() {
         use std::os::unix::fs::PermissionsExt;
-        let base = std::env::temp_dir().join(format!("skiff-disk-runs-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("skiff-disk-passive-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
-        for (name, mode) in [("result.md", 0o644), ("go.command", 0o644), ("Site.WEBLOC", 0o644), ("tool", 0o755), ("notes.txt", 0o744)] {
+        for (name, mode) in [("result.md", 0o644), ("Shot.PNG", 0o600), ("go.command", 0o644), ("Site.webloc", 0o644), ("tool", 0o755), ("notes.txt", 0o744), ("odd.xyz", 0o644)] {
             let f = base.join(name);
             std::fs::write(&f, "x").unwrap();
             std::fs::set_permissions(&f, std::fs::Permissions::from_mode(mode)).unwrap();
         }
-        assert!(!runs(&base.join("result.md")));
-        for f in ["go.command", "Site.WEBLOC", "tool", "notes.txt"] {
-            assert!(runs(&base.join(f)), "{f}");
+        for f in ["result.md", "Shot.PNG"] {
+            assert!(passive(&base.join(f)), "{f}");
+        }
+        for f in ["go.command", "Site.webloc", "tool", "notes.txt", "odd.xyz"] {
+            assert!(!passive(&base.join(f)), "{f}");
         }
         std::fs::remove_dir_all(&base).unwrap();
     }

@@ -237,7 +237,7 @@ pub(crate) enum Opened {
     NoApp { message: String },
 }
 
-async fn run_plan(plan: skiff_core::open::Plan, cwd: PathBuf, file: PathBuf) -> Result<Opened, String> {
+pub(crate) async fn run_plan(plan: skiff_core::open::Plan, cwd: PathBuf, file: PathBuf) -> Result<Opened, String> {
     use skiff_core::open::Plan;
     tokio::task::spawn_blocking(move || match plan {
         Plan::Run(script) => Ok(Opened::Run { script, cwd }),
