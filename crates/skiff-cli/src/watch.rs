@@ -1339,7 +1339,7 @@ fn desktop_notify(title: &str, body: &str) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -1663,7 +1663,7 @@ mod tests {
         );
     }
 
-    fn row(id: i64, uid: &str, pane: &str, state: &str, gen: Option<i64>) -> ledger::Row {
+    pub(crate) fn row(id: i64, uid: &str, pane: &str, state: &str, gen: Option<i64>) -> ledger::Row {
         ledger::Row {
             id,
             uid: uid.into(),

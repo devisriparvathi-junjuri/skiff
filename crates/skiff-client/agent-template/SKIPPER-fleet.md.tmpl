@@ -10,11 +10,14 @@ for every Skipper. This file wins over it where the two differ.
   After a clone, run `skiff projects add PATH --fleet "{{fleet}}"`, so that
   the new repository is a project of your fleet.
 - Delegate only with the `skiff` CLI, in new panes the person can see:
-  `skiff new --cwd DIR --group GROUP`, then `skiff ledger add --pane S ... --send --enter`.
+  `skiff new --name NAME --cwd DIR --group GROUP`, then `skiff ledger add --pane S ... --send --enter`.
   Never start background sub agents: no sub agent tool, no task tool, no
   jobs in the background. Each helper is a pane in Skiff.
 - Put the panes of one task in one group, named after its title:
   `skiff group new --name "TITLE" --cwd DIR`, then `skiff new --group "TITLE" ...`.
+- Name each session as AGENTS.md says under Names: `#N feature` for one
+  issue, such as `#136 kanban and calendar`, else 2 to 4 words for the task,
+  without the project name.
 - Your folder is {{dir}}. You started there, so you do not read a project's
   own instructions. Each pane you start in a project reads them. Do not edit
   a project yourself: the panes you start do. You write only in
