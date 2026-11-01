@@ -364,7 +364,7 @@ mod tests {
             "set_skiff_agent", "preview_skiff_folder", "change_skiff_folder", "open_skiff_agent", "start_skiff_watch", "start_project_skipper", "start_fleet_skipper", "skipper_files", "skipper_file_errors", "edit_skipper_file", "edit_task_type_file", "reset_skipper_file", "fleet_takeover_preview", "fleet_takeover", "rename_fleet",
             "agent_config", "set_agents", "set_agent_command", "rename_agent", "remove_agent", "restore_agents",
             "open_settings", "set_open", "set_open_peek", "open_url", "list_themes", "import_themes", "open_theme_folder", "get_appearance",
-            "memory_usage", "get_keys", "trace_info", "trace_write", "trace_set", "system_load", "set_appearance", "set_font_size", "set_mission_filter",
+            "memory_usage", "get_keys", "trace_info", "trace_write", "trace_set", "system_load", "set_appearance", "set_language", "set_font_size", "set_mission_filter",
             "list_groups", "session_screen", "save_group", "delete_group", "order_groups", "subscribe_output", "ack_output", "unsubscribe_output", "subscribe_events",
             "workspace_read", "workspace_revision", "workspace_write", "workspace_launch_file", "workspace_took",
             // This computer's Disk use and Images, whichever Host is shown. A drop or an Insert on a remote Host's pane goes to that Host.
