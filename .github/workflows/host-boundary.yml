@@ -1,5 +1,10 @@
 name: Host contract boundary
-on: [push, pull_request]
+# Main and pull requests only. A tag points at a commit main already checked,
+# so a tag run repeats it; other branches get it through their pull request.
+on:
+  push:
+    branches: [main]
+  pull_request:
 permissions:
   contents: read
 jobs:

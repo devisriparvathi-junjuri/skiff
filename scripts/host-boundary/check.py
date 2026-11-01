@@ -225,6 +225,25 @@ def compare(actual, baseline):
     return errors
 
 
+def refresh(baseline, actual, files):
+    """Re-record the hash of named, already-reviewed entries; nothing else.
+
+    A release bumps the version in a fingerprinted file. This admits those
+    bytes without re-recording the rest of the inventory, so every other
+    unreviewed change still fails the check. A file that is not already in
+    the baseline is refused: a new entry needs a full, reviewed --record.
+    """
+    for file in files:
+        if file not in baseline:
+            raise SystemExit(f"{file}: not in the baseline; --refresh only updates an existing entry")
+        if file not in actual:
+            raise SystemExit(f"{file}: no longer in the inventory; remove it from the baseline")
+    updated = dict(baseline)
+    for file in files:
+        updated[file] = {**baseline[file], "sha256": actual[file]["sha256"], "reasons": actual[file]["reasons"]}
+    return updated
+
+
 def api_errors(root):
     manifest = tomllib.loads((root / "crates/skiff-host-api/Cargo.toml").read_text())
     errors = []
@@ -239,8 +258,13 @@ def api_errors(root):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--record", action="store_true", help="explicitly review and replace the legacy inventory (never run in CI)")
+    parser.add_argument("--refresh", action="append", default=[], metavar="FILE",
+                        help="re-record the hash of one existing baseline entry, for example after a release bumps its version (repeatable)")
     args = parser.parse_args()
     actual = inventory(ROOT)
+    if args.refresh:
+        baseline = refresh(json.loads(BASELINE.read_text()), actual, args.refresh)
+        BASELINE.write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n")
     if args.record:
         # Purpose labels make client-owned exceptions explicit and reviewable.
         old = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
