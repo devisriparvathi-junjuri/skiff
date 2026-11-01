@@ -557,7 +557,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "233274e0cfc3474fce212f51be241e5ce22272b1af8667d7cab68dda48c73a9d"
+    "sha256": "5fcb70b17b8167b5678e6fa010a3c9cca15098ee6e10daa32804a5c311512715"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",

@@ -30,7 +30,7 @@ import { S } from "../app/state";
 
 /**
  * Settings over the sidebar and terminal: agents, Skippers, task types,
- * appearance, Open with, images, disk use and Hosts.
+ * appearance, language, Open with, images, disk use and Hosts.
  */
 export interface AppearanceHooks {
   themes: () => TerminalTheme[];
@@ -51,11 +51,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  const TABS = ["agents", "skippers", "task-types", "appearance", "open", "images", "disk", "activity", "hosts"] as const;
+  const TABS = ["agents", "skippers", "task-types", "appearance", "language", "open", "images", "disk", "activity", "hosts"] as const;
   let tab: (typeof TABS)[number] = "agents";
   const TAB_NAMES: Record<(typeof TABS)[number], MessageKey> = {
     agents: "settings.tab.agents", skippers: "settings.tab.skippers", "task-types": "settings.tab.taskTypes", images: "settings.tab.images",
-    disk: "settings.tab.disk", activity: "settings.tab.activity", appearance: "settings.tab.appearance", open: "settings.tab.open", hosts: "settings.tab.hosts",
+    disk: "settings.tab.disk", activity: "settings.tab.activity", appearance: "settings.tab.appearance", language: "settings.tab.language", open: "settings.tab.open", hosts: "settings.tab.hosts",
   };
   const themeFilters: ThemeFilters = { query: "", family: null };
   type OpenKey = "diff" | "text" | "markdown" | "html" | "image";
@@ -192,6 +192,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     nav.append(head, ...tabs);
     if (tab === "appearance") {
       root.replaceChildren(nav, pinClose(appearance()));
+      return;
+    }
+    if (tab === "language") {
+      root.replaceChildren(nav, pinClose(languagePage()));
       return;
     }
     if (tab === "open") {
@@ -402,7 +406,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       }),
     );
     main.append(intro);
-    main.appendChild(languagePick());
     if (menuSet?.available) main.appendChild(menuLayout(menuSet));
     main.appendChild(cards);
     return main;
@@ -435,6 +438,20 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const choices: [string | null, string][] = [[null, auto], ["header-bar", t("settings.headerBar")], ["menu-bar", t("settings.menuBar")]];
     const pending = (m.chosen ?? m.auto) !== m.current;
     return segRow(t("settings.menu"), t("settings.menuLayout"), choices, m.chosen, pending, (v) => void setMenuLayout(v));
+  }
+
+  /** The app's language, on its own page. */
+  function languagePage(): HTMLElement {
+    const main = h("div", "set-main");
+    const intro = h("div", "set-head");
+    intro.append(h("div", "set-h", t("settings.tab.language")), h("div", "set-sub", t("settings.appLanguage")));
+    main.append(intro, languagePick());
+    if (error) {
+      const err = h("div", "set-error", error);
+      err.setAttribute("role", "alert");
+      main.appendChild(err);
+    }
+    return main;
   }
 
   /**
