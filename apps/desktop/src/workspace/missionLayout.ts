@@ -455,14 +455,18 @@ export function navSibling(g: Graph, id: string, dir: 1 | -1): string | null {
   return list[Math.max(0, Math.min(list.length - 1, i + dir))] ?? null;
 }
 
-/** The fleet and project Skippers in the order the blocks show: each fleet's, then its projects', then the loose projects'. Not Admiral. */
+/**
+ * The fleet and project Skippers in tree order, as the Skippers list numbers them: the
+ * projects' in no fleet first, then each fleet's, then its projects'. Not Admiral. The
+ * board shows the fleets first, but one number must pick one Skipper in both places.
+ */
 export function skipperOrder(g: Graph): string[] {
   const out: string[] = [];
+  for (const p of g.projects) if (p.skipper) out.push(p.skipper);
   for (const f of g.fleets) {
     if (f.skipper) out.push(f.skipper);
     for (const p of f.projects) if (p.skipper) out.push(p.skipper);
   }
-  for (const p of g.projects) if (p.skipper) out.push(p.skipper);
   return out;
 }
 
