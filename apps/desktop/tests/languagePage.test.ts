@@ -56,7 +56,8 @@ function settingsPage() {
   const look = { themes: () => [], current: () => null, load: async () => {}, set() {} };
   const settings = mod.createSettings(() => {}, () => {}, look);
   const root = body.children[0];
-  const picker = () => root.all().find((e) => e.className.includes("set-seg") && e.children.some((b) => b.textContent === "Español"));
+  // The picker is the table of languages: a row per catalog, its name in the first cell.
+  const picker = () => root.all().find((e) => e.className === "set-lang" && e.children.some((r) => r.children[0]?.textContent === "Español"));
   return { settings, root, picker };
 }
 
@@ -68,7 +69,7 @@ test("Settings › Language shows the language picker, and Appearance does not",
   assert.ok(s.root.all().some((e) => e.className === "set-h" && e.textContent === "Language"));
   const seg = s.picker();
   assert.ok(seg, "the Language page has the picker");
-  assert.deepEqual(seg!.children.map((b) => b.textContent).slice(1), ["English", "Español", "简体中文"]);
+  assert.deepEqual(seg!.children.filter((r) => r.className.includes("set-lang-row")).map((r) => r.children[0].textContent).slice(1), ["English", "Español", "简体中文"]);
   await s.settings.open("appearance");
   assert.ok(s.root.all().some((e) => e.className === "set-h" && e.textContent === "Appearance"));
   assert.equal(s.picker(), undefined, "Appearance has no language picker");
