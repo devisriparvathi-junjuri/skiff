@@ -8,13 +8,17 @@ import { agentNameList, setAgentNameList } from "./agentNames";
 import { nextCard, themeGrid, type ThemeFilters } from "./themeCards";
 import { type Action, actionFor, isMac } from "../app/keys";
 import { editField, fieldEditKey, textField } from "../ui/fieldClipboard";
-import type { InstructionFile, SkiffAgentSettings, TaskType } from "../app/skiffAgent";
-import { instructionsSection, type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
+import { mainName, type InstructionFile, type SkiffAgentSettings, type TaskType } from "../app/skiffAgent";
+import { avatarsSection, instructionsSection, type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
 import { peekText } from "../terminal/peek";
 import { fileSize } from "./taskTypes";
 import { confirmAction } from "../ui/confirm";
 import { changeSkiffFolder } from "./skiffFolderDialog";
 import { rowTable, sectionHead, tableState, tableWords } from "./rowTable";
+import { type HostsPage, hostName, isRemote } from "../app/hosts";
+import { createHostsTab } from "./hostSettings";
+import { hostCan, hostInvoke } from "../app/hostCaps";
+
 import { countDisk, diskState, diskUseSection } from "./diskUse";
 import { imagesSection, imagesState } from "./imagesPage";
 import { onImagesChanged } from "../terminal/images";
@@ -26,7 +30,7 @@ import { S } from "../app/state";
 
 /**
  * Settings over the sidebar and terminal: agents, Skippers, task types,
- * appearance, Open with, images and disk use.
+ * appearance, Open with, images, disk use and Hosts.
  */
 export interface AppearanceHooks {
   themes: () => TerminalTheme[];
@@ -47,11 +51,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  const TABS = ["agents", "skippers", "task-types", "appearance", "open", "images", "disk", "activity"] as const;
+  const TABS = ["agents", "skippers", "task-types", "appearance", "open", "images", "disk", "activity", "hosts"] as const;
   let tab: (typeof TABS)[number] = "agents";
   const TAB_NAMES: Record<(typeof TABS)[number], MessageKey> = {
     agents: "settings.tab.agents", skippers: "settings.tab.skippers", "task-types": "settings.tab.taskTypes", images: "settings.tab.images",
-    disk: "settings.tab.disk", activity: "settings.tab.activity", appearance: "settings.tab.appearance", open: "settings.tab.open",
+    disk: "settings.tab.disk", activity: "settings.tab.activity", appearance: "settings.tab.appearance", open: "settings.tab.open", hosts: "settings.tab.hosts",
   };
   const themeFilters: ThemeFilters = { query: "", family: null };
   type OpenKey = "diff" | "text" | "markdown" | "html" | "image";
@@ -72,6 +76,16 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   // The draft rows and their error lines survive every redraw.
   const agentsTable = tableState();
   const tasksTable = tableState();
+  const hostsTab = createHostsTab(() => render());
+
+  /** The agents, from the selected Host. A remote Host's come with the revision its next change is made from. */
+  function loadAgents(): Promise<AgentInfo[]> {
+    if (isRemote() && hostCan("agent_config")) return hostInvoke<AgentInfo[]>("agent_config", "agent_config");
+    return hostInvoke<AgentInfo[]>("session_agents", "list_agents");
+  }
+
+  /** One agent change on the selected Host: This Mac's config, or a remote Host's through its skiff-host. */
+  const agentCall = (cmd: string, args: Record<string, unknown> = {}) => hostInvoke<AgentInfo[]>("agent_config", cmd, args);
   const disk = diskState();
   const gallery = imagesState();
   const activity = activityState();
@@ -89,11 +103,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     agents = agents.map((a) => (a.id === id ? { ...a, enabled: !a.enabled } : a));
     render();
     try {
-      agents = await invoke<AgentInfo[]>("set_agents", { enabled });
+      agents = await agentCall("set_agents", { enabled });
       onAgents(agents);
     } catch (e) {
       error = String(e);
-      agents = await invoke<AgentInfo[]>("list_agents").catch(() => agents);
+      agents = await loadAgents().catch(() => agents);
     } finally {
       saving = false;
       render();
@@ -104,10 +118,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   async function editAgents(cmd: string, args: Record<string, string> = {}) {
     error = null;
     try {
-      agents = await invoke<AgentInfo[]>(cmd, args);
+      agents = await agentCall(cmd, args);
       onAgents(agents);
     } catch (e) {
       error = String(e);
+      agents = await loadAgents().catch(() => agents);
     }
     render();
   }
@@ -115,13 +130,15 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   /** An agent edit from its table. Answers with the error to show; the table redraws. */
   async function agentEdit(cmd: string, args: Record<string, string>): Promise<string | null> {
     try {
-      agents = await invoke<AgentInfo[]>(cmd, args);
+      agents = await agentCall(cmd, args);
       onAgents(agents);
     } catch (e) {
+      // A conflict forgot the revision: read the Host's agents again.
+      agents = await loadAgents().catch(() => agents);
       return String(e);
     }
     // A renamed agent takes its task types with it.
-    agentSet = await invoke<SkiffAgentSettings>("get_skiff_agent").catch(() => agentSet);
+    agentSet = await hostInvoke<SkiffAgentSettings>("skipper", "get_skiff_agent").catch(() => agentSet);
     return null;
   }
 
@@ -136,8 +153,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const button = a instanceof HTMLButtonElement && a.closest(".set-main") && (tab === "disk" || a.classList.contains("set-sort") || a.classList.contains("set-sink")) ? a.dataset.key ?? a.textContent : null;
     // A selected skiffd session row keeps the keys too; an ended one hands them to the current row.
     const row = a instanceof HTMLElement && a.classList.contains("set-daemon-row") ? a.dataset.id ?? null : null;
+    // A Disk use tree row keeps the keys on the current row: a move, an open or a count.
+    const diskRow = a instanceof HTMLElement && a.classList.contains("set-disk-row") && tab === "disk";
     draw();
     if (row !== null) (root.querySelector<HTMLElement>(`.set-daemon-row[data-id="${CSS.escape(row)}"]`) ?? root.querySelector<HTMLElement>(`.set-daemon-row[tabindex="0"]`))?.focus();
+    if (diskRow) root.querySelector<HTMLElement>(`.set-disk-row[tabindex="0"]`)?.focus();
     if (button !== null) {
       const stops = [...root.querySelectorAll<HTMLButtonElement>(".set-main button:not(:disabled, .set-x)")];
       (stops.find((b) => (b.dataset.key ?? b.textContent) === button) ?? stops[0])?.focus();
@@ -184,8 +204,17 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     if (tab === "task-types") {
       const main = h("div", "set-main");
-      if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render, { edit: editTypeFile, errors: typeErrors }));
+      // A Host whose Skiff is too old to take changes: its task types, read-only.
+      if (isRemote() && !hostCan("skipper_config")) {
+        main.append(h("div", "set-head"));
+        main.firstElementChild!.append(h("div", "set-h", t("settings.tab.taskTypes")), h("div", "set-sub mono", hostName()));
+        for (const task of agentSet?.tasks ?? []) main.append(h("div", "set-note mono", `${task.type}: ${task.command ?? task.agent}${task.error ? ` (${task.error})` : ""}`));
+      } else if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render, { edit: editTypeFile, errors: typeErrors }));
       root.replaceChildren(nav, pinClose(main));
+      return;
+    }
+    if (tab === "hosts") {
+      root.replaceChildren(nav, pinClose(hostsTab.draw()));
       return;
     }
     if (tab === "images") {
@@ -194,7 +223,16 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     if (tab === "disk") {
       const main = h("div", "set-main");
-      main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days)));
+      // A file opens as Settings › Open with says. In the peek, Settings
+      // closes and opens again on this tab when the peek ends.
+      const opener = {
+        local: !isRemote(),
+        peek: (script: string, cwd: string, name: string) => {
+          close();
+          peekText(script, cwd, `${cwd}/${name}`, () => void settings.open("disk"));
+        },
+      };
+      main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days), opener));
       root.replaceChildren(nav, pinClose(main));
       return;
     }
@@ -217,6 +255,14 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const title = h("div", "set-h", t("settings.tab.agents"));
     title.id = "set-h-agents";
     intro.append(title);
+    // A Host whose Skiff is too old to take changes: its agents, read-only.
+    if (isRemote() && !hostCan("agent_config")) {
+      const rows = agents.map((a) => h("div", "set-note mono", `${a.id}: ${a.command} (${t(a.installed ? (a.enabled ? "settings.remote.on" : "settings.remote.off") : "settings.remote.notOnPath")})`));
+      main.append(intro, h("div", "set-note", t("settings.remote.agentsOld", { host: hostName() })), ...(rows.length ? rows : [h("div", "set-note", t("settings.remote.noAgents"))]));
+      if (error) main.appendChild(h("div", "set-error", error));
+      root.replaceChildren(nav, pinClose(main));
+      return;
+    }
     // Only a removed default can come back.
     if (DEFAULT_AGENTS.some((d) => !agents.some((a) => a.id === d))) {
       intro.classList.add("set-head-row");
@@ -454,10 +500,13 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     { key: "image", label: "settings.open.image" },
   ];
 
+  /** One Skiff agent setting on the selected Host: This Mac, or a remote Host through its skiff-host. */
+  const skiffAgentEdit = (edit: SkiffAgentEdit) => hostInvoke<SkiffAgentSettings>("skipper_config", "set_skiff_agent", { edit });
+
   /** A task type edit. Answers with the error to show; the table redraws. */
   async function saveTask(edit: SkiffAgentEdit): Promise<string | null> {
     try {
-      agentSet = await invoke<SkiffAgentSettings>("set_skiff_agent", { edit });
+      agentSet = await skiffAgentEdit(edit);
       return null;
     } catch (e) {
       return String(e);
@@ -467,7 +516,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   async function setSkiffAgent(edit: SkiffAgentEdit) {
     error = null;
     try {
-      agentSet = await invoke<SkiffAgentSettings>("set_skiff_agent", { edit });
+      agentSet = await skiffAgentEdit(edit);
     } catch (e) {
       error = String(e);
     }
@@ -477,7 +526,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   /** Settings › Disk use › Auto flush: `[skiff_agent] cache_days`. */
   async function setCacheDays(days: number) {
     try {
-      agentSet = await invoke<SkiffAgentSettings>("set_skiff_agent", { edit: { key: "cache_days", value: days } });
+      await invoke("set_cache_days", { days });
       if (disk.usage) disk.usage.cache_days = days;
       disk.error = null;
     } catch (e) {
@@ -490,6 +539,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   async function loadFiles() {
     try {
       files = await invoke<InstructionFile[]>("skipper_files");
+      // A save of a remote Host's copy that did not go back: one line under its row.
+      const host = hostName();
+      for (const f of await invoke<{ file: string; conflict: boolean; message: string }[]>("skipper_file_errors")) {
+        fileErrors.set(f.file, f.conflict ? t("settings.remote.fileConflict", { host }) : f.message);
+      }
     } catch (e) {
       files = [];
       error = String(e);
@@ -514,7 +568,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     if (o.kind === "run") {
       close();
-      return peekText(o.script, o.cwd, f.path, () => void settings.open("skippers"));
+      return peekText(o.script, o.cwd, `${o.cwd}/${f.file.split("/").pop()}`, () => void settings.open("skippers"));
     }
     if (o.kind === "no_app") fileErrors.set(f.file, t("settings.noApp", { file: f.file }));
     void loadFiles();
@@ -575,7 +629,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     changeSkiffFolder({
       current: agentSet.configured,
       changed: async () => {
-        agentSet = await invoke<SkiffAgentSettings>("get_skiff_agent").catch(() => agentSet);
+        agentSet = await hostInvoke<SkiffAgentSettings>("skipper", "get_skiff_agent").catch(() => agentSet);
         render();
       },
     });
@@ -586,7 +640,22 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const main = h("div", "set-main");
     const intro = h("div", "set-head");
     intro.append(h("div", "set-h", t("settings.tab.skippers")));
+    if (isRemote()) intro.append(h("div", "set-sub mono", hostName()));
     main.append(intro);
+    // A Host whose Skiff is too old to take changes: its Skiff agent, read-only.
+    if (isRemote() && !hostCan("skipper_config")) {
+      main.append(h("div", "set-note", agentSet
+        ? t("settings.remote.skipperOld", { host: hostName() })
+        : t("settings.remote.noSkipper", { host: hostName() })));
+      if (agentSet) {
+        const a = agentSet;
+        main.append(
+          h("div", "set-note mono", t("settings.remote.skipperName", { name: mainName(a.name), agent: a.agent ?? t("settings.remote.default") })),
+          h("div", "set-note mono", t(a.folder_error ? "settings.remote.folderRefused" : "settings.remote.folder", { folder: a.folder ?? a.configured, error: a.folder_error ?? "" })),
+        );
+      }
+      return main;
+    }
     if (agentSet) main.append(...skiffAgentSection(agentSet, agents, (e) => void setSkiffAgent(e), changeFolder));
     if (error) {
       const err = h("div", "set-error", error);
@@ -594,7 +663,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       main.appendChild(err);
     }
     if (agentSet) main.append(...projectSkippersSection(agentSet, agents, (e) => void setSkiffAgent(e)));
-    if (agentSet?.folder) main.append(...instructionsSection(agentSet, { files, errors: fileErrors, edit: (f) => void editFile(f), reset: (f) => void resetFile(f) }));
+    if (agentSet?.folder) main.append(...avatarsSection(agentSet, draw));
+    if (agentSet?.folder) main.append(...instructionsSection(agentSet, { files, errors: fileErrors, editable: hostCan("skipper_file"), edit: (f) => void editFile(f), reset: (f) => void resetFile(f) }));
     return main;
   }
 
@@ -752,9 +822,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     return true;
   }
 
-  // On the document, so Escape works wherever focus is. Menus and dialogs
-  // over settings stop the key first.
-  document.addEventListener("keydown", (e) => {
+  // Capture on the window so a terminal that still has focus while Settings
+  // loads cannot stop Escape before Settings sees it. Menus and dialogs over
+  // settings stop the key first.
+  window.addEventListener("keydown", (e) => {
     if (root.hidden || e.defaultPrevented || document.querySelector("#ctx-menu:not([hidden]), #launch-menu:not([hidden]), .confirm-overlay")) return;
     if (runKey(actionFor(e))) return e.preventDefault();
     // Cut and select all on macOS. The webview does them only through an Edit menu item.
@@ -767,7 +838,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     if (e.key !== "Escape") return;
     e.preventDefault();
     close();
-  });
+  }, true);
 
   // An external app saved a file: its status shows when the window has the keys again.
   window.addEventListener("focus", () => {
@@ -776,21 +847,33 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   });
 
   const settings = {
-    /** `at`: the section to show, else the last one. */
-    async open(at?: (typeof TABS)[number]) {
-      if (at) tab = at;
+    /** A new read of the Host list redraws an open Hosts tab. main.ts wires it to
+     *  onHostsChanged: panels.ts makes Settings while hosts.ts is still loading. */
+    hostsChanged() {
+      if (!root.hidden && tab === "hosts") render();
+    },
+    /** `at`: the section to show, else the last one. A Hosts page opens
+     *  Settings › Hosts at its list or its Add form. */
+    async open(at?: HostsPage | (typeof TABS)[number]) {
+      if (typeof at === "string") tab = at;
+      else if (at) {
+        tab = "hosts";
+        hostsTab.open(at);
+      }
       root.hidden = false;
       onShowChange();
       await look.load();
       openSet = await invoke<OpenSettings>("open_settings").catch(() => null);
       menuSet = await invoke<MenuLayout>("menu_layout").catch(() => null);
       langSet = (await invoke<Appearance>("get_appearance").catch(() => null))?.language ?? null;
-      agentSet = await invoke<SkiffAgentSettings>("get_skiff_agent").catch(() => null);
-      agents = await invoke<AgentInfo[]>("list_agents").catch((e) => {
+      agentSet = await hostInvoke<SkiffAgentSettings>("skipper", "get_skiff_agent").catch(() => null);
+      agents = await loadAgents().catch((e) => {
         error = String(e);
         return [];
       });
+      await hostsTab.load();
       render();
+      if (tab === "hosts") hostsTab.focusServer();
       if (tab === "skippers") void loadFiles();
       if (tab === "disk") void countDisk(disk, render);
       if (tab === "activity") startActivity(activity, render);

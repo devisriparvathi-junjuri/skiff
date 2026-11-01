@@ -99,6 +99,14 @@ export interface Away {
   at: number;
 }
 
+/** A project's branches from the Host, for New worktree. */
+export interface HostBranches {
+  /** The branch the project's folder has checked out. */
+  head: string | null;
+  /** Newest commit first. `remote`: `origin/main` and the like. */
+  branches: { name: string; remote?: boolean; worktree?: boolean }[];
+}
+
 export interface Worktree {
   path: string;
   /** Short branch name. `null` when detached. */
@@ -132,6 +140,51 @@ export interface Project {
   closed?: boolean;
   /** The fleet it sits in. Absent: under Projects, in no fleet. */
   fleet?: string | null;
+  /** `changes = false` in the Host's projects.toml: no Changes section. Absent: shown. */
+  changes?: boolean | null;
+  /** The project's own theme id. Absent: the app theme. */
+  theme?: string | null;
+  /** Shows a Files tree under each worktree. */
+  files?: boolean;
+}
+
+/** A diff as plain text from the selected Host's git (`git_diff@1`). */
+export interface HostDiff {
+  /** Unified diff text. Empty: no change. */
+  text: string;
+  /** Longer than the Host's limit: `text` is its start, cut at a line end. */
+  truncated: boolean;
+  /** A binary file: `text` holds git's note only. */
+  binary: boolean;
+  /** An untracked file, compared with an empty file. */
+  untracked: boolean;
+}
+
+/** An entry of a Host's folder, as it is on its disk: a link is not followed (`files@1`). */
+export interface HostEntry {
+  name: string;
+  kind: "dir" | "file" | "link" | "other";
+}
+
+/** One folder of a worktree from the selected Host. */
+export interface HostListing {
+  entries: HostEntry[];
+  /** More entries than the Host lists: the rest are left out. */
+  truncated: boolean;
+}
+
+/** A file's preview from the selected Host. Its kind comes from its bytes, never its name. */
+export interface HostFile {
+  content: "text" | "image" | "binary" | "link";
+  size: number;
+  mime?: string;
+  /** A text file, cut at 512 KiB when `truncated`. */
+  text?: string;
+  /** An image's bytes, base64. Absent for an image over 5 MiB (`truncated`). */
+  bytes?: string;
+  truncated: boolean;
+  /** Where a link points. It was not followed. */
+  target?: string;
 }
 
 export type DaemonEvent =
@@ -200,10 +253,52 @@ export interface Reloaded {
 }
 
 export interface DaemonWarning {
-  kind: "outdated" | "protocol" | "newer" | "hung" | "failed";
+  /** `remote`: a remote Host this app reaches but never restarts or updates.
+   *  `identity`: that Host answered with another Skiff identity. */
+  kind: "outdated" | "protocol" | "newer" | "hung" | "failed" | "remote" | "identity" | "update";
   message: string;
   /** Live sessions a restart stops. `null` when the daemon did not say. */
   sessions: number | null;
+}
+
+/** A git repository's state, read by the Host from its files. */
+export interface FolderRepo {
+  branch: string | null;
+  /** Unix seconds when the branch last moved. */
+  last_commit: number | null;
+}
+
+/** One folder on a Host (`folders@1`): a folder or a link to one. */
+export interface FolderEntry {
+  name: string;
+  kind: "dir" | "link";
+  repo?: FolderRepo;
+}
+
+/** The folders in one Host folder. Paths are the Host's own. */
+export interface FolderListing {
+  path: string;
+  /** The same folder, links resolved. */
+  real: string;
+  parent: string | null;
+  entries: FolderEntry[];
+  /** More than 2000 folders: the rest are left out. */
+  truncated: boolean;
+}
+
+/** The picker's Places from the Host: Recent, and repositories under home. */
+export interface FolderPlaces {
+  /** Newest first. */
+  recent: string[];
+  repos: { path: string; branch: string | null; last_commit: number | null }[];
+  /** A scan runs: ask again. */
+  scanning: boolean;
+}
+
+/** A Host error as the Host typed it. */
+export interface HostError {
+  code: string;
+  message?: string;
 }
 
 export interface FolderInfo {
@@ -214,9 +309,8 @@ export interface FolderInfo {
   color: string;
   branch: string | null;
   worktrees: number;
-  /** The icon found in the repo, as a data URL, and its path in the repo. */
+  /** The icon the Host found in the repo, as a data URL. */
   icon: string | null;
-  icon_path: string | null;
   /** Why the folder cannot be added. */
   error: string | null;
 }

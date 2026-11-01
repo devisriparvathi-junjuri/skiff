@@ -37,11 +37,11 @@ fn skiff_agent_keys_round_trip() {
     assert!(!text.contains("name") && !text.contains("continue_on_restore") && !text.contains("model"), "{text}");
 
     // `enabled` and `project_skippers` from an older Skiff: read and
-    // ignored, then gone at the next write of any table.
+    // ignored, then gone at the next write of projects.toml.
     let old = format!("{text}enabled = true\nproject_skippers = false\n");
     std::fs::write(dir.join("projects.toml"), &old).unwrap();
     assert_eq!(config::load().unwrap().skiff_agent.agent.as_deref(), Some("codex"));
-    config::set_app_theme(Some("harbor")).unwrap();
+    config::set_skiff_agent(SkiffAgentKey::Name(Some("Mate"))).unwrap();
     let text = std::fs::read_to_string(dir.join("projects.toml")).unwrap();
     assert!(!text.contains("enabled") && !text.contains("project_skippers") && text.contains("codex"), "{text}");
 

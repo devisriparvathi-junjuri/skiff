@@ -1,0 +1,22 @@
+{
+ "capability": {"name": "session_terminal", "version": 1},
+ "requests": [
+  {"cmd": "terminal_attach", "session": "s1"},
+  {"cmd": "terminal_detach", "session": "s1"},
+  {"cmd": "terminal_resize", "session": "s1", "cols": 65535, "rows": 0},
+  {"cmd": "terminal_input", "session": "s1", "data": "AP8KDRs=", "paste": false},
+  {"cmd": "terminal_input", "session": "λ", "data": "", "paste": true}
+ ],
+ "messages": [
+  {"type": "reply", "id": 1, "result": {"Ok": {"kind": "ok"}}},
+  {"type": "event", "event": {"event": "terminal_snapshot", "session": "s1", "data": "G1tIAP8=", "cols": 80, "rows": 24}},
+  {"type": "event", "event": {"event": "terminal_output", "session": "s1", "data": "AP8KDQ=="}},
+  {"type": "event", "event": {"event": "terminal_output", "session": "s1", "data": "bHMK", "echo": {"wrote": 18446744073709551615, "read": 0}}}
+ ],
+ "legacy": {
+  "terminal_attach": {"cmd": "subscribe", "session": "s1"},
+  "terminal_detach": {"cmd": "unsubscribe", "session": "s1"},
+  "terminal_resize": {"cmd": "resize", "session": "s1", "cols": 65535, "rows": 0},
+  "terminal_input": {"cmd": "write", "session": "s1", "data": "AP8KDRs="}
+ }
+}

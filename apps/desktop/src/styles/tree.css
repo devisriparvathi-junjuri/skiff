@@ -90,6 +90,8 @@ body:has(#ctx-menu:not([hidden]), #launch-menu:not([hidden]), #switcher:not([hid
 .st-A { color: var(--diff-add); }
 .st-D { color: var(--diff-del); }
 .st-U { color: var(--error); }
+/* Committed on the branch: settled, so grey. A colored letter is an uncommitted edit. */
+.change-st.st-done { color: var(--text-dim); }
 .change-row.st-gone .file-name { text-decoration: line-through; }
 /* A file's folder shows on the current row and on hover only. */
 .change-row:not(.current, :hover, .hover) .change-dir { display: none; }

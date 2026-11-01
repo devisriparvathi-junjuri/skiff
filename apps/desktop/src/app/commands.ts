@@ -11,6 +11,8 @@ import { createSwitcher, type SwitchItem } from "../ui/switcher";
 import { type MessageKey, t, tn } from "../i18n";
 
 import { invoke } from "@tauri-apps/api/core";
+import { hostCan } from "./hostCaps";
+import { isRemote } from "./hosts";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "../platform/os";
 
@@ -29,6 +31,7 @@ import { accent, activeGroupObj, currentProject, currentWorktree, inShownGroup, 
 import { sessionThemeMenu } from "../appearance/themes";
 import { modeKeyBlocked } from "./modes";
 import { ledgerFolded, ledgerShown } from "../workspace/ledger";
+import { skippersOn } from "../workspace/skippersView";
 import { imageCount } from "../terminal/images";
 import {
   closeWorkspace, editWorkspace, keepWorkspace, ledgerAllWork, newWorkspace, openWorkspace, recentWorkspacesMenu, reloadWorkspace,
@@ -65,7 +68,7 @@ function drafts(): Draft[] {
   const act = (a: Action) => () => runAction(a);
   const ws = workspaceNotice();
   return [
-    { section: "file", id: "cmd.newSession", key: k("new-session"), action: "new-session", run: act("new-session"), off: !currentWorktree() },
+    { section: "file", id: "cmd.newSession", key: k("new-session"), action: "new-session", run: act("new-session"), off: (!currentWorktree() && !isRemote()) || !hostCan("session_lifecycle") },
     { section: "file", id: "cmd.newWorktree", key: k("new-worktree"), action: "new-worktree", run: act("new-worktree"), off: !currentProject() || isFolder(currentProject()!) },
     { section: "file", id: "cmd.addProject", key: k("add-project"), action: "add-project", run: act("add-project") },
     { section: "file", id: "cmd.openClosedProject", key: "", run: openClosedMenu, off: !S.closedProjects.length },
@@ -91,28 +94,29 @@ function drafts(): Draft[] {
     { section: "edit", id: "cmd.images", key: k("images"), action: "images", run: act("images"), off: !imageCount() || !s },
     { section: "edit", id: "cmd.imagesGallery", key: k("images-gallery"), action: "images-gallery", run: act("images-gallery") },
     { section: "edit", id: "cmd.find", key: k("find"), action: "find", run: act("find"), off: !shown },
-    { section: "edit", id: "cmd.rename", key: k("rename"), action: "rename", run: act("rename"), off: !s || isSkiffAgent(s.id) || isProjectSkipper(s) },
-    { section: "edit", id: "cmd.sessionTheme", key: k("theme"), run: () => s && void sessionThemeMenu(s), off: !s },
+    { section: "edit", id: "cmd.rename", key: k("rename"), action: "rename", run: act("rename"), off: !s || isSkiffAgent(s.id) || isProjectSkipper(s) || !hostCan("session_lifecycle") },
+    { section: "edit", id: "cmd.sessionTheme", key: k("theme"), run: () => s && void sessionThemeMenu(s), off: !s || !hostCan("session_lifecycle") },
     {
-      section: "edit", id: "cmd.endSession", key: k("end-session"), action: "end-session", off: !s,
+      section: "edit", id: "cmd.endSession", key: k("end-session"), action: "end-session", off: !s || !hostCan("session_lifecycle"),
       run: act("end-session"),
     },
     { section: "view", id: "cmd.palette", key: k("palette"), action: "palette", run: act("palette") },
     { section: "view", id: "cmd.sessionNext", key: k("session-next"), action: "session-next", run: act("session-next") },
     { section: "view", id: "cmd.sessionPrev", key: k("session-prev"), action: "session-prev", run: act("session-prev") },
     { section: "view", id: "cmd.listMain", key: k("list-main"), action: "list-main", run: act("list-main") },
-    { section: "view", id: "cmd.splitRight", key: k("split-right"), action: "split-right", run: act("split-right"), off: !shown || splitFull() || isSkiffAgent(S.focused) },
-    { section: "view", id: "cmd.splitDown", key: k("split-down"), action: "split-down", run: act("split-down"), off: !shown || splitFull() || isSkiffAgent(S.focused) },
-    { section: "view", id: "cmd.removeFromGroup", key: k("close-pane"), action: "close-pane", run: act("close-pane"), off: !(S.focused && inShownGroup(S.focused)) },
+    { section: "view", id: "cmd.splitRight", key: k("split-right"), action: "split-right", run: act("split-right"), off: !shown || splitFull() || isSkiffAgent(S.focused) || !hostCan("session_lifecycle") },
+    { section: "view", id: "cmd.splitDown", key: k("split-down"), action: "split-down", run: act("split-down"), off: !shown || splitFull() || isSkiffAgent(S.focused) || !hostCan("session_lifecycle") },
+    { section: "view", id: "cmd.removeFromGroup", key: k("close-pane"), action: "close-pane", run: act("close-pane"), off: !(S.focused && inShownGroup(S.focused)) || !hostCan("session_groups") },
     ...groupCloseEntries(g).map((entry): Draft => ({
       section: "view", id: entry.label, label: entry.label, key: "", run: () => entry.run?.(), off: entry.disabled,
     })),
-    { section: "view", id: "cmd.missionControl", key: k("mission-control"), action: "mission-control", run: act("mission-control") },
+    { section: "view", id: "cmd.missionControl", key: k("mission-control"), action: "mission-control", run: act("mission-control"), off: !hostCan("session_screen") },
     { section: "view", id: "cmd.nextWaiting", key: k("next-waiting"), action: "next-waiting", run: act("next-waiting") },
     {
       section: "view", id: "cmd.showSkiffAgent", label: t(skiffAgentSession() ? "cmd.showSkiffAgent" : "cmd.startSkiffAgent", { name: skiffAgentName() }), key: k("skiff-agent"), action: "skiff-agent",
       run: act("skiff-agent"), off: !skiffAgentFolder(),
     },
+    { section: "view", id: "cmd.showTree", label: t(skippersOn() ? "cmd.showTree" : "cmd.showSkippers"), key: k("sidebar-view"), action: "sidebar-view", run: act("sidebar-view") },
     { section: "view", id: "cmd.showLedger", label: t(ledgerFolded() ? "cmd.showLedger" : "cmd.hideLedger"), key: k("ledger"), action: "ledger", run: act("ledger"), off: !ledgerShown() },
     {
       section: "view", id: "cmd.ledgerAllWork", label: t(ledgerAllWork() ? "cmd.ledgerWorkspaceWork" : "cmd.ledgerAllWork"), key: "",

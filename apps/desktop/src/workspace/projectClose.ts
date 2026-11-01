@@ -9,7 +9,6 @@ import type { MenuEntry } from "../ui/menu";
 import { ctxMenu } from "../ui/contextMenu";
 import { agentName, branchName, taskTitle } from "./model";
 import type { Project } from "../platform/types";
-import { invoke } from "@tauri-apps/api/core";
 import { loadProjects } from "../app/daemon";
 import { showError } from "../ui/alerts";
 import { render } from "../app/render";
@@ -19,6 +18,7 @@ import { worktreeSessions } from "../app/stateQueries";
 
 import { refocusTerminal, selectProject } from "./view";
 import { t, tn } from "../i18n";
+import { hostInvoke } from "../app/hostCaps";
 
 /** The project's sessions, and one line per worktree that has any, for a confirmation. */
 function projectSessions(p: Project) {
@@ -42,7 +42,7 @@ function projectSessions(p: Project) {
 /** Ends the sessions. False when one would not end: the project stays as it was. */
 async function endAll(ids: string[]): Promise<boolean> {
   clearSelection();
-  const results = await Promise.allSettled(ids.filter((id) => sessions.has(id)).map((id) => invoke("kill_session", { session: id })));
+  const results = await Promise.allSettled(ids.filter((id) => sessions.has(id)).map((id) => hostInvoke("session_lifecycle", "kill_session", { session: id })));
   let ok = true;
   for (const r of results) {
     if (r.status === "rejected") {
@@ -83,7 +83,7 @@ export async function closeProject(p: Project) {
   }
   if (!(await endAll(ids))) return;
   try {
-    await invoke("set_project_closed", { project: p.name, closed: true });
+    await hostInvoke("project_config", "set_project_closed", { project: p.name, closed: true });
   } catch (e) {
     return showError(e);
   }
@@ -101,7 +101,7 @@ export async function removeProject(p: Project) {
   if (!ok) return refocusTerminal();
   if (!(await endAll(ids))) return;
   try {
-    await invoke("remove_project", { project: p.name });
+    await hostInvoke("project_config", "remove_project", { project: p.name });
   } catch (e) {
     return showError(e);
   }
@@ -113,7 +113,7 @@ export async function removeProject(p: Project) {
 /** Opens a closed project again, with its settings, and shows it. */
 export async function openClosedProject(p: Project) {
   try {
-    await invoke("set_project_closed", { project: p.name, closed: false });
+    await hostInvoke("project_config", "set_project_closed", { project: p.name, closed: false });
   } catch (e) {
     return showError(e);
   }

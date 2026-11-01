@@ -175,15 +175,19 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 .project-skipper-row .skiff-agent-name { flex-shrink: 0; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .project-skipper-row .title { color: var(--text-3); }
 /* Its own watcher, with the Skiff agent row's states: teal while it runs,
-   turning while idle with a followed pane, red when a line failed. */
-.project-skipper-row .agent-icon { position: relative; }
-.project-skipper-row.watch-on .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--watch); }
-.project-skipper-row.watch-on .agent-icon svg [fill]:not([fill="none"]) { fill: var(--watch); }
-.project-skipper-row.watch-error .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--error); }
-.project-skipper-row.watch-error .agent-icon svg [fill]:not([fill="none"]) { fill: var(--error); }
-.project-skipper-row.watch-turn .agent-icon {
+   turning while idle with a followed pane, red when a line failed. The
+   Skippers list's rows (.sk-row) show it the same way. */
+:is(.project-skipper-row, .sk-row) .agent-icon { position: relative; }
+:is(.project-skipper-row, .sk-row).watch-on .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--watch); }
+:is(.project-skipper-row, .sk-row).watch-on .agent-icon svg [fill]:not([fill="none"]) { fill: var(--watch); }
+:is(.project-skipper-row, .sk-row).watch-error .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--error); }
+:is(.project-skipper-row, .sk-row).watch-error .agent-icon svg [fill]:not([fill="none"]) { fill: var(--error); }
+:is(.project-skipper-row, .sk-row).watch-turn .agent-icon {
   transform-origin: center; transform-box: fill-box;
   /* Stepped, as on the Skiff agent's row. */
   animation: sk-turn 8s steps(48) var(--turn-delay, 0ms) infinite;
 }
-@media (prefers-reduced-motion: reduce) { .project-skipper-row.watch-turn .agent-icon { animation: none; } }
+@media (prefers-reduced-motion: reduce) { :is(.project-skipper-row, .sk-row).watch-turn .agent-icon { animation: none; } }
+
+/* A Skipper's face on its tree row: the row's full height, before its agent icon. */
+.skiff-agent-row > .skipper-face, .project-skipper-row > .skipper-face { align-self: center; }

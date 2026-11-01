@@ -255,6 +255,22 @@ export function includeAdded(p: Project) {
   if (doc && !shows(p)) setIncluded("project", p.path, true);
 }
 
+/** A project that goes to a fleet the workspace does not name, or to none, stays in by its folder. Call it before the change. */
+export function keepInView(p: Project, fleet: string | null) {
+  if (doc && shows(p) && !listed(p) && !(fleet && doc.profile.fleets.includes(fleet))) setIncluded("project", p.path, true);
+}
+
+/** A renamed fleet stays in the workspace, folded or open as it was. */
+export function renameWorkspaceFleet(from: string, to: string) {
+  if (!doc || saving || from === to) return;
+  const d = doc.profile;
+  if (!d.fleets.includes(from) && !d.folded_fleets.includes(from)) return;
+  const swap = (xs: string[]) => [...new Set(xs.map((x) => (x === from ? to : x)))];
+  d.fleets = swap(d.fleets);
+  d.folded_fleets = swap(d.folded_fleets);
+  changed();
+}
+
 /** The + over Projects: in a workspace, the projects and fleets it does not show yet, then Add project. */
 export function projectsPlus(at: HTMLElement, addProject: () => void) {
   if (!doc) return addProject();

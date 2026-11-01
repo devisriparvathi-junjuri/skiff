@@ -1,4 +1,4 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel } from "@tauri-apps/api/core";
 
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
@@ -20,6 +20,7 @@ import { place, shownIds } from "../app/stateQueries";
 import { bySessionPriority } from "../workspace/model";
 import type { SessionInfo } from "../platform/types";
 import { opening, type Pane, panes } from "./terminalState";
+import { hostInvoke } from "../app/hostCaps";
 
 export const TERM_THEME = {
   background: "#08001a",
@@ -125,7 +126,7 @@ async function createPane(id: string): Promise<Pane> {
   term.onData((data) => {
     if (inputOff) return;
     const sent = traceSend(id);
-    invoke("pty_write", { session: id, data }).then(sent, console.error);
+    hostInvoke("session_terminal", "pty_write", { session: id, data }).then(sent, console.error);
   });
   term.onRender(() => traceRender(id));
 
@@ -186,7 +187,7 @@ function streamOutput(id: string, pane: Pane, fromBottom = 0): Promise<void> {
     s.last_output_at = Date.now();
   };
   pane.unacked = 0;
-  return invoke("subscribe_output", { session: id, stream: n, onOutput: channel });
+  return hostInvoke("session_terminal", "subscribe_output", { session: id, stream: n, onOutput: channel });
 }
 
 /**
@@ -199,7 +200,7 @@ function ackOutput(id: string, pane: Pane, stream: number, bytes: number) {
   pane.acking = true;
   const sent = pane.unacked;
   pane.unacked = 0;
-  invoke("ack_output", { session: id, stream, bytes: sent })
+  hostInvoke("session_terminal", "ack_output", { session: id, stream, bytes: sent })
     .catch(console.error)
     .finally(() => {
       pane.acking = false;
@@ -214,7 +215,7 @@ export function parkPane(id: string, pane: Pane) {
   if (pane.parked) return;
   pane.parked = true;
   pane.stream++;
-  pane.sub = pane.sub.then(() => invoke<void>("unsubscribe_output", { session: id })).catch(console.error);
+  pane.sub = pane.sub.then(() => hostInvoke<void>("session_terminal", "unsubscribe_output", { session: id })).catch(console.error);
 }
 
 /**

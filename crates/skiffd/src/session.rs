@@ -1231,31 +1231,32 @@ impl SessionPool {
     /// meanwhile. The change guard holds a reload until the pty, the screen
     /// and the info agree. The screen lock covers the ioctl and the reflow,
     /// so the redraw the program sends for the new size lands on a screen
-    /// of that size. Every client learns the size from the event.
+    /// of that size. It also covers the info and the event: two clients
+    /// resizing at once apply and announce in the same order, so the last
+    /// event every client hears is the size the pty has.
     pub async fn resize(self: &Arc<Self>, id: &str, cols: u16, rows: u16) -> Result<()> {
         let pool = self.clone();
         let id = id.to_string();
-        let info = tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             let _change = pool.change()?;
             let session = pool.get(&id).ok_or_else(|| anyhow!("no such session: {id}"))?;
             // The program redraws for the new size. That is not work either.
             // Stored before the ioctl, as a write does.
             session.last_input.store(now_ms(), Ordering::Relaxed);
-            {
-                let mut st = session.screen.lock().unwrap();
-                session.pty.resize(cols, rows)?;
-                st.screen.resize(cols, rows);
-            }
+            let mut st = session.screen.lock().unwrap();
+            session.pty.resize(cols, rows)?;
+            st.screen.resize(cols, rows);
             {
                 let mut info = session.info.lock().unwrap();
                 info.cols = cols;
                 info.rows = rows;
             }
-            Ok::<_, anyhow::Error>(session.info())
+            let _ = pool.events.send(Event::SessionUpdated { session: session.info() });
+            drop(st);
+            Ok::<_, anyhow::Error>(())
         })
         .await
         .map_err(|e| anyhow!("resize failed: {e}"))??;
-        let _ = self.events.send(Event::SessionUpdated { session: info });
         Ok(())
     }
 
@@ -1573,5 +1574,60 @@ mod tests {
         assert!(!prints(b"\x1b[?2026h\x1b[?25l\x1b[43;16H\x1b[?25h\x1b[?2026l"));
         assert!(prints(b"\x1b[38;2;215;119;87m*\x1b[39m"));
         assert!(prints("\x1b[3G✻".as_bytes()));
+    }
+
+    /// The pty's size, read back from the kernel.
+    fn pty_size(session: &super::Session) -> (u16, u16) {
+        let mut size = libc::winsize { ws_row: 0, ws_col: 0, ws_xpixel: 0, ws_ypixel: 0 };
+        // SAFETY: TIOCGWINSZ writes only `size`.
+        assert_eq!(unsafe { libc::ioctl(session.pty.raw_fd(), libc::TIOCGWINSZ as _, &mut size as *mut _) }, 0);
+        (size.ws_col, size.ws_row)
+    }
+
+    /// Two clients resize at once. The first has sized the pty and not yet
+    /// recorded it (the info lock is held here to keep it there). The second
+    /// must wait, or it sizes the pty and the first then announces its older
+    /// size last: the inventory and every client would disagree with the pty.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn concurrent_resizes_announce_the_size_the_pty_has() {
+        use skiff_core::{protocol::Event, session::SessionSpec};
+        use std::time::Duration;
+        let pool = super::SessionPool::new();
+        let info = pool
+            .create(SessionSpec { command: Some("/bin/cat".into()), cols: 80, rows: 24, ..Default::default() })
+            .unwrap();
+        let session = pool.get(&info.id).unwrap();
+        let mut events = pool.events.subscribe();
+        let resize = |cols, rows| {
+            let (pool, id) = (pool.clone(), info.id.clone());
+            tokio::spawn(async move { pool.resize(&id, cols, rows).await })
+        };
+        let held = session.info.lock().unwrap();
+        let first = resize(100, 30);
+        let end = std::time::Instant::now() + Duration::from_secs(5);
+        while pty_size(&session) != (100, 30) {
+            assert!(std::time::Instant::now() < end, "the first resize never reached the pty");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let second = resize(120, 40);
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(pty_size(&session), (100, 30), "the second resize ran ahead of the first's announcement");
+        drop(held);
+        first.await.unwrap().unwrap();
+        second.await.unwrap().unwrap();
+        let mut last = None;
+        while let Ok(e) = events.try_recv() {
+            if let Event::SessionUpdated { session: s } = e {
+                if s.id == info.id {
+                    last = Some((s.cols, s.rows));
+                }
+            }
+        }
+        let now = pty_size(&session);
+        let inventory = pool.get(&info.id).unwrap().info();
+        assert_eq!(last, Some(now), "the last event");
+        assert_eq!((inventory.cols, inventory.rows), now, "the inventory");
+        assert_eq!(now, (120, 40));
+        pool.kill(&info.id).unwrap();
     }
 }

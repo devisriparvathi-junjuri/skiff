@@ -3,7 +3,7 @@
   "productName": "Skiff",
   "identifier": "com.solutionscay.skiff",
   "build": {
-    "beforeDevCommand": "cargo build -p skiffd -p skiff-cli && pnpm dev",
+    "beforeDevCommand": "cargo build -p skiffd -p skiff-cli -p skiff-host && pnpm dev",
     "devUrl": "http://127.0.0.1:1421",
     "beforeBuildCommand": "pnpm build",
     "beforeBundleCommand": "sh scripts/appstream.sh",

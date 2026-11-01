@@ -5,10 +5,19 @@
 
 /** What the main area shows while the row is current. */
 export type Preview =
-  /** `wait`: a card first; the diff runs on Enter. All changes of a big branch can be slow to draw. */
-  | { kind: "diff"; wt: string; branch: string; file?: string; wait?: boolean }
+  /**
+   * `base`: the default branch the diff counts from; absent, it is against HEAD.
+   * `wait`: a card first; the diff runs on Enter. All changes of a big branch can be slow to draw.
+   */
+  | { kind: "diff"; wt: string; branch: string; base?: string; file?: string; wait?: boolean }
+  /** A remote Host's diff: its git's text, in the page's own viewer. No command runs here. */
+  | { kind: "host-diff"; wt: string; branch: string; base?: string; file?: string; wait?: boolean }
   | { kind: "file"; path: string }
-  | { kind: "folder"; path: string };
+  /** A Host's file: its bounded preview from the Host, in the page's own viewer.
+   *  `path` is the Host's, shown only. `copy`: Enter opens a local copy. */
+  | { kind: "host-file"; wt: string; file: string; path: string; copy: boolean }
+  /** `local: false`: a remote Host's folder, with no file manager here to show it in. */
+  | { kind: "folder"; path: string; local?: boolean };
 
 export interface RowActs {
   preview?: Preview;

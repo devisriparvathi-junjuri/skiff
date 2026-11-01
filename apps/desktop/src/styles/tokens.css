@@ -34,6 +34,8 @@
   --ok: #7ee0cb;
   /* The Skiff agent's icon while its watcher runs. */
   --watch: #3fd0b4;
+  /* The Skiff agent's rank stripes in the Skippers list. */
+  --rank: #e8c46a;
   --scrim: rgba(5, 7, 10, 0.72);
   /* Text on a filled --state-working button. */
   --on-working: #0b0e12;

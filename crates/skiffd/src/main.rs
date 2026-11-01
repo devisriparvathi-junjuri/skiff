@@ -85,6 +85,8 @@ async fn run(start: Start) -> Result<()> {
             }
         },
     };
+    // After the socket: it selects private or real state.
+    skiffd::identity::init();
     pool.set_listener(listener.as_raw_fd());
     pool.spawn_saver();
     pool.spawn_idle_watcher();

@@ -8,6 +8,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
+import { isRemote, hostName } from "../app/hosts";
 import { S, sessions } from "../app/state";
 import { showError } from "../ui/alerts";
 import { modalOpen } from "../ui/dom";
@@ -80,7 +81,7 @@ export function endImageDrag(x: number, y: number): string | null {
 async function drop(id: string, paths: string[]) {
   if (id !== S.focused) focusPane(id);
   try {
-    const typed = await invoke<Typed>("drop_files", { who: whoOf(id), paths });
+    const typed = await invoke<Typed>("drop_files", { who: whoOf(id), paths, host: isRemote() ? hostName() : null });
     typeFiles(id, typed);
   } catch (e) {
     showError(e);

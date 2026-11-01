@@ -1,0 +1,48 @@
+name: Host contract boundary
+# Main and pull requests only. A tag points at a commit main already checked,
+# so a tag run repeats it; other branches get it through their pull request.
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/host-boundary/check.py
+      - run: python -m unittest discover -s scripts/host-boundary -p 'test_*.py'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p skiff-host-api -p skiff-client --test contract --test host_contract --test local_contract --test local_host --test session_screen --test session_inventory --test session_updates --test session_terminal --test host_identity --test session_lifecycle --test ssh_forward
+      - run: cargo test -p skiff-core --lib -- host_identity pong_identity
+      - run: cargo test -p skiffd --test identity
+      - run: cargo build -p skiffd -p skiff-host -p skiff-cli
+      - run: cargo test -p skiffd --test ssh_remote
+      - run: cargo test -p skiff-host
+      - run: cargo test -p skiff-core --lib -- data_socket untracked_links a_root_whose_path diff_text a_diff_process a_helper_holding a_stalled_status git_runs_in_the_held_root the_diff_limit_holds
+      - run: cargo test -p skiff-core --lib -- config::client
+      - run: cargo test -p skiff-core --test appearance
+  desktop-ts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Type check and page tests
+        working-directory: apps/desktop
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec tsc --noEmit
+          pnpm test

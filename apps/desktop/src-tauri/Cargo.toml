@@ -21,6 +21,7 @@ serde_json.workspace = true
 toml.workspace = true
 skiff-core.workspace = true
 skiff-client.workspace = true
+skiff-host-api.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
 clap.workspace = true
@@ -29,6 +30,9 @@ tauri-plugin-dialog = "2"
 libc = "0.2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-updater = "2.10"
+
+[dev-dependencies]
+skiff-host.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"

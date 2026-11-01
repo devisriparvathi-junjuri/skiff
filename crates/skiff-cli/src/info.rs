@@ -43,6 +43,31 @@ pub async fn status(socket: &Path) -> Result<()> {
     Ok(())
 }
 
+/// `skiff status --json`: for a program, such as the app's check of a Host
+/// over ssh. No warnings and no starts: exit 1 when no skiffd answers.
+pub async fn status_json(socket: &Path) -> i32 {
+    let daemon = match crate::connect(socket).await {
+        Ok(c) => c.daemon_info().await.ok(),
+        Err(_) => None,
+    };
+    let skiffd = daemon.as_ref().map(|i| {
+        serde_json::json!({
+            "version": i.version,
+            "protocol": i.protocol,
+            "pid": i.pid,
+            "host_id": i.identity.as_ref().map(|id| id.host_id.clone()),
+        })
+    });
+    let out = serde_json::json!({
+        "skiff": env!("CARGO_PKG_VERSION"),
+        "protocol": skiff_core::PROTOCOL,
+        "socket": socket.display().to_string(),
+        "skiffd": skiffd,
+    });
+    println!("{out}");
+    if daemon.is_some() { 0 } else { 1 }
+}
+
 /// The `watcher` line of `skiff status`, for the Skiff agent's session.
 /// `lock_held` is asked only when no watcher registered: then a held lock
 /// means a watcher that does not register (an older `skiff watch`) runs.

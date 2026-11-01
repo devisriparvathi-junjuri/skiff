@@ -39,6 +39,12 @@ export function promptAction(o: {
   options?: string[];
   /** The label of a last list row that submits an empty field. */
   clearLabel?: string;
+  /** A section head over the list's names. */
+  optionsHead?: string;
+  /** More fields, under the list. */
+  after?: HTMLElement[];
+  /** The field's text after each change, trimmed. */
+  onInput?: (value: string) => void;
   action: string;
   submit: (value: string) => Promise<void>;
   onClose?: () => void;
@@ -50,11 +56,13 @@ export function promptAction(o: {
   if (o.value) input.value = o.value;
   if (o.maxLength) input.maxLength = o.maxLength;
   input.setAttribute("aria-label", o.placeholder);
-  const list = o.options || o.clearLabel ? pickList(input, o.options ?? [], o.clearLabel, () => dialog.run()) : null;
+  const list = o.options || o.clearLabel ? pickList(input, o.options ?? [], o.clearLabel, o.optionsHead, () => dialog.run()) : null;
+  // After the list's own handlers, so arrow keys report the name they put in the field.
+  if (o.onInput) for (const ev of ["input", "keydown"]) input.addEventListener(ev, () => o.onInput!(input.value.trim()));
   const dialog = actionDialog({
     title: o.title,
     body: o.body,
-    content: list ? [input, list] : [input],
+    content: [input, ...(list ? [list] : []), ...(o.after ?? [])],
     action: o.action,
     tone: "go",
     focus: input,
@@ -80,8 +88,9 @@ let lists = 0;
  * put the lit row's name in the field, so Enter takes the lit row or the typed text.
  * The names scroll; the clear row stays pinned under them, always in view.
  */
-function pickList(input: HTMLInputElement, options: string[], clearLabel: string | undefined, run: () => void) {
+function pickList(input: HTMLInputElement, options: string[], clearLabel: string | undefined, head: string | undefined, run: () => void) {
   const list = h("div", "prompt-list");
+  const headRow = head ? h("div", "prompt-head", head) : null;
   const scroll = h("div", "prompt-scroll");
   scroll.setAttribute("role", "presentation");
   list.id = `prompt-list-${++lists}`;
@@ -110,7 +119,8 @@ function pickList(input: HTMLInputElement, options: string[], clearLabel: string
       return row;
     });
     scroll.replaceChildren(...els.filter((_, i) => !rows[i].clear));
-    list.replaceChildren(scroll, ...els.filter((_, i) => rows[i].clear));
+    const named = rows.some((r) => !r.clear);
+    list.replaceChildren(...(headRow && named ? [headRow] : []), scroll, ...els.filter((_, i) => rows[i].clear));
     list.hidden = !rows.length;
     if (active >= 0) input.setAttribute("aria-activedescendant", `${list.id}-${active}`);
     else input.removeAttribute("aria-activedescendant");

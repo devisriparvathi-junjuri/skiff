@@ -10,6 +10,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+import { hostName, isRemote } from "../app/hosts";
 import { scheduleRender } from "../app/render";
 import { S, sessions } from "../app/state";
 import { accent, place } from "../app/stateQueries";
@@ -54,7 +55,7 @@ function thumb(path: string, size: number): Promise<string> {
   const key = `${size} ${path}`;
   let t = thumbs.get(key);
   if (!t) {
-    t = invoke<ArrayBuffer>("read_image", { path })
+    t = invoke<ArrayBuffer>("image_thumb", { path })
       .then((bytes) => new Promise<string>((done) => {
         const ext = path.split(".").pop()?.toLowerCase() ?? "";
         const url = URL.createObjectURL(new Blob([bytes], { type: MIME[ext] ?? "" }));
@@ -361,7 +362,7 @@ export function openImage(i: Image) {
 /** Inserts the paths into `id`'s pane, as a drop of these files types them. False: it failed, and the error shows. */
 export async function insertInto(id: string, imgs: readonly Image[]): Promise<boolean> {
   try {
-    const t = await invoke<Typed>("image_insert", { paths: imgs.map((i) => i.path), who: whoOf(id) });
+    const t = await invoke<Typed>("image_insert", { paths: imgs.map((i) => i.path), who: whoOf(id), host: isRemote() ? hostName() : null });
     typeFiles(id, t);
     return true;
   } catch (e) {

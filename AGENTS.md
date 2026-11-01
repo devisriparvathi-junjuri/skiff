@@ -19,6 +19,13 @@ changing anything the user sees or presses: styles, menus, dialogs, keys, labels
 themes. Claude Code and Codex load the same rules as the `skiff-design` skill
 (`.agents/skills/skiff-design`).
 
+## README hero
+
+The README hero is the website home hero: the same headline, tagline and media. The
+media is the site's video poster, by its public URL, linked to the site. When you change
+one hero, change the other in the same task. Check with `python3 scripts/hero-sync.py`
+(add `--live` to read the live site).
+
 ## Keys
 
 Before you add or change a keyboard shortcut, load the `skiff-keys` skill

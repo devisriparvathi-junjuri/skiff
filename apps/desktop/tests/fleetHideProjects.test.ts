@@ -64,7 +64,7 @@ const stub = new Proxy({}, { get: (_, k) => (k === "__esModule" ? false : () => 
 const withStubs = (imports: Record<string, unknown>) => new Proxy(imports, { get: (t, k: string) => t[k] ?? stub });
 const orStub = (mod: Record<string, unknown>) => new Proxy(mod, { get: (t, k: string) => t[k] ?? (stub as any)[k] });
 
-function app() {
+function app(host: string | null = null) {
   const projects = [
     { name: "web", path: "/harbor/web", fleet: "Harbor", worktrees: [{ path: "/harbor/web", branch: "main", is_main: true }] },
     { name: "api", path: "/harbor/api", fleet: "Harbor", worktrees: [{ path: "/harbor/api", branch: "main", is_main: true }] },
@@ -100,6 +100,7 @@ function app() {
   const tree = moduleFromSource("../src/workspace/tree.ts", withStubs({
     "../app/skiffAgent": skiffAgent, "./model": model, "../app/stored": stored_, "../app/state": state,
     "../app/stateQueries": stateQueries, "../ui/dom": { h }, "../ui/icons": { icon: () => h("svg") },
+    "../app/hosts": { shownHost: () => host },
   }), globals, "");
   let rendered = 0;
   const show = (id: string) => {
@@ -215,4 +216,15 @@ test("a fleet with no Skipper and nothing to show keeps its head alone, with no 
   assert.deepEqual(d.rows, ["site-1"]);
   assert.equal(d.head.all().find((e) => e.className === "fleet-pick")!.hasAttribute("aria-expanded"), true);
   assert.equal(d.head.all().find((e) => e.className === "fleet-hidden")!.textContent, "· 0");
+});
+
+test("a fleet on a remote Host hides the same way, with its own stored choice", () => {
+  const a = app("box");
+  a.fleetMenu("Harbor").run();
+  assert.equal(a.tree.projectsHidden("Harbor"), true);
+  assert.deepEqual(a.draw().rows, ["web-2"]);
+  assert.equal(a.draw().head.all().find((e) => e.className === "fleet-hidden")!.textContent, "· 3");
+  assert.deepEqual(JSON.parse(a.stored.get("skiff.tree.hidden")!), ["host:box/fleet:Harbor"]);
+  a.draw().head.all().find((e) => e.className === "fleet-hidden")!.click();
+  assert.equal(a.tree.projectsHidden("Harbor"), false);
 });

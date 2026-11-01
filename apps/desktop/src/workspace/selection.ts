@@ -3,7 +3,7 @@ import { build, sessionsOf } from "./layout";
 
 import type { Group } from "../platform/types";
 import { $, button, h, setHidden } from "../ui/dom";
-import { itemKey, listItems } from "../app/keyboard";
+import { findRow, listItems, roveTo } from "../app/keyboard";
 import { render } from "../app/render";
 import { MAX_PANES, S, sessions } from "../app/state";
 import { groupOf } from "../app/stateQueries";
@@ -47,12 +47,16 @@ export function toggleSelectGroup(g: Group) {
   render();
 }
 
-/** A selection gesture leaves the keys on the row, so Shift+Up/Down and Esc carry on from it. */
-export function keepRow(id: string) {
+/**
+ * A selection gesture leaves the keys on the row, so Shift+Up/Down and Esc carry on from it.
+ * `group`: the group of the row's line (null: its row in no group), for a session with two rows.
+ */
+export function keepRow(id: string, group?: string | null) {
   S.roveKey = id;
+  if (group !== undefined) S.roveAt = { key: id, group };
   // The row claims the keys: a terminal still attaching must not take them when it opens.
   S.grab = null;
-  listItems().find((x) => itemKey(x) === id)?.focus();
+  findRow(listItems(), id)?.focus();
 }
 
 /** Shift+Up/Down: the selection is the rows from the anchor to the row the cursor moves to. */
@@ -65,9 +69,9 @@ export function extendSelection(dir: 1 | -1, el: HTMLElement) {
   const [lo, hi] = [from, to].sort((a, b) => a - b);
   S.selection = order.slice(lo, hi + 1).map((r) => r.dataset.session!);
   selectAnchor = anchor;
-  S.roveKey = order[to].dataset.session!;
+  roveTo(order[to]);
   render();
-  listItems().find((x) => itemKey(x) === S.roveKey)?.focus();
+  findRow(listItems(), S.roveKey)?.focus();
 }
 
 /** Shift+click: add every row from the anchor to `id`, in the order shown. */

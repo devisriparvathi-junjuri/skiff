@@ -3,7 +3,7 @@
  * maximize one, and come back from that maximize. missionControl.ts is the board.
  *
  * The board only fades. The one thing that moves is the focus frame: it flies
- * from the focused pane to its screen on open, and back on close. All layout
+ * from the focused pane to its card on open, and back on close. All layout
  * work happens first, under a board at opacity 0 or 1; then both rects are
  * measured once, and the motion plays.
  */
@@ -64,21 +64,18 @@ function paneRect(id: string | null): DOMRect | null {
   return r && r.width > 0 && r.height > 0 ? r : null;
 }
 
-/** A screen, when all of it shows in its lane: below the lane head and inside the lanes' sideways view. */
+/** A session's card, when all of it shows in the canvas. */
 function tileRect(id: string | null): DOMRect | null {
   const tile = board.tile(id);
-  const lane = tile?.closest<HTMLElement>(".mission-lane");
-  const lanes = tile?.closest<HTMLElement>(".mission-lanes");
-  if (!tile || !lane || !lanes) return null;
+  const view = tile?.closest<HTMLElement>(".mission-canvas");
+  if (!tile || !view) return null;
   const r = tile.getBoundingClientRect();
-  const l = lane.getBoundingClientRect();
-  const w = lanes.getBoundingClientRect();
-  const top = lane.querySelector(".mission-lane-head")?.getBoundingClientRect().bottom ?? l.top;
-  const fits = r.top >= top - 0.5 && r.bottom <= l.bottom + 0.5 && r.left >= Math.max(l.left, w.left) - 0.5 && r.right <= Math.min(l.right, w.right) + 0.5;
+  const v = view.getBoundingClientRect();
+  const fits = r.top >= v.top - 0.5 && r.bottom <= v.bottom + 0.5 && r.left >= v.left - 0.5 && r.right <= v.right + 0.5;
   return fits ? r : null;
 }
 
-/** The 2px project-color frame, flown from one rect to the other over the board. */
+/** The 2px project-color frame, flown from the pane to the card, or back, over the board. */
 function fly(id: string, from: DOMRect, to: DOMRect): Animation {
   frame = document.createElement("div");
   frame.className = "mission-frame";

@@ -117,8 +117,8 @@ export interface RowTableSpec<R> {
   rows: R[];
   id: (row: R) => string;
   rowClass?: (row: R) => string;
-  /** What shows in the end cell before the −, such as the agent's status. */
-  status?: (row: R) => HTMLElement;
+  /** What shows in the end cell before the −: the agent's status, or the row's own buttons. */
+  status?: (row: R) => Node;
   /** Why a row's − is off, short, after the status in the end cell: "Admiral +3". Null: it can go. */
   kept?: (row: R) => string | null;
   /** The draft's preview column, as the person types. */
@@ -222,7 +222,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
       const note = c.note?.(r, {});
       if (c.kind === "lead") cell.appendChild(c.draw!(r));
       else if (c.kind === "preview") fillPreview(cell, c.get?.(r) ?? "", !!c.bad?.(r));
-      else if (note !== null && note !== undefined) fillNote(cell, note);
+      else if (note !== null && note !== undefined) fillNote(cell, note, !!c.mono);
       else if (c.kind === "select") {
         const old = c.get?.(r) ?? "";
         const pick = select(c, c.options?.(r) ?? [], old, label);
@@ -246,7 +246,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
       }
       row.appendChild(cell);
     }
-    const end = h("span", "c-status c-end");
+    const end = h("span", "c-status c-end c-acts");
     end.setAttribute("role", "cell");
     if (spec.status) end.appendChild(spec.status(r));
     const kept = spec.kept?.(r) ?? null;
@@ -291,7 +291,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
     } else if (c.kind === "preview") {
       preview = fillPreview(cell, spec.preview?.(values) ?? "", false);
     } else if (note !== null && note !== undefined) {
-      fillNote(cell, note);
+      fillNote(cell, note, !!c.mono);
     } else {
       const el =
         c.kind === "select"
@@ -339,7 +339,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
     }
     draft.appendChild(cell);
   }
-  const end = h("span", "c-status c-end");
+  const end = h("span", "c-status c-end c-acts");
   end.setAttribute("role", "cell");
   // Never disabled: an add that cannot go says why on the line. While a save runs it is aria-disabled and does nothing.
   const addText = spec.words.add;
@@ -541,8 +541,9 @@ function fillPreview(cell: HTMLElement, text: string, bad: boolean): HTMLElement
   return span;
 }
 
-function fillNote(cell: HTMLElement, text: string) {
+function fillNote(cell: HTMLElement, text: string, mono: boolean) {
   cell.classList.add("c-note");
+  if (mono) cell.classList.add("mono");
   cell.textContent = text;
 }
 

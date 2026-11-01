@@ -1,0 +1,10 @@
+[Unit]
+Description=Skiff sessions service (skiffd)
+
+[Service]
+ExecStart=%h/.local/share/skiff/server/current/skiffd
+Restart=on-failure
+# Stop only on purpose: a stop ends every session in the unit.
+
+[Install]
+WantedBy=default.target

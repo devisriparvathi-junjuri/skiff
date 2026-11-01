@@ -90,15 +90,44 @@ pub fn image_ext(head: &[u8], file_ext: Option<&str>) -> Option<&'static str> {
 /// mtime, so an image still in use stays. A new one is written beside its
 /// name and renamed into place, so a crash leaves no half file.
 pub fn store(dir: &Path, bytes: &[u8], ext: &str) -> Result<PathBuf> {
-    let hash = Sha256::digest(bytes);
-    let hex: String = hash.iter().take(8).map(|b| format!("{b:02x}")).collect();
-    let path = dir.join(format!("{hex}.{ext}"));
+    write_once(&dir.join(format!("{}.{ext}", hash16(bytes))), bytes)
+}
+
+/// The first 16 hex characters of the bytes' SHA-256.
+fn hash16(bytes: &[u8]) -> String {
+    Sha256::digest(bytes).iter().take(8).map(|b| format!("{b:02x}")).collect()
+}
+
+/// A file a client sent for a pane on this Host (a drop or a paste on a
+/// remote pane): an image as [`store`] keeps it, any other file as
+/// `cache/files/<hash>/<name>`, so it keeps its name. `name` is one file
+/// name; anything else is refused.
+pub fn put(cfg: &Config, name: &str, bytes: &[u8]) -> Result<PathBuf> {
+    let name = name.trim();
+    if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\0']) {
+        return Err(skiff_core::config::Refused::Invalid(format!("{name:?} is not a file name")).into());
+    }
+    let dir = ensure(cfg)?;
+    let ext = Path::new(name).extension().and_then(|e| e.to_str());
+    if let Some(ext) = image_ext(bytes, ext) {
+        return store(&dir, bytes, ext);
+    }
+    let sub = dir.join("files").join(hash16(bytes));
+    std::fs::create_dir_all(&sub).with_context(|| format!("create {}", sub.display()))?;
+    write_once(&sub.join(name), bytes)
+}
+
+/// Writes `path` beside its name and renames it into place. An existing
+/// file gets a new mtime instead.
+fn write_once(path: &Path, bytes: &[u8]) -> Result<PathBuf> {
+    let path = path.to_path_buf();
+    let dir = path.parent().unwrap_or(Path::new("."));
     if path.is_file() {
         let f = std::fs::File::options().write(true).open(&path).with_context(|| format!("open {}", path.display()))?;
         f.set_modified(std::time::SystemTime::now()).with_context(|| format!("touch {}", path.display()))?;
         return Ok(path);
     }
-    let tmp = dir.join(format!("{hex}.{ext}.tmp-{}", std::process::id()));
+    let tmp = dir.join(format!("{}.tmp-{}", path.file_name().unwrap_or_default().to_string_lossy(), std::process::id()));
     let write = || -> std::io::Result<()> {
         let mut f = std::fs::File::create(&tmp)?;
         f.write_all(bytes)?;
@@ -386,6 +415,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_put_keeps_images_by_hash_and_files_by_name() {
+        let root = std::env::temp_dir().join(format!("skiff-put-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let cfg = Config { skiff_agent: skiff_core::config::SkiffAgent { folder: Some(root.clone()), ..Default::default() }, ..Default::default() };
+        // A folder outside home is refused: the put falls back to the /tmp cache, which is fine here.
+        let png = put(&cfg, "shot.png", b"\x89PNG\r\n\x1a\nbody").unwrap();
+        let note = put(&cfg, "note.txt", b"pelican").unwrap();
+        let again = put(&cfg, "note.txt", b"pelican").unwrap();
+        let bad = put(&cfg, "../x", b"x").is_err() && put(&cfg, "", b"x").is_err();
+        let note_text = std::fs::read(&note).unwrap();
+        let _ = std::fs::remove_file(&png);
+        let _ = std::fs::remove_dir_all(note.parent().unwrap());
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(png.extension().unwrap() == "png" && png.file_name().unwrap().len() == 20, "{png:?}");
+        assert_eq!(note.file_name().unwrap(), "note.txt");
+        assert_eq!(note.parent().unwrap().parent().unwrap().file_name().unwrap(), "files");
+        assert_eq!(note, again);
+        assert_eq!(note_text, b"pelican");
+        assert!(bad);
+    }
+
+    #[test]
     fn the_first_bytes_decide() {
         assert_eq!(image_ext(b"\x89PNG\r\n\x1a\n....", Some("txt")), Some("png"));
         assert_eq!(image_ext(b"\xff\xd8\xff\xe0", None), Some("jpg"));
@@ -451,7 +503,8 @@ mod tests {
         assert_eq!(list(&dir)[0].entry.name.as_deref(), Some("header.png"));
         pin(&dir, &b, true).unwrap();
         assert!(kept(&dir).contains(&dir.canonicalize().unwrap().join(b.file_name().unwrap())));
-        assert!(crate::disk::flush_cache(&dir).files == 2 && b.is_file() && !a.is_file());
+        // Disk use removes the image that is not pinned (see crate::disk).
+        std::fs::remove_file(&a).unwrap();
         assert!(dir.join(INDEX).is_file());
         // The entry of a gone file drops on the next write.
         delete(&dir, &b).unwrap();

@@ -7,6 +7,7 @@ import { h } from "../ui/dom";
 import { showError } from "../ui/alerts";
 
 import { S, sessions } from "../app/state";
+import { isRemote, hostName } from "../app/hosts";
 import { place } from "../app/stateQueries";
 import { taskTitle } from "../workspace/model";
 
@@ -78,7 +79,7 @@ export async function pasteClipboard() {
   const text = await pasteText().catch(() => "");
   if (text) return pane.term.paste(text);
   try {
-    const t = await invoke<Typed | null>("clipboard_image", { who: whoOf(id) });
+    const t = await invoke<Typed | null>("clipboard_image", { who: whoOf(id), host: isRemote() ? hostName() : null });
     if (t) typeFiles(id, t);
   } catch (e) {
     showError(e);

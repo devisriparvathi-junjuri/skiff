@@ -1,0 +1,5 @@
+{
+  "request": {"cmd":"connection_status"},
+  "reply": {"kind":"connection_status","version":"1.6.6","protocol":27},
+  "capability": {"name":"connection_status","version":1}
+}

@@ -4,18 +4,22 @@ import { sessionsOf, shapeName } from "../workspace/layout";
 
 import { agentName } from "../workspace/model";
 import type { Group } from "../platform/types";
-import { invoke } from "@tauri-apps/api/core";
 import { showError } from "../ui/alerts";
 import { render } from "./render";
 import { S, sessions } from "./state";
 import { activeGroupObj, shownIds } from "./stateQueries";
 
 import { inBackground, unfocus } from "../workspace/view";
+import { hostCan, hostInvoke } from "./hostCaps";
 
 /** Group writes run one at a time, so a new group has its id before the next save. */
 let groupQueue = Promise.resolve();
 let groupWrites = 0;
 let reloadGroups = false;
+/** New groups whose create failed: the Host may have made one anyway, with
+ *  the reply lost. Their later saves are dropped, never sent as a second
+ *  create; the reload after the queue shows what the Host holds. */
+const unsure = new WeakSet<Group>();
 
 /** Agent names joined with " + ", three at most. */
 export function autoName(ids: string[]): string {
@@ -48,10 +52,20 @@ export function syncTemplateName(g: Group) {
 export function saveGroup(g: Group) {
   syncTemplateName(g);
   persist(async () => {
-    if (!S.groups.includes(g)) return;
-    const saved = await invoke<Group>("save_group", {
-      group: { id: g.id.startsWith("tmp-") ? "" : g.id, name: g.name, layout: g.layout, focus: g.focus, cwd: g.cwd ?? null },
-    });
+    if (!S.groups.includes(g) || unsure.has(g)) return;
+    const creating = g.id.startsWith("tmp-");
+    let saved: Group;
+    try {
+      saved = await hostInvoke<Group>("session_groups", "save_group", {
+        group: { id: creating ? "" : g.id, name: g.name, layout: g.layout, focus: g.focus, cwd: g.cwd ?? null },
+      });
+    } catch (e) {
+      if (creating) {
+        unsure.add(g);
+        reloadGroups = true;
+      }
+      throw e;
+    }
     if (saved.id !== g.id) {
       if (S.activeGroup === g.id) S.activeGroup = saved.id;
       if (S.groupPicked === g.id) S.groupPicked = saved.id;
@@ -71,7 +85,7 @@ export function moveGroup(g: Group, anchor: Group, side: "before" | "after") {
   S.groups = list;
   render();
   // Read at run time: a new group has its saved id by then.
-  persist(() => invoke("order_groups", { groups: S.groups.map((x) => x.id).filter((id) => !id.startsWith("tmp-")) }));
+  persist(() => hostInvoke("session_groups", "order_groups", { groups: S.groups.map((x) => x.id).filter((id) => !id.startsWith("tmp-")) }));
 }
 
 export function deleteGroup(g: Group) {
@@ -80,7 +94,7 @@ export function deleteGroup(g: Group) {
   if (S.renaming?.id === g.id) S.renaming = null;
   persist(async () => {
     if (g.id.startsWith("tmp-")) return;
-    await invoke("delete_group", { group: g.id }).catch((e) => console.warn(e));
+    await hostInvoke("session_groups", "delete_group", { group: g.id }).catch((e) => console.warn(e));
   });
 }
 
@@ -89,9 +103,14 @@ export async function loadGroups() {
     reloadGroups = true;
     return;
   }
+  // A remote Host's groups come in M3; its sessions show without them.
+  if (!hostCan("session_groups")) {
+    S.groups = [];
+    return;
+  }
   let list: Group[];
   try {
-    list = await invoke<Group[]>("list_groups");
+    list = await hostInvoke<Group[]>("session_groups", "list_groups");
   } catch (e) {
     console.error(e);
     return;
@@ -112,7 +131,7 @@ export async function loadGroups() {
   const next = list.filter((g) => !stale.includes(g));
   // The same list keeps its objects: the tree compares groups by identity and keeps its rows.
   if (JSON.stringify(next) !== JSON.stringify(S.groups)) S.groups = next;
-  for (const g of stale) persist(() => invoke("delete_group", { group: g.id }));
+  for (const g of stale) persist(() => hostInvoke("session_groups", "delete_group", { group: g.id }));
   const was = S.activeGroup;
   if (S.activeGroup && !activeGroupObj()) {
     S.activeGroup = null;

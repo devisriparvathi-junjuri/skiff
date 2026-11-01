@@ -6,6 +6,8 @@ pub mod config;
 pub mod files;
 pub mod git;
 pub mod group;
+#[cfg(unix)]
+pub mod host_identity;
 pub mod open;
 pub mod project;
 pub mod protocol;

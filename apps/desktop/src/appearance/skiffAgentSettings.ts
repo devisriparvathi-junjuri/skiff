@@ -9,6 +9,9 @@ import { badTaskTypeName, fileSize, modelError, modelFlag, TASK_TYPE_NAME } from
 import { reveal } from "../platform/fileActions";
 import { copyText } from "../platform/clipboard";
 import { showError } from "../ui/alerts";
+import { isRemote } from "../app/hosts";
+import { avatarScopes, setAvatarDialog, skipperFace } from "../workspace/skipperFace";
+import { scopeName } from "../workspace/model";
 
 /** A task type row as `set_skiff_agent` takes it. Null model: the agent's default. */
 export interface TaskEdit {
@@ -31,6 +34,8 @@ export interface InstructionActs {
   files: InstructionFile[];
   /** One error line under a row, by its file. */
   errors: Map<string, string>;
+  /** False on a Host whose Skiff cannot send its files: the rows show, with no buttons. */
+  editable: boolean;
   edit: (f: InstructionFile) => void;
   reset: (f: InstructionFile) => void;
 }
@@ -53,7 +58,6 @@ export function skiffAgentSection(
 
   const name = textRow(t("skipper.name"), t("skipper.nameAria"), set.name ?? "", DEFAULT_NAME, (v) => save({ key: "name", value: v || null }));
   const skipperName = textRow(t("skipper.skipperName"), t("skipper.skipperNameAria"), set.skipper_name ?? "", "Skipper", (v) => save({ key: "skipper_name", value: v || null }));
-  skipperName.classList.add("set-skipper-name");
 
   const main = mainName(set.name);
   const pick = agentPick(t("skipper.agentOf", { name: main }), choices, null);
@@ -98,6 +102,32 @@ export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInf
 }
 
 /**
+ * Settings › Skippers › Avatars: each fleet and project
+ * Skipper with a folder on this Mac, its face, and Change… for the picker.
+ * The faces are kept in those folders: a remote Host shows none here.
+ */
+export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTMLElement[] {
+  // The Admiral wears the mascot's head: nothing to change.
+  const scopes = isRemote() ? [] : avatarScopes().filter((s) => s);
+  if (!scopes.length) return [];
+  const word = set.skipper_name || "Skipper";
+  const rows = scopes.map((scope) => {
+    const label = scope ? t(scope.startsWith("fleet:") ? "skipper.avatarFleet" : "skipper.avatarProject", { scope: scopeName(scope), skipper: word }) : mainName(set.name);
+    const row = h("div", "set-row set-open set-agent set-avatar on");
+    const face = h("span", "c-cmd");
+    face.appendChild(skipperFace(scope || null, 26));
+    const change = h("button", "set-rm", t("skipper.change"));
+    change.type = "button";
+    change.addEventListener("click", () => setAvatarDialog(scope || null, t("skipper.avatarTitle", { name: label }), redraw));
+    const acts = h("span", "c-acts");
+    acts.append(change);
+    row.append(h("span", "c-name", label), face, acts);
+    return row;
+  });
+  return [sectionHead(t("skipper.avatars"), undefined, String(scopes.length)), ...rows];
+}
+
+/**
  * Settings › Skippers › Instructions: AGENTS.md, then each fleet's and each
  * open project's SKIPPER.md, in tree order. Edit opens the file, and writes
  * it from the template first when there is none. Reset… shows on an edited
@@ -122,15 +152,17 @@ export function instructionsSection(set: SkiffAgentSettings, acts: InstructionAc
           kind: "lead",
           draw: (f) => {
             const cell = h("span", "c-scope", f.scope.kind === "skipper" ? skipper : f.scope.name);
-            if (f.scope.kind !== "project") cell.append(h("span", "c-kind", t(f.scope.kind === "skipper" ? "skipper.everySkipper" : "skipper.fleet")));
+            if (f.scope.kind === "skipper" || f.scope.kind === "fleet") cell.append(h("span", "c-kind", t(f.scope.kind === "skipper" ? "skipper.everySkipper" : "skipper.fleet")));
             return cell;
           },
         },
         { key: "file", head: upper(t("skipper.colFile")), name: t("skipper.file"), kind: "preview", get: (f) => f.file },
         { key: "status", head: upper(t("settings.colStatus")), name: t("skipper.status"), kind: "lead", draw: fileState },
       ],
+      // The buttons go straight into the end cell, so they line up with every other row's.
       status: (f) => {
-        const box = h("span", "c-acts");
+        const box = document.createDocumentFragment();
+        if (!acts.editable) return box;
         const edit = h("button", "set-rm", t("skipper.edit"));
         edit.type = "button";
         edit.setAttribute("aria-label", t("skipper.editFile", { file: f.file }));
@@ -243,12 +275,13 @@ function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] 
   path.value = set.configured;
   path.title = set.configured;
   path.setAttribute("aria-label", t("skipper.folderAria"));
-  const acts = h("span", "c-mode set-folder-acts");
+  const acts = h("span", "c-acts");
   const copy = h("button", "set-rm", t("menu.copyPath"));
   copy.type = "button";
   copy.addEventListener("click", () => void copyText(set.configured).catch(showError));
   acts.append(copy);
-  if (set.folder_status === "ready") {
+  // A remote Host's folder is on that Host: no file manager here opens it.
+  if (set.folder_status === "ready" && !isRemote()) {
     const show = h("button", "set-rm", t("menu.showInFileManager"));
     show.type = "button";
     show.addEventListener("click", () => reveal(set.configured));

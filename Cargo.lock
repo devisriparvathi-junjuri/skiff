@@ -2274,6 +2274,12 @@ checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
 name = "minisign-verify"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22f9645cb765ea72b8111f36c522475d2daa0d22c957a9826437e97534bc4e9e"
+
+[[package]]
+name = "minisign-verify"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "871285dc19d8d0ebe0eef3d0e99a205f2a71363b122632cbbfa4a6c370a960ce"
@@ -3782,7 +3788,7 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "skiff-cli"
-version = "1.7.10"
+version = "1.8.8"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -3800,22 +3806,26 @@ dependencies = [
 
 [[package]]
 name = "skiff-client"
-version = "1.7.10"
+version = "1.8.8"
 dependencies = [
  "anyhow",
  "libc",
+ "minisign-verify 0.2.5",
  "rusqlite",
  "serde",
  "serde_json",
  "sha2",
  "skiff-core",
+ "skiff-host-api",
  "tokio",
+ "toml 1.1.6+spec-1.1.0",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
 name = "skiff-core"
-version = "0.6.34"
+version = "0.6.36"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3825,11 +3835,12 @@ dependencies = [
  "serde_json",
  "toml 1.1.6+spec-1.1.0",
  "toml_edit 0.25.15+spec-1.1.0",
+ "uuid",
 ]
 
 [[package]]
 name = "skiff-desktop"
-version = "1.7.10"
+version = "1.8.8"
 dependencies = [
  "anyhow",
  "clap",
@@ -3841,6 +3852,8 @@ dependencies = [
  "serde_json",
  "skiff-client",
  "skiff-core",
+ "skiff-host",
+ "skiff-host-api",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",
@@ -3851,8 +3864,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "skiff-host"
+version = "1.8.8"
+dependencies = [
+ "anyhow",
+ "dirs 6.0.0",
+ "libc",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "skiff-client",
+ "skiff-core",
+ "skiff-host-api",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "skiff-host-api"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "skiffd"
-version = "0.6.34"
+version = "0.6.36"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -3866,6 +3905,7 @@ dependencies = [
  "serde_json",
  "skiff-client",
  "skiff-core",
+ "skiff-host-api",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -4370,7 +4410,7 @@ dependencies = [
  "infer",
  "libc",
  "log",
- "minisign-verify",
+ "minisign-verify 0.3.0",
  "osakit",
  "percent-encoding",
  "reqwest",

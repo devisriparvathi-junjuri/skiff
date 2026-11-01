@@ -1,0 +1,149 @@
+{
+  "request": {
+    "cmd": "session_inventory"
+  },
+  "capability": {
+    "name": "session_inventory",
+    "version": 1
+  },
+  "reply": {
+    "kind": "session_inventory",
+    "sessions": [
+      {
+        "id": "z",
+        "label": "λ  ",
+        "role": "agent",
+        "cwd": "/work/../λ//.",
+        "command": "agent\u0000command",
+        "args": [
+          "",
+          "a\u0000b",
+          "λ  "
+        ],
+        "state": "waiting",
+        "cols": 65535,
+        "rows": 0,
+        "foreground_program": "λ",
+        "pid": 4294967295,
+        "exit_code": -2147483648,
+        "theme": "",
+        "name": "",
+        "title": "title\n",
+        "started_at": 18446744073709551615,
+        "last_output_at": 18446744073709551614,
+        "output_bytes": 18446744073709551613,
+        "away": [
+          {
+            "path": "/other//../x",
+            "command": "z",
+            "at": 1
+          },
+          {
+            "path": "./local",
+            "command": "a",
+            "at": 0
+          }
+        ],
+        "was": {
+          "agent": "codex",
+          "title": null
+        },
+        "resume": {
+          "agent": "claude",
+          "title": ""
+        },
+        "unread": true,
+        "agent_exit": 2147483647,
+        "peek": true,
+        "interactive": true,
+        "input_gen": 18446744073709551615,
+        "coordinator": true,
+        "watch": {
+          "since": 17,
+          "pids": [
+            2,
+            1,
+            2
+          ],
+          "failure": {
+            "kind": "ledger",
+            "message": "fixture λ",
+            "at": 11
+          },
+          "follows": [
+            "z",
+            "a",
+            "z"
+          ]
+        }
+      },
+      {
+        "id": "a",
+        "label": "shell",
+        "role": "shell",
+        "cwd": "",
+        "command": "/bin/sh",
+        "args": [],
+        "state": "idle",
+        "cols": 0,
+        "rows": 65535,
+        "foreground_program": null,
+        "pid": null,
+        "exit_code": null,
+        "theme": null,
+        "name": null,
+        "title": null,
+        "started_at": 0,
+        "last_output_at": 0,
+        "output_bytes": 0,
+        "away": [],
+        "was": null,
+        "resume": null,
+        "unread": false,
+        "agent_exit": null,
+        "peek": false,
+        "interactive": false,
+        "input_gen": 0
+      }
+    ]
+  },
+  "legacy_minimal": {
+    "id": "a",
+    "label": "shell",
+    "role": "shell",
+    "cwd": "",
+    "command": "/bin/sh",
+    "args": [],
+    "state": "idle",
+    "cols": 0,
+    "rows": 65535
+  },
+  "minimal_output": {
+    "id": "a",
+    "label": "shell",
+    "role": "shell",
+    "cwd": "",
+    "command": "/bin/sh",
+    "args": [],
+    "state": "idle",
+    "cols": 0,
+    "rows": 65535,
+    "foreground_program": null,
+    "pid": null,
+    "exit_code": null,
+    "theme": null,
+    "name": null,
+    "title": null,
+    "started_at": 0,
+    "last_output_at": 0,
+    "output_bytes": 0,
+    "away": [],
+    "was": null,
+    "resume": null,
+    "unread": false,
+    "agent_exit": null,
+    "peek": false,
+    "interactive": false,
+    "input_gen": 0
+  }
+}

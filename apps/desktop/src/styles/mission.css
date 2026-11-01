@@ -1,56 +1,147 @@
-/* Mission control (#88): the window under the top bar, one lane per fleet, one screen per session. Four lanes fit; more scroll sideways. */
+/* Mission control (#88): the Host's agent hierarchy as a graph on a canvas under the app's top bar, with the lit card's panel under the canvas. */
 /* Under the app's top bar, which stays: the board's search sits in it. */
 .mission { transform: translateZ(0); isolation: isolate; position: fixed; inset: calc(48 * var(--u)) 0 0 0; z-index: 60; display: flex; flex-direction: column; background: var(--bg); outline: none; }
 .mission[hidden] { display: none; }
 
-/* Open and close: the board only fades. The focus frame flies between the pane and its screen, over the board. */
+/* Open and close: the board only fades. The focus frame flies between the pane and its card, over the board. */
 .mission-frame { position: fixed; z-index: 61; box-sizing: border-box; border: calc(2 * var(--u)) solid var(--pc); pointer-events: none; transform: translateZ(0); }
-/* One frame at a time: the lit screen's own frame waits while the flying one moves. */
-.mission.flying .mission-tile.lit::after { visibility: hidden; }
-/* WebKitGTK paints overlay scrollbars above every layer, at full opacity. While the board fades, its lanes do not scroll. */
-.mission.fading .mission-lane { overflow-y: hidden; }
+/* One frame at a time: the lit card's own frame waits while the flying one moves. */
+.mission.flying .mission-card.lit { box-shadow: none; }
 
-.mission-lanes { flex: 1; min-height: 0; display: flex; overflow-x: auto; }
-/* Lanes share the free width; past four they scroll sideways. */
-.mission-lane { flex: 1 0 max(25%, calc(300 * var(--u))); min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--rule); overflow-y: auto; }
-/* z-index 3: the sticky head stays over the lit screen's frame (z-index 1) that scrolls under it. */
-.mission-lane-head { height: calc(40 * var(--u)); flex-shrink: 0; position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: calc(10 * var(--u)); padding: 0 calc(12 * var(--u)); border-bottom: 1px solid var(--rule); background: var(--bg-panel); }
-.mission-lane-name { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-2); }
-.mission-project { height: calc(40 * var(--u)); flex-shrink: 0; display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(12 * var(--u)); border-bottom: 1px solid var(--rule); }
-.mission-project .project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
+/* One error line under the top bar: the Host has no ledger. */
+.mission-fault { height: calc(20 * var(--u)); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); background: var(--bg-panel); font-size: calc(11px * var(--zoom, 1)); color: var(--error); }
+.mission-fault[hidden] { display: none; }
 
-.mission-tile { flex-shrink: 0; display: flex; flex-direction: column; width: 100%; padding: 0; border: 0; border-bottom: 1px solid var(--rule); background: var(--bg-deep); color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.mission-head { height: calc(20 * var(--u)); flex-shrink: 0; display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(10 * var(--u)); border-bottom: 1px solid var(--rule); background: var(--bg-panel); }
-.mission-head .title { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); }
-.mission-head .where { font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); flex-shrink: 0; max-width: calc(90 * var(--u)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mission-tile.lit .mission-head { background: color-mix(in srgb, var(--pc) 12%, var(--bg-panel)); }
-.mission-tile.lit .mission-head .title { color: var(--text); }
-/* The lit screen is framed as the focused pane is: 2px of project color over the whole screen. */
-.mission-tile { position: relative; }
-.mission-tile.lit::after { content: ""; position: absolute; inset: 0; border: calc(2 * var(--u)) solid var(--pc); pointer-events: none; z-index: 1; }
-.mission-screen { margin: 0; height: calc(12 * 14 * var(--u) + 16 * var(--u)); padding: calc(8 * var(--u)) calc(10 * var(--u)); overflow: hidden; white-space: pre; font-family: var(--mono); font-size: calc(10px * var(--zoom, 1)); line-height: calc(14 * var(--u)); color: var(--text-3); }
-.mission-screen.note { color: var(--text-dim); white-space: normal; font-family: var(--font); }
+/* The canvas: pan by drag or wheel, zoom by Ctrl+wheel. A dot grid moves with the pan. */
+.mission-canvas { flex: 1; min-height: 0; position: relative; overflow: hidden; cursor: grab; background-color: var(--bg-deep); background-image: radial-gradient(circle, color-mix(in srgb, var(--text) 9%, transparent) 1px, transparent 1.2px); touch-action: none; }
+.mission-canvas.panning { cursor: grabbing; }
+/* The world is laid out in unzoomed px and scaled as one: the app zoom goes into the transform. */
+.mission-world { --zoom: 1; --u: 1px; position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+/* Layers: cluster frames, then strings, then cards. A string runs over a frame and under a card. */
+.mission-strings { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 2; }
+/* A string is a group: its line, and a solid tuck at each end that ties it to the foot and the pin. */
+.mission-strings path { fill: none; stroke: var(--rule-strong); stroke-width: 2; }
+/* A working line's dashes march toward the child at 10 px/s: one 16px period in 1.6s, linear, so a late frame moves them less than a pixel. */
+.mission-strings .working > path { stroke: var(--state-working); }
+.mission-strings .working > .line { stroke-dasharray: 6 10; animation: mission-march 1.6s linear infinite; }
+@keyframes mission-march { to { stroke-dashoffset: -16; } }
+/* A drag pauses the march and keeps its phase. */
+.mission-canvas.moving .mission-strings .line { animation-play-state: paused; }
+.mission-strings .waiting > path { stroke: var(--state-waiting); }
+.mission-strings .done > path, .mission-strings .idle > path { stroke-width: 1.5; }
+.mission-strings g.dim { opacity: 0.25; }
+.mission-strings .lbl { font-family: var(--font); font-size: 11px; fill: var(--text-2); }
+.mission-strings .lbl.dim { opacity: 0.3; }
+.mission-strings .lblbg { fill: var(--bg-panel); stroke: var(--rule-strong); stroke-width: 1; }
+@media (prefers-reduced-motion: reduce) { .mission-strings .working > .line { animation: none; } }
+
+/* A cluster: a project's frame, or a fleet's. Its head folds it and drags it. */
+.mission-cluster { position: absolute; z-index: 1; box-sizing: border-box; border: 1px solid var(--rule-strong); background: color-mix(in srgb, var(--pc) 5%, var(--bg)); }
+.mission-cluster.fleet { --pc: var(--accent); background: color-mix(in srgb, var(--accent) 4%, var(--bg)); }
+.mission-cluster-head { height: 20px; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-bottom: 1px solid var(--rule-strong); background: color-mix(in srgb, var(--pc) 22%, var(--bg-panel)); font-size: 11px; font-weight: 600; color: var(--text); cursor: grab; white-space: nowrap; user-select: none; }
+.mission-cluster.fleet > .mission-cluster-head { text-transform: uppercase; letter-spacing: 0.08em; }
+.mission-cluster-head .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mission-cluster-head .tree-icon, .mission-card .head .tree-icon { width: 14px; height: 14px; flex-shrink: 0; display: grid; place-items: center; font-family: var(--mono); font-size: 7px; font-weight: 500; color: var(--bg); background: var(--pc); overflow: hidden; }
+.mission-cluster-head .tree-icon img, .mission-card .head .tree-icon img { width: 14px; height: 14px; }
+.mission-roll { margin-left: auto; font-family: var(--mono); font-size: 10px; font-weight: 400; color: var(--text-dim); letter-spacing: 0; text-transform: none; display: inline-flex; gap: 8px; }
+.mission-roll .w { color: var(--state-waiting); }
+.mission-roll .g { color: var(--state-working); }
+.mission-cluster.lit > .mission-cluster-head { box-shadow: inset 0 0 0 2px var(--pc); }
+.mission-cluster.dim { opacity: 0.4; }
+.mission-chev { width: 10px; height: 10px; flex-shrink: 0; color: var(--text-dim); transition: transform 120ms; cursor: pointer; }
+.mission-chev svg { width: 10px; height: 10px; }
+.mission-cluster.folded .mission-chev, .mission-card.folder .mission-chev { transform: rotate(-90deg); }
+/* A plan: a 20px caption above its cards. It has no pane, so it does not light. */
+.mission-plan { position: absolute; z-index: 3; height: 20px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; pointer-events: none; }
+.mission-plan::before { content: ""; width: 8px; height: 8px; border-left: 1px solid var(--rule-strong); border-bottom: 1px solid var(--rule-strong); flex-shrink: 0; }
+.mission-plan.dim { opacity: 0.4; }
+
+/* A card: a 20px head in the project tint, a 40px body. Square, flush, no shadow. */
+.mission-card { position: absolute; z-index: 3; box-sizing: border-box; width: 224px; height: 62px; border: 1px solid var(--rule-strong); background: var(--bg-panel); color: var(--text); cursor: pointer; user-select: none; display: flex; flex-direction: column; text-align: left; font: inherit; padding: 0; }
+.mission-card .head { height: 20px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-bottom: 1px solid var(--rule); background: color-mix(in srgb, var(--pc) 22%, var(--bg-panel)); font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; }
+.mission-card .head .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.mission-card .head .num { flex-shrink: 0; font-family: var(--mono); font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.mission-card .head .at { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.mission-card.waiting .head .at { color: var(--state-waiting); }
+.mission-card .body { height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 10px; }
+.mission-card .tx { min-width: 0; flex: 1; display: flex; flex-direction: column; justify-content: center; line-height: 1.2; }
+.mission-card .t { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mission-card .m { font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mission-card .m .w { color: var(--state-waiting-text); }
+.mission-card .m .g { color: var(--state-working); }
+.mission-card .m .mono { font-family: var(--mono); }
+/* The state marks, as the tree draws them: the skiff under way, the anchor, the bell, the flag, the check. */
+.mission-card .busy, .mission-panel-head .busy { position: relative; color: var(--state-working); width: calc(18 * var(--u)); height: calc(12 * var(--u)); overflow: hidden; flex-shrink: 0; background: linear-gradient(90deg, var(--state-working) 50%, transparent 0) left bottom / calc(6 * var(--u)) 1px repeat-x; animation: water 0.6s steps(3) var(--water-delay, 0ms) infinite; }
+.mission-card .busy svg, .mission-panel-head .busy svg { position: absolute; left: calc(4 * var(--u)); bottom: 1px; width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: rock 1.2s steps(2) var(--skiff-delay, 0ms) infinite; transform-origin: 50% 90%; }
+.mission-card .anchored, .mission-panel-head .anchored, .mission-card .belled, .mission-panel-head .belled, .mission-card .finished, .mission-panel-head .finished, .mission-card .unread, .mission-panel-head .unread { display: flex; align-items: center; justify-content: center; width: calc(18 * var(--u)); height: calc(12 * var(--u)); flex-shrink: 0; }
+.mission-card .anchored, .mission-panel-head .anchored { color: var(--state-idle); }
+.mission-card .belled, .mission-panel-head .belled { color: var(--state-waiting-text); }
+.mission-card .finished, .mission-panel-head .finished { color: var(--state-done); }
+.mission-card .unread, .mission-panel-head .unread { color: var(--diff-add); }
+@media (prefers-reduced-motion: reduce) { .mission-card .busy, .mission-panel-head .busy, .mission-card .busy svg, .mission-panel-head .busy svg { animation: none; } }
+.mission-card:hover { background: color-mix(in srgb, var(--text) 4%, var(--bg-panel)); }
+/* The lit card is framed as the focused pane is: 2px of project color. */
+.mission-card.lit { z-index: 5; box-shadow: 0 0 0 2px var(--pc); }
+.mission-card.waiting { border-color: var(--state-waiting); box-shadow: inset 2px 0 0 var(--state-waiting); }
+.mission-card.waiting .body { background: var(--state-waiting-bg); }
+.mission-card.waiting .t { color: var(--state-waiting-text); }
+.mission-card.waiting.lit { box-shadow: 0 0 0 2px var(--state-waiting), inset 2px 0 0 var(--state-waiting); }
+.mission-card.dim { opacity: 0.35; }
+.mission-card.dim:hover, .mission-card.dim.lit { opacity: 1; }
+.mission-card.skipper .head, .mission-card.admiral .head { --pc: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+.mission-card.skipper .head .at, .mission-card.admiral .head .at { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.mission-card.folder { background: var(--bg-raised); }
+.mission-card.folder .body { gap: 10px; }
+.mission-card.folder .t { font-weight: 600; }
+/* A card on the move follows the pointer over the others. While one moves, the others make room in 120ms, and the dropped card settles into its slot the same way. */
+.mission-items.reorder .mission-card { transition: left 120ms, top 120ms; }
+.mission-card.dragging { transition: none; z-index: 6; cursor: grabbing; }
+@media (prefers-reduced-motion: reduce) { .mission-items.reorder .mission-card { transition: none; } }
+/* The pin a string ties to: a round dot in the card's state color. */
+.mission-pin { position: absolute; left: 50%; top: -4px; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: var(--rule-strong); }
+.mission-pin.working { background: var(--state-working); }
+.mission-pin.waiting { background: var(--state-waiting); }
+.mission-pin.done { background: var(--state-done); }
+.mission-pin.accent { background: var(--accent); }
+/* An elsewhere pane, or a card with no pane: no click. */
+.mission-card.still { cursor: default; }
+
+/* A waiting card out of view: a 10px amber square at the edge of the view, toward it. A click pans there. */
+.mission-ticks { position: absolute; inset: 0; pointer-events: none; }
+.mission-tick { position: absolute; width: calc(10 * var(--u)); height: calc(10 * var(--u)); border: 0; padding: 0; background: var(--state-waiting); pointer-events: auto; cursor: pointer; }
+/* Zoom: out, in, fit, and the level. */
+.mission-zoom { position: absolute; right: calc(8 * var(--u)); bottom: calc(8 * var(--u)); display: flex; border: 1px solid var(--rule-strong); background: var(--bg-panel); }
+.mission-zoom button { width: calc(28 * var(--u)); height: calc(24 * var(--u)); border: 0; border-radius: 0; padding: 0; background: transparent; color: var(--text-3); cursor: pointer; font: inherit; font-size: calc(13px * var(--zoom, 1)); }
+.mission-zoom button + button { border-left: 1px solid var(--rule-strong); }
+.mission-zoom button:hover { color: var(--text); background: var(--hover); }
+.mission-zoom .level { width: calc(44 * var(--u)); font-family: var(--mono); font-size: calc(10px * var(--zoom, 1)); color: var(--text-dim); display: grid; place-items: center; border-left: 1px solid var(--rule-strong); font-variant-numeric: tabular-nums; }
 .mission-empty { margin: auto; color: var(--text-dim); }
-/* The board holds the keys; the lit screen is the only highlight. */
+/* The board holds the keys; the lit card is the only highlight. */
 body.kbd .mission:focus { outline: 0; }
-/* Scrolled to, a screen clears the sticky lane head. The first of a project brings its project row too. */
-.mission-tile { scroll-margin-top: calc(40 * var(--u)); }
-.mission-project + .mission-tile { scroll-margin-top: calc(80 * var(--u)); }
-/* A project's part of a lane, in that project's theme. */
-.mission-group { flex-shrink: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--text); }
-/* The last project fills its lane to the bottom, so no app-theme gap shows under it. */
-.mission-group:last-child { flex-grow: 1; }
 
-/* The scrollbar below stands in for the native one. */
-.mission-lanes { scrollbar-width: none; }
-.mission-lanes::-webkit-scrollbar { display: none; height: 0; }
-
-/* The sideways scrollbar: a wide track and a big thumb, easy to see and to grab. */
-.mission-scroll { position: relative; height: calc(28 * var(--u)); flex-shrink: 0; border-top: 1px solid var(--rule); background: var(--bg-deep); cursor: pointer; user-select: none; touch-action: none; }
-.mission-scroll[hidden] { display: none; }
-.mission-thumb { position: absolute; top: calc(4 * var(--u)); bottom: calc(4 * var(--u)); min-width: calc(64 * var(--u)); background: var(--rule-strong); cursor: grab; transition: background 120ms; }
-.mission-scroll:hover .mission-thumb { background: var(--text-dim); }
-.mission-scroll.dragging .mission-thumb { background: var(--text-3); cursor: grabbing; transition: none; }
+/* The panel under the canvas: the lit card's screen and its task. Folds to a 20px rail. */
+.mission-panel { flex-shrink: 0; border-top: 1px solid var(--rule); background: var(--bg-panel); display: flex; flex-direction: column; }
+.mission-panel-head { height: calc(20 * var(--u)); flex-shrink: 0; display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(12 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(11px * var(--zoom, 1)); white-space: nowrap; }
+.mission-panel-head .title { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mission-panel-head .state { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.mission-panel-head .state.w { color: var(--state-waiting-text); }
+.mission-panel-head .fold { margin-left: auto; width: calc(20 * var(--u)); height: calc(20 * var(--u)); display: grid; place-items: center; border: 0; padding: 0; background: transparent; color: var(--text-dim); cursor: pointer; }
+.mission-panel-head .fold svg { width: calc(10 * var(--u)); height: calc(10 * var(--u)); transition: transform 120ms; }
+.mission-panel.folded .mission-panel-head .fold svg { transform: rotate(180deg); }
+.mission-panel-body { display: flex; height: calc(12 * 14 * var(--u) + 16 * var(--u)); }
+.mission-panel.folded .mission-panel-body { display: none; }
+.mission-screen { flex: 3; min-width: 0; margin: 0; padding: calc(8 * var(--u)) calc(12 * var(--u)); overflow: hidden; white-space: pre; font-family: var(--mono); font-size: calc(10px * var(--zoom, 1)); line-height: calc(14 * var(--u)); color: var(--text-3); background: var(--bg-deep); }
+.mission-screen.note { color: var(--text-dim); white-space: normal; font-family: var(--font); }
+.mission-side { flex: 2; min-width: 0; border-left: 1px solid var(--rule); display: flex; flex-direction: column; }
+.mission-side-head { height: calc(20 * var(--u)); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 calc(12 * var(--u)); font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-2); border-bottom: 1px solid var(--rule); }
+.mission-side-head .mono { font-family: var(--mono); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text-dim); }
+.mission-task { padding: calc(6 * var(--u)) calc(12 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); line-height: 1.4; overflow: auto; flex: 1; min-height: 0; }
+.mission-task.none { color: var(--text-dim); }
+.mission-kv { display: grid; grid-template-columns: calc(64 * var(--u)) 1fr; font-size: calc(11px * var(--zoom, 1)); flex-shrink: 0; }
+.mission-kv > div { height: calc(20 * var(--u)); display: flex; align-items: center; padding: 0 calc(12 * var(--u)); border-top: 1px solid var(--rule); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mission-kv > div:nth-child(odd) { color: var(--text-dim); }
+.mission-kv .mono { font-family: var(--mono); font-size: calc(10px * var(--zoom, 1)); }
+.mission-kv .w { color: var(--state-waiting-text); }
 
 /* The search takes the palette field's place in the top bar while the board is open. What it leaves out hides. */
 #topbar .tb-cell.mission-find { display: none; flex-grow: 1; min-width: 0; max-width: calc(560 * var(--u)); gap: calc(10 * var(--u)); margin-left: max(0px, calc(50vw - 280 * var(--u) - 356 * var(--u))); border-left: 1px solid var(--rule); background: var(--bg-raised); color: var(--text-3); cursor: text; }
@@ -58,12 +149,11 @@ body:has(#mission-control:not([hidden])) #topbar .tb-cell.mission-find { display
 body:has(#mission-control:not([hidden])) #open-switcher { display: none; }
 /* Focus mode and maximize hide the top bar; the board brings it back. */
 body.focus-mode:has(#mission-control:not([hidden])) #topbar { opacity: 1; visibility: visible; pointer-events: auto; z-index: 62; }
-/* With the keys, the search gets the focus frame, and the lit screen gives up its own: one frame shows where typing goes. */
+/* With the keys, the search gets the focus frame, and the lit card gives up its own: one frame shows where typing goes. */
 #topbar .tb-cell.mission-find:focus-within { box-shadow: inset 0 0 0 calc(2 * var(--u)) var(--pc, var(--text-2)); }
-body:has(.mission-search:focus) .mission-tile.lit::after { visibility: hidden; }
+body:has(.mission-search:focus) .mission-card.lit { box-shadow: none; }
 .mission-search { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: calc(13px * var(--zoom, 1)); }
 .mission-search::placeholder { color: var(--text-3); }
-.mission-tile[hidden], .mission-group[hidden], .mission-lane[hidden] { display: none; }
 /* All / Running: one bordered control at the right of the search. Each part shows its count. The lit one has the raised ground, bold text and an accent line at its foot. */
 #topbar .tb-cell.mission-find { padding-right: calc(8 * var(--u)); }
 .mission-scope { flex-shrink: 0; display: flex; align-items: stretch; height: calc(30 * var(--u)); border: 1px solid var(--rule-strong); background: var(--bg-panel); }

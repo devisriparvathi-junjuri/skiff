@@ -14,7 +14,11 @@ import { bySessionPriority } from "./workspace/model";
 import type { Appearance, DaemonStatus } from "./platform/types";
 import { invoke } from "@tauri-apps/api/core";
 import { switcher } from "./app/commands";
-import { loadProjects, refreshSessions, reloadDaemon, setDaemon, subscribeEvents } from "./app/daemon";
+import { failureLine, followDataPlane, hostOnline, loadProjects, reconnectRemote, refreshSessions, reloadDaemon, setDaemon, subscribeEvents, untilConnected } from "./app/daemon";
+import { connectAttempt, connectDone, connectFailed } from "./app/connectPanel";
+import { isRemote, loadHosts, onHostsChanged, onManageHosts, setHostConnected, watchHostLink, watchHosts } from "./app/hosts";
+import { muteInput } from "./terminal/terminalRuntime";
+import { loadHostCaps } from "./app/hostCaps";
 import { $ } from "./ui/dom";
 import { showError } from "./ui/alerts";
 import { loadGroups } from "./app/groups";
@@ -43,7 +47,11 @@ configureRender(render);
 configurePaneActions({ focusPane, closePane, dragSessions });
 configureActionDispatch(runAction);
 configureCommandUi(switcher);
-startLedger();
+// The Host menu's Add SSH Host… and Manage Hosts… open Settings › Hosts. Here, not in
+// panels.ts or settings.ts: hosts.ts imports panels.ts through the context menu, so a
+// call there runs before hosts.ts has its `manage` and `changed`.
+onManageHosts((page) => void settings.open(page));
+onHostsChanged(() => settings.hostsChanged());
 
 // Skiff owns right-click. The webview's own menu (Back, Reload, Inspect)
 // never shows; text fields keep theirs for cut, copy and paste.
@@ -76,6 +84,9 @@ function staticText() {
 async function boot() {
   staticText();
   await startWorkspaceQuitGuard();
+  // Which Host this window shows decides everything below.
+  await loadHosts().catch(showError);
+  watchHosts();
   // `tauri dev` build: a badge in the status bar tells it apart from an installed Skiff.
   if (import.meta.env.DEV) {
     const badge = document.createElement("span");
@@ -101,8 +112,10 @@ async function boot() {
   void initTrace();
   startMemory();
   watchStatusbar();
+  if (isRemote()) connectAttempt();
   let status = await invoke<DaemonStatus>("daemon_status");
   setDaemon(status);
+  if (isRemote() && status.connected) connectDone();
   // An older skiffd that can reload moves onto the app's own first. Its sessions keep running.
   if (status.reload) {
     status = await reloadDaemon();
@@ -113,8 +126,22 @@ async function boot() {
     }
     setDaemon(status);
   }
-  if (!status.connected) return;
+  if (!status.connected) {
+    if (!isRemote()) return;
+    // A remote Host that is down at launch: wait for it, input off.
+    setHostConnected(false);
+    muteInput(true);
+    connectFailed(failureLine(status), 1000);
+    status = await untilConnected(1000);
+    muteInput(false);
+    setHostConnected(true);
+  }
+  watchHostLink(reconnectRemote, hostOnline);
 
+  // What the selected Host offers decides which session surfaces it gets.
+  await loadHostCaps().catch(console.error);
+  // The selected Host's ledger (M6), This Mac's or a remote one's.
+  startLedger();
   await subscribeEvents();
 
   await refreshSessions();
@@ -137,6 +164,8 @@ async function boot() {
   if (kbd) kbd.textContent = keyLabel("palette").replace(/\+/g, " ");
   const hint = document.querySelector("#open-switcher .spacer");
   if (hint) hint.textContent = t("switcher.hint");
+  // Projects and Git come back on their own when skiff-host starts late or restarts.
+  followDataPlane();
   await loadGroups();
   restorePlace();
   await startWorkspaces();

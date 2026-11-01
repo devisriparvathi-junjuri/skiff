@@ -15,7 +15,10 @@ use tokio::{
     time::sleep_until,
 };
 
-use crate::{print, resolve, sessions};
+use crate::{
+    drops::{Drops, Piece, Remote},
+    print, resolve, sessions,
+};
 
 /// Ctrl-\ detaches.
 const DETACH: u8 = 0x1c;
@@ -165,7 +168,24 @@ enum End {
     Signal,
 }
 
-pub async fn attach(c: &Client, arg: &str) -> Result<()> {
+/// `skiff attach --host`: the session on a remote Host from Settings › Hosts,
+/// through the same ssh forward the app uses.
+pub async fn attach_remote(host: &str, arg: &str) -> Result<()> {
+    let hosts = skiff_client::host::known::load(&skiff_client::host::known::path())?;
+    let Some(h) = hosts.named(host) else { bail!("no Host named {host} in Settings › Hosts") };
+    // The identity the person accepted in the app. The CLI accepts none.
+    if h.host_id.is_none() {
+        bail!("open {} in the app first: Skiff has not accepted its identity yet", h.name);
+    }
+    let selection = h.selection(None).map_err(anyhow::Error::msg)?;
+    let mut pending = selection.connect().await?;
+    pending.daemon_info().await?;
+    let selected = pending.activate().await?;
+    let remote = Remote { name: h.name.clone(), selection, session: selected.connection() };
+    attach(&selected.client(), arg, Some(Drops::new(remote))).await
+}
+
+pub async fn attach(c: &Client, arg: &str, mut drops: Option<Drops>) -> Result<()> {
     let all = sessions::sorted(c).await?;
     let s = resolve::session(&all, arg)?;
     let id = s.id.clone();
@@ -249,23 +269,52 @@ pub async fn attach(c: &Client, arg: &str) -> Result<()> {
                 },
                 k = keys.recv() => {
                     let Some(k) = k else { break End::Detached };
-                    let cut = k.iter().position(|&b| b == DETACH).or_else(|| {
-                        k.windows(DETACH_KITTY.len()).position(|w| w == DETACH_KITTY)
-                    });
-                    let (send, held) = guard.filter(&k[..cut.unwrap_or(k.len())], Instant::now());
-                    if !send.is_empty() {
-                        c.write_now(&id, send)?;
-                    }
-                    if cut.is_some() {
-                        break End::Detached;
-                    }
-                    if held {
-                        if let Some((cols, rows)) = size() {
-                            let text = "Ctrl-C held back. Ctrl-\\ detaches. Press Ctrl-C again to send it.";
-                            stdout.write_all(&notice_bytes(text, cols, rows))?;
-                            stdout.flush()?;
-                            wipe = Some(Instant::now() + NOTICE);
+                    // On a remote Host, a paste of local files gets their Host paths.
+                    let pieces = match drops.as_mut() {
+                        Some(d) => d.pastes.feed(&k),
+                        None => vec![Piece::Keys(k)],
+                    };
+                    let mut detach = false;
+                    for piece in pieces {
+                        let k = match piece {
+                            Piece::Keys(k) => k,
+                            Piece::Paste(text) => {
+                                match drops.as_mut().expect("only drops find pastes").paste(&text).await {
+                                    Ok(send) => c.write_now(&id, send)?,
+                                    Err(why) => {
+                                        if let Some((cols, rows)) = size() {
+                                            let mut err = std::io::stderr();
+                                            err.write_all(&notice_bytes(&why, cols, rows))?;
+                                            err.flush()?;
+                                            wipe = Some(Instant::now() + NOTICE);
+                                        }
+                                    }
+                                }
+                                continue;
+                            }
+                        };
+                        let cut = k.iter().position(|&b| b == DETACH).or_else(|| {
+                            k.windows(DETACH_KITTY.len()).position(|w| w == DETACH_KITTY)
+                        });
+                        let (send, held) = guard.filter(&k[..cut.unwrap_or(k.len())], Instant::now());
+                        if !send.is_empty() {
+                            c.write_now(&id, send)?;
                         }
+                        if cut.is_some() {
+                            detach = true;
+                            break;
+                        }
+                        if held {
+                            if let Some((cols, rows)) = size() {
+                                let text = "Ctrl-C held back. Ctrl-\\ detaches. Press Ctrl-C again to send it.";
+                                stdout.write_all(&notice_bytes(text, cols, rows))?;
+                                stdout.flush()?;
+                                wipe = Some(Instant::now() + NOTICE);
+                            }
+                        }
+                    }
+                    if detach {
+                        break End::Detached;
                     }
                 }
                 _ = async { sleep_until(wipe_at.unwrap().into()).await }, if wipe_at.is_some() => {

@@ -1,0 +1,13 @@
+[Unit]
+Description=Skiff projects service (skiff-host)
+After=skiffd.service
+# Restart it for as long as it stops: it holds no sessions.
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=%h/.local/share/skiff/server/current/skiff-host --session-socket %t/skiff/skiffd.sock
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

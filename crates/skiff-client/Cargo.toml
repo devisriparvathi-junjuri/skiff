@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+skiff-host-api.workspace = true
 skiff-core.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
@@ -14,5 +15,11 @@ anyhow.workspace = true
 tracing.workspace = true
 libc = "0.2"
 serde.workspace = true
-sha2 = "0.10"
+toml.workspace = true
+uuid.workspace = true
 rusqlite = { version = "0.40.2", features = ["bundled"] }
+minisign-verify = "0.2"
+sha2 = "0.10"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

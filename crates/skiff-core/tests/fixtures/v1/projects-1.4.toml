@@ -1,0 +1,38 @@
+# A Skiff 1.4 projects.toml, written by hand and by the app. Private fixture.
+[keys]
+palette = "ctrl+shift+p"
+next-waiting = "ctrl+shift+j"
+
+[appearance]
+theme = "harbor"
+font_size = 14
+menu_layout = "menu-bar"
+
+[open]
+diff = "delta --side-by-side {target}"
+peek = ["markdown"]
+
+[agents]
+enabled = ["claude", "codex"]
+
+[agents.commands]
+claude = "claude --model opus"
+
+# The main app.
+[[project]]
+name = "skiff"
+short = "skf"
+path = "/fixture/code/skiff"
+color = "#b69cff"
+theme = "lagoon"
+fleet = "Work"
+files = true
+
+[[project]]
+name = "storefront"
+path = "/fixture/code/storefront"
+color = "#f28fd0"
+changes = false
+background = "assets/bg.png"
+background_opacity = 70
+closed = true

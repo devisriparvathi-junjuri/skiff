@@ -1,0 +1,27 @@
+# A Skiff 1.6 projects.toml: the Skiff agent and task types, and the
+# Mission control filter. Private fixture.
+[keys]
+palette = "ctrl+k"
+
+[appearance]
+theme = "ultraviolet"
+mission_filter = "all"
+
+[open]
+peek = ["markdown", "html"]
+html = "open -a Safari {path}"
+
+[skiff_agent]
+enabled = true
+name = "Bosun"
+continue_on_restore = true
+
+[skiff_agent.tasks]
+review = { agent = "claude", model = "opus" }
+
+[[project]]
+name = "docs"
+short = "dx"
+path = "/fixture/code/docs"
+color = "#9ec1ff"
+theme = "harbor"

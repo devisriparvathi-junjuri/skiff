@@ -1,0 +1,31 @@
+{
+  "capabilities": {
+    "files": { "name": "files", "version": 1 },
+    "project_assets": { "name": "project_assets", "version": 1 }
+  },
+  "file_requests": [
+    { "cmd": "file_list", "worktree": "/srv/web", "dir": "" },
+    { "cmd": "file_list", "worktree": "/srv/web", "dir": "src/λ" },
+    { "cmd": "file_list", "worktree": "/srv/web", "dir": "docs", "follow_links": true },
+    { "cmd": "file_read", "worktree": "/srv/web", "file": "README.md", "purpose": "preview" },
+    { "cmd": "file_read", "worktree": "/srv/web", "file": "logo.png", "purpose": "copy" }
+  ],
+  "asset_requests": [
+    { "cmd": "project_background", "project": "web" }
+  ],
+  "replies": [
+    { "type": "reply", "id": 1, "result": { "Ok": { "kind": "files", "listing": { "entries": [
+      { "name": "src", "kind": "dir" },
+      { "name": "README.md", "kind": "file" },
+      { "name": "current", "kind": "link" },
+      { "name": "pipe", "kind": "other" }
+    ], "truncated": false } } } },
+    { "type": "reply", "id": 2, "result": { "Ok": { "kind": "file", "file": { "content": "text", "size": 6, "text": "hello\n", "truncated": false } } } },
+    { "type": "reply", "id": 3, "result": { "Ok": { "kind": "file", "file": { "content": "image", "size": 8, "mime": "image/png", "bytes": "iVBORw0KGgo=", "truncated": false } } } },
+    { "type": "reply", "id": 4, "result": { "Ok": { "kind": "file", "file": { "content": "image", "size": 9000000, "mime": "image/png", "truncated": true } } } },
+    { "type": "reply", "id": 5, "result": { "Ok": { "kind": "file", "file": { "content": "binary", "size": 4, "truncated": false } } } },
+    { "type": "reply", "id": 6, "result": { "Ok": { "kind": "file", "file": { "content": "link", "size": 11, "truncated": false, "target": "../elsewhere" } } } },
+    { "type": "reply", "id": 7, "result": { "Ok": { "kind": "image", "image": { "mime": "image/jpeg", "bytes": "/9j/" } } } },
+    { "type": "reply", "id": 8, "result": { "Err": { "code": "invalid", "message": "big.bin is 7.2 MiB. Skiff copies files up to 5.0 MiB." } } }
+  ]
+}

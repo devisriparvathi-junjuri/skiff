@@ -5,10 +5,20 @@ import { followPointer, menuOpened, type MenuEntry } from "./menu";
 import { launchDigit } from "../app/stateQueries";
 import { branchName } from "../workspace/model";
 import { t, upper } from "../i18n";
+import { rune } from "./runes";
+
+/** The Skipper a start menu offers first. */
+export interface SkipperStart {
+  label: string;
+  run: () => void;
+  disabled?: boolean;
+}
 
 interface Opts {
   /** Shell (null), then enabled agents. */
   choices: () => (AgentInfo | null)[];
+  /** The project's Skipper, or the fleet's while it runs. Null with no Skipper folder. */
+  skipper: (p: Project) => SkipperStart | null;
   /** `agent` null starts a plain shell. */
   start: (p: Project, w: Worktree, agent: AgentInfo | null) => void;
   openSettings: () => void;
@@ -23,7 +33,15 @@ export function startIn(w: Worktree): string {
   return upper(t("launch.startIn", { name: w.branch ?? (w.head ? t("launch.detached") : branchName(w)) }));
 }
 
-/** The + menu on a worktree: Shell, then enabled agents. Digits pick, Esc closes. */
+function skipperIcon() {
+  const span = document.createElement("span");
+  span.className = "agent-icon";
+  span.setAttribute("aria-hidden", "true");
+  span.append(rune("tools-sparkles", 14));
+  return span;
+}
+
+/** The + menu on a worktree: the Skipper, Shell, then enabled agents. Digits pick, Esc closes. */
 export function createLaunchMenu(o: Opts) {
   const menu = document.createElement("div");
   menu.id = "launch-menu";
@@ -69,9 +87,15 @@ export function createLaunchMenu(o: Opts) {
     const title = document.createElement("div");
     title.className = "lm-title";
     title.textContent = startIn(w);
+    const sk = o.skipper(p);
     const rows = o.choices().map((a, i) =>
-      item(launchDigit(i), a?.id ?? t("menu.shell"), "", () => o.start(p, w, a), "", launchIcon(a)),
+      item(launchDigit(i + (sk ? 1 : 0)), a?.id ?? t("menu.shell"), "", () => o.start(p, w, a), "", launchIcon(a)),
     );
+    if (sk) {
+      const b = item(launchDigit(0), sk.label, "", sk.run, "", skipperIcon());
+      b.disabled = !!sk.disabled;
+      rows.unshift(b);
+    }
     const head = document.createElement("div");
     head.className = "lm-head";
     head.textContent = upper(t("launch.newGroupHead"));
@@ -91,11 +115,11 @@ export function createLaunchMenu(o: Opts) {
     const top = r ? r.top : at instanceof HTMLElement ? 0 : at.y;
     menu.style.left = `${Math.max(0, Math.min(left, window.innerWidth - menu.offsetWidth))}px`;
     menu.style.top = `${Math.max(0, Math.min(top, window.innerHeight - h))}px`;
-    rows[0]?.focus();
+    rows.find((b) => !b.disabled)?.focus();
   }
 
   menu.addEventListener("keydown", (e) => {
-    const items = [...menu.querySelectorAll<HTMLButtonElement>(".lm-item")];
+    const items = [...menu.querySelectorAll<HTMLButtonElement>(".lm-item:not(:disabled)")];
     const i = items.indexOf(document.activeElement as HTMLButtonElement);
     if (e.key === "Escape") close();
     else if (e.key === "ArrowDown") items[(i + 1) % items.length]?.focus();
@@ -111,9 +135,11 @@ export function createLaunchMenu(o: Opts) {
 
   /** The same choices as entries of another menu: the project menu of a project with one worktree. */
   function entries(p: Project, w: Worktree): MenuEntry[] {
+    const sk = o.skipper(p);
     return [
       { head: startIn(w) },
-      ...o.choices().map((a, i) => ({ glyph: launchIcon(a), label: a?.id ?? t("menu.shell"), hint: launchDigit(i), run: () => o.start(p, w, a) })),
+      ...(sk ? [{ icon: "tools-sparkles", label: sk.label, hint: launchDigit(0), disabled: sk.disabled, run: sk.run }] : []),
+      ...o.choices().map((a, i) => ({ glyph: launchIcon(a), label: a?.id ?? t("menu.shell"), hint: launchDigit(i + (sk ? 1 : 0)), run: () => o.start(p, w, a) })),
       {
         icon: "code-group",
         label: t("select.newGroup"),

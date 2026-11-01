@@ -1,0 +1,34 @@
+{
+  "capabilities": {
+    "folders": { "name": "folders", "version": 1 }
+  },
+  "folder_requests": [
+    { "cmd": "folder_home" },
+    { "cmd": "folder_list", "path": "/home/jose" },
+    { "cmd": "folder_list", "path": "/home/jose/code", "hidden": true },
+    { "cmd": "folder_list", "path": "/home/jose/code", "filter": "sk" },
+    { "cmd": "folder_places" },
+    { "cmd": "folder_create", "parent": "/home/jose/code", "name": "nuevo λ" }
+  ],
+  "replies": [
+    { "type": "reply", "id": 1, "result": { "Ok": { "kind": "path", "path": "/home/jose" } } },
+    { "type": "reply", "id": 2, "result": { "Ok": { "kind": "folders", "listing": {
+      "path": "/home/jose/code", "real": "/srv/code", "parent": "/srv",
+      "entries": [
+        { "name": "api", "kind": "dir", "repo": { "branch": "main", "last_commit": 1792700000 } },
+        { "name": "detached", "kind": "dir", "repo": { "branch": null, "last_commit": null } },
+        { "name": "notes", "kind": "dir" },
+        { "name": "skiff", "kind": "link", "repo": { "branch": "v2/m0", "last_commit": 1792750000 } }
+      ],
+      "truncated": false } } } },
+    { "type": "reply", "id": 3, "result": { "Ok": { "kind": "folders", "listing": { "path": "/", "real": "/", "parent": null, "entries": [], "truncated": true } } } },
+    { "type": "reply", "id": 8, "result": { "Ok": { "kind": "places", "places": {
+      "recent": ["/srv/code/api", "/home/jose"],
+      "repos": [{ "path": "/srv/code/api", "branch": "main", "last_commit": 1792700000 }, { "path": "/home/jose/x", "branch": null, "last_commit": null }],
+      "scanning": true } } } },
+    { "type": "reply", "id": 4, "result": { "Ok": { "kind": "path", "path": "/srv/code/nuevo λ" } } },
+    { "type": "reply", "id": 5, "result": { "Err": { "code": "invalid", "message": "Type one folder name, with no /." } } },
+    { "type": "reply", "id": 6, "result": { "Err": { "code": "conflict", "message": "code has a folder with this name already." } } },
+    { "type": "reply", "id": 7, "result": { "Err": { "code": "permission", "message": "This Host does not let your account open root." } } }
+  ]
+}

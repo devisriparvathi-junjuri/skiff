@@ -32,7 +32,8 @@ get a message that starts with `Hand-off UID`. The hand-off row is
 {{main}}'s. Its pane is you.
 
 1. Add each task for it with `--parent UID`, in panes of any project of the
-   fleet. Add none outside it.
+   fleet. Add none outside it. Each task gets its work folder in the
+   hand-off's folder. Its result is `result.md` there.
 2. When every task is done, write the result to the hand-off's result path.
 3. Report it: `skiff ledger update UID --state done --result PATH`. Change
    nothing else on that row. {{main}} gets one `[watch]` line for it.

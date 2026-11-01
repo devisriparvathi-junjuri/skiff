@@ -80,15 +80,32 @@ impl Client {
     /// Queues input and returns at once. Calls from one thread reach the PTY
     /// in call order. The reply has no waiter, so the reader drops it.
     pub fn write_now(&self, session: &str, data: Vec<u8>) -> Result<()> {
+        self.input_now(session, data, false)
+    }
+
+    /// [`Self::write_now`], or as a paste. See [`Request::Write`].
+    pub fn input_now(&self, session: &str, data: Vec<u8>, paste: bool) -> Result<()> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let request = Request::Write {
             session: session.to_string(),
             data,
-            paste: false,
+            paste,
         };
+        // Input to a closed connection would vanish in its queue: refuse it.
+        if self.is_closed() {
+            return Err(anyhow!("skiffd connection closed"));
+        }
         let mut line = serde_json::to_vec(&Envelope { id, request })?;
         line.push(b'\n');
-        self.tx.send(line).map_err(|_| anyhow!("skiffd connection closed"))
+        let limit = self.input_limit.load(Ordering::Relaxed);
+        if limit > 0 && self.queued.load(Ordering::Relaxed) + line.len() > limit {
+            return Err(crate::InputBusy(limit).into());
+        }
+        if self.send_line(line) {
+            Ok(())
+        } else {
+            Err(anyhow!("skiffd connection closed"))
+        }
     }
 
     pub async fn set_session_theme(&self, session: &str, theme: Option<String>) -> Result<SessionInfo> {

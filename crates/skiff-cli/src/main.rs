@@ -9,6 +9,7 @@ use skiff_core::{group::SplitDir, session::Role};
 use layout::Side;
 
 mod attach;
+mod drops;
 mod callsign;
 mod daemon;
 mod events;
@@ -47,7 +48,11 @@ enum Cmd {
     /// Show this skiff's version and path, and the daemon's version,
     /// protocol, pid and socket. Warns when another skiff comes first on
     /// PATH, or skiffd's version is not the one this skiff was built for.
-    Status,
+    #[command(after_help = "--json prints one object and no warnings:\n  {\"skiff\":VERSION,\"protocol\":N,\"socket\":PATH,\"skiffd\":{\"version\":V,\"protocol\":N,\"pid\":PID,\"host_id\":ID}}\nskiffd is null when no skiffd answers on the socket; the exit code is then 1.")]
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
     /// Manage the daemon itself.
     #[command(subcommand)]
     Daemon(DaemonCmd),
@@ -118,7 +123,12 @@ enum Cmd {
     /// Run a session in this terminal. Ctrl-\ detaches. The session
     /// takes this terminal's size, in the app too, and gets its own size
     /// back on detach. A quick second Ctrl-C is held back once.
-    Attach { session: String },
+    Attach {
+        session: String,
+        /// A remote Host from Settings › Hosts: its name, id or ssh destination.
+        #[arg(long, value_name = "HOST")]
+        host: Option<String>,
+    },
     /// Attach to the Skiff agent (Admiral). Start it first if it does not
     /// run. Ctrl-\ detaches; the agent keeps running.
     #[command(
@@ -248,7 +258,7 @@ enum Cmd {
         cmd: OpenWithCmd,
     },
     /// The Skiff agent's task ledger: ledger.db in its folder.
-    #[command(after_help = "States: sent, pending (not delivered: the pane was working), blocked (the pane needs the user), done.\nls and show print interrupted for a sent or blocked task whose pane restarted since the send: a restore runs a new shell under the old pane id. They print gone for an open task whose pane no longer exists. A task sent on another daemon shows elsewhere in LIVE and its socket: it is never gone from here, and send refuses it. A plan with tasks shows done when every task is done, else sent.\nID is the row number or the 8-character uid that add prints. Neither is ever reused.\nResults: a task writes to results/<date>-<uid>-<slug>.md next to the ledger, or in projects/<project>/results/ for a project Skipper's rows and a hand-off to it, or in fleets/<fleet>/results/ for a fleet Skipper's; a plan owns results/<date>-<uid>-<slug>/ with plan.md, and its tasks write <uid>-<slug>.md in that folder. add stores and prints the path and makes no file. rm and prune keep the files.\nWork: a plan with its tasks, or a task with no plan. Work is working while an agent is on one of its tasks (the task is sent, and its pane works or ended its turn), open otherwise, and finished once closed. close stamps it on the person's word; reopen clears the stamp. A task added or moved under closed work, or set from done to another state, reopens it.\nReported: report stamps a done task once the person was told. An update to a state other than done clears the stamp. ls --unreported lists the done tasks not yet reported.\nThe ledger is ~/skiff-agent/ledger.db, or ledger.db in the [skiff_agent] folder override. On a socket other than the live one, it is in the socket's private state. SKIFF_LEDGER overrides the path.\nOwners: each row is Admiral's (grand), a project Skipper's (its project) or a fleet Skipper's (fleet:<fleet>). add, send, update, report, close, reopen, prune and rm refuse unless the caller owns the row: the Skiff agent session that owns the ledger for Admiral's rows, a project or fleet Skipper for its own. A project or fleet Skipper may also set the state and result of the hand-off it was given. A fleet Skipper's add and update --pane refuse a pane outside its fleet's projects. A Skipper a fleet Skipper took over is refused. skiff skipper and the agent's watcher record the Skipper's session; a new Skiff agent session on the owner's daemon, or on the live daemon, takes it over. The refusal names the owner. A shell pane is a person and may change rows. A shell outside Skiff has no SKIFF_SESSION, and an agent there looks the same, so it is refused too: a person there passes --person. ls and show work from anywhere.\nOn first use, an old ledger.md next to it is imported and kept as ledger.md.bak.")]
+    #[command(after_help = "States: sent, pending (not delivered: the pane was working), blocked (the pane needs the user), done.\nls and show print interrupted for a sent or blocked task whose pane restarted since the send: a restore runs a new shell under the old pane id. They print gone for an open task whose pane no longer exists. A task sent on another daemon shows elsewhere in LIVE and its socket: it is never gone from here, and send refuses it. A plan with tasks shows done when every task is done, else sent.\nID is the row number or the 8-character uid that add prints. Neither is ever reused.\nWork folders: add and handoff make one folder for each row, <uid>-<slug>/, in results/ next to the ledger, or in projects/<project>/results/ for a project Skipper's rows and a hand-off to it, or in fleets/<fleet>/results/ for a fleet Skipper's. A task in a plan, or under a hand-off, gets its folder in that row's folder. The result is result.md in the folder (plan.md for a plan). add prints the folder and the path, and makes no file in the folder. dir prints the folder. A row from before work folders keeps its result path and has no folder. rm and prune keep the files; with --flush they flush the work folders by the Disk use rule.\nWork: a plan with its tasks, or a task with no plan. Work is working while an agent is on one of its tasks (the task is sent, and its pane works or ended its turn), open otherwise, and finished once closed. close stamps it on the person's word; reopen clears the stamp. A task added or moved under closed work, or set from done to another state, reopens it.\nReported: report stamps a done task once the person was told. An update to a state other than done clears the stamp. ls --unreported lists the done tasks not yet reported.\nThe ledger is ~/skiff-agent/ledger.db, or ledger.db in the [skiff_agent] folder override. On a socket other than the live one, it is in the socket's private state. SKIFF_LEDGER overrides the path.\nOwners: each row is Admiral's (grand), a project Skipper's (its project) or a fleet Skipper's (fleet:<fleet>). add, send, update, report, close, reopen, prune and rm refuse unless the caller owns the row: the Skiff agent session that owns the ledger for Admiral's rows, a project or fleet Skipper for its own. A project or fleet Skipper may also set the state and result of the hand-off it was given. A fleet Skipper's add and update --pane refuse a pane outside its fleet's projects. A Skipper a fleet Skipper took over is refused. skiff skipper and the agent's watcher record the Skipper's session; a new Skiff agent session on the owner's daemon, or on the live daemon, takes it over. The refusal names the owner. A shell pane is a person and may change rows. A shell outside Skiff has no SKIFF_SESSION, and an agent there looks the same, so it is refused too: a person there passes --person. ls and show work from anywhere.\nA ledger from before version 3 moves aside to ledger.db.old on first use, and a new one starts empty.")]
     Ledger {
         /// From a shell outside Skiff: I am a person, not an agent. Without
         /// it, add, send, update, report, close, reopen, prune and rm refuse
@@ -262,8 +272,9 @@ enum Cmd {
 
 #[derive(Subcommand)]
 pub enum LedgerCmd {
-    /// Add a task, or a plan with --plan. Prints its id, uid and result
-    /// path, and the plan's uid for a task in a plan.
+    /// Add a task, or a plan with --plan, and make its work folder. Prints
+    /// its id, uid, folder and result path, and the plan's uid for a task in
+    /// a plan.
     Add {
         /// The pane the task went to: an id, a unique prefix or a name. It
         /// must exist. A plan has no pane.
@@ -289,7 +300,7 @@ pub enum LedgerCmd {
         /// Default: pending for a task, sent for a plan.
         #[arg(long)]
         state: Option<String>,
-        /// Where the child writes its result. Default: a path in results/.
+        /// Where the child writes its result. Default: result.md in the row's work folder.
         #[arg(long, value_name = "PATH")]
         result: Option<String>,
         /// Free text that names the work elsewhere: a URL, a ticket key,
@@ -420,17 +431,29 @@ pub enum LedgerCmd {
         ids: Vec<String>,
     },
     /// Remove closed work, with its tasks. Open work stays. Without --yes, it
-    /// prints the rows and changes nothing.
+    /// prints the rows and the size of their work folders, and changes nothing.
+    #[command(after_help = "The work folders stay unless you add --flush. --flush removes each folder that Settings › Disk use would flush: the work is done, its pane is not working, nothing in it changed in the last 15 minutes, and no git checkout in it has changes or unpushed commits. A folder in use stays, and the output says why.")]
     Prune {
         /// Remove work closed longer ago than this: 7d, 12h, 30m.
         #[arg(long, value_name = "AGE", default_value = "7d")]
         older_than: String,
         #[arg(long)]
         yes: bool,
+        /// Also flush the rows' work folders, by the Disk use rule.
+        #[arg(long, requires = "yes")]
+        flush: bool,
     },
-    /// Take a row out of the ledger now. Its result file stays. For finished
-    /// work, use close, and later prune.
-    Rm { id: String },
+    /// Take a row out of the ledger now. Its work folder and result file stay
+    /// unless you add --flush. For finished work, use close, and later prune.
+    Rm {
+        id: String,
+        /// Also flush the row's work folder, by the Disk use rule.
+        #[arg(long)]
+        flush: bool,
+    },
+    /// Print a row's work folder: everything for the task goes in it.
+    #[command(after_help = "A row from before work folders has none: it exits 1 and names its result path.")]
+    Dir { id: String },
 }
 
 #[derive(Subcommand)]
@@ -678,7 +701,7 @@ async fn run(cli: Cli) -> Result<i32> {
     // Check before command-specific settings or ledger work. Local settings
     // and recovery commands remain available with a different daemon.
     if !matches!(&cli.cmd,
-        Cmd::Status | Cmd::Daemon(_) | Cmd::Projects { cmd: None, .. }
+        Cmd::Status { .. } | Cmd::Daemon(_) | Cmd::Projects { cmd: None, .. }
         | Cmd::Projects { cmd: Some(ProjectsCmd::Add { .. }), .. }
         | Cmd::Theme { cmd: ThemeCmd::Ls { .. } | ThemeCmd::App { .. } | ThemeCmd::Project { .. } }
         | Cmd::OpenWith { .. }
@@ -701,7 +724,8 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Theme { cmd: ThemeCmd::Project { cmd } } => return theme::project(cmd).map(|_| 0),
         Cmd::OpenWith { cmd } => return open_with::run(cmd).map(|_| 0),
         Cmd::Ledger { person, cmd } => return ledger::run(&socket, cmd, person).await,
-        Cmd::Status => return info::status(&socket).await.map(|_| 0),
+        Cmd::Status { json: true } => return Ok(info::status_json(&socket).await),
+        Cmd::Status { json: false } => return info::status(&socket).await.map(|_| 0),
         Cmd::Daemon(DaemonCmd::Reload { binary }) => return daemon::reload(&socket, binary).await.map(|_| 0),
         Cmd::Daemon(DaemonCmd::Stop) => return daemon::stop(&socket).await.map(|_| 0),
         // Starts skiffd when it does not run.
@@ -709,6 +733,7 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Skipper { project: Some(p), no_attach, .. } => return skipper::run_project(&socket, &p, no_attach).await.map(|_| 0),
         Cmd::Skipper { fleet: Some(f), no_attach, yes, .. } => return skipper::run_fleet(&socket, &f, no_attach, yes).await.map(|_| 0),
         Cmd::Skipper { no_attach, .. } => return skipper::run(&socket, no_attach).await.map(|_| 0),
+        Cmd::Attach { session, host: Some(host) } => return attach::attach_remote(&host, &session).await.map(|_| 0),
         // It connects again after a daemon reload, so it holds no connection here.
         Cmd::Watch { skipper, no_notify } => {
             return watch::watch(&socket, watch::Options { skipper, notify: !no_notify }).await
@@ -739,12 +764,12 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Group(g) => group(&c, g).await,
         Cmd::Rename { session, name } => sessions::rename(&c, &session, &name).await,
         Cmd::Kill { sessions: ids } => sessions::kill(&c, &ids).await,
-        Cmd::Attach { session } => attach::attach(&c, &session).await,
+        Cmd::Attach { session, .. } => attach::attach(&c, &session, None).await,
         Cmd::Peek { session, lines } => peek::peek(&c, &session, lines).await,
         Cmd::Seen { session } => sessions::seen(&c, &session).await,
         Cmd::Agents { json } => info::agents(&c, json).await,
         Cmd::Theme { cmd: ThemeCmd::Session { cmd } } => theme::session(&c, cmd).await,
-        Cmd::Status | Cmd::Daemon(_) | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Ledger { .. } | Cmd::Wait { .. } | Cmd::Events { .. } | Cmd::Watch { .. } | Cmd::Send { .. } | Cmd::Skipper { .. } => {
+        Cmd::Status { .. } | Cmd::Daemon(_) | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Ledger { .. } | Cmd::Wait { .. } | Cmd::Events { .. } | Cmd::Watch { .. } | Cmd::Send { .. } | Cmd::Skipper { .. } => {
             unreachable!()
         }
     }

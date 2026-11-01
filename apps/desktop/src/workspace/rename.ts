@@ -2,35 +2,45 @@
 import { agentIcon } from "../appearance/agentIcon";
 import { agentName, taskTitle, isProjectSkipper } from "./model";
 import type { Group, SessionInfo } from "../platform/types";
-import { invoke } from "@tauri-apps/api/core";
 import { $, h } from "../ui/dom";
 import { showError } from "../ui/alerts";
 import { saveGroup } from "../app/groups";
-import { itemKey, listItems } from "../app/keyboard";
+import { findRow, itemKey, listItems } from "../app/keyboard";
 import { render } from "../app/render";
 import { S, sessions, upsert } from "../app/state";
 
 import { refocusTerminal } from "./view";
 import { t } from "../i18n";
+import { hostInvoke } from "../app/hostCaps";
 
 /** What the operator has typed so far; a re-render rebuilds the input from it. */
 let renameDraft: string | null = null;
 
-/** The list item that held the keys when a rename began; Esc and Enter give them back to it. */
-let renameReturn: string | null = null;
+/**
+ * The list item that held the keys when a rename began; Esc and Enter give them back to it.
+ * `group`: the group of its line, for a session with two rows (a Skipper also in a group).
+ */
+let renameReturn: { key: string; group: string | null } | null = null;
+
+/** The key of the row in rename: a session's id or a group's id. */
+export function renamingKey(): string | null {
+  return S.renamingSession ?? S.renaming?.id ?? null;
+}
 
 function rememberRow() {
   const a = document.activeElement as HTMLElement | null;
-  renameReturn = a && $("sidebar-scroll").contains(a) ? itemKey(a) || null : null;
+  const key = a && $("sidebar-scroll").contains(a) ? itemKey(a) : "";
+  renameReturn = key ? { key, group: a!.dataset.inGroup ?? null } : null;
 }
 
 /** After a rename ends by key: back to the row it began on, else the terminal. */
 export function leaveRename() {
-  const key = renameReturn;
+  const back = renameReturn;
   renameReturn = null;
-  const row = key ? listItems().find((x) => itemKey(x) === key) : undefined;
+  if (back) S.roveAt = { key: back.key, group: back.group };
+  const row = back ? findRow(listItems(), back.key) : undefined;
   if (row) {
-    S.roveKey = key;
+    S.roveKey = back!.key;
     row.focus();
   } else refocusTerminal();
 }
@@ -56,7 +66,7 @@ async function finishRename(id: string, name: string | null, byKey = false) {
   renameDraft = null;
   if (name !== null) {
     try {
-      const info = await invoke<SessionInfo>("rename_session", { session: id, name });
+      const info = await hostInvoke<SessionInfo>("session_lifecycle", "rename_session", { session: id, name });
       // The session may have ended during the call; do not bring it back.
       if (sessions.has(id)) upsert(info);
     } catch (e) {

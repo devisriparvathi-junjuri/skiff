@@ -20,8 +20,9 @@
  * A click on a row does the main action for its state: open the pane or the
  * result. Small icons at the right edge do the rest, only when they apply:
  * the pane or the result. The panel never writes: only Skipper changes rows.
- * No row has a menu. The rows come read-only from the backend, again on each
- * change to `ledger.db`.
+ * No row has a menu. The rows come read-only from the selected Host
+ * (`ledger@1`), again on each change to its ledger. A result shows in the
+ * page's own viewer, read by the Host from its row: no path opens here.
  *
  * An open workspace (#154) filters the rows by their project: its projects'
  * work, and work with no project. A plan shows by its own project or a visible
@@ -39,7 +40,6 @@
  * the tasks that need them. The fold stays in localStorage on this machine.
  * A fold or an unfold slides the width; a saved fold at start does not.
  */
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { keyLabel } from "../app/keys";
 import { render } from "../app/renderRequest";
@@ -49,7 +49,9 @@ import { ctxMenu } from "../ui/contextMenu";
 import { S, sessions } from "../app/state";
 import { shownIds } from "../app/stateQueries";
 import type { SessionInfo } from "../platform/types";
-import { openPath, previewToken } from "../terminal/peek";
+import { openLedgerResult, previewToken } from "../terminal/peek";
+import { hostInvoke } from "../app/hostCaps";
+import { dataEpoch } from "../app/dataPlane";
 import { holdFits, releaseFits } from "../terminal/terminal";
 import { panes } from "../terminal/terminalState";
 import type { Action } from "../app/keys";
@@ -63,7 +65,7 @@ import { ledgerAllWork, ledgerScope, setLedgerAllWork, workspaceName, workspaceO
 import { t, tn, upper, type MessageKey } from "../i18n";
 
 /** A ledger row as `ledger_rows` returns it. */
-interface Entry {
+export interface Entry {
   id: number;
   uid: string;
   kind: "task" | "plan" | "handoff";
@@ -79,33 +81,34 @@ interface Entry {
   /** The short title Skipper gave it. */
   title: string | null;
   state: "sent" | "pending" | "blocked" | "done";
-  result_path: string | null;
   updated_at: string;
   /** When the person, or Skiff once every task was done and reported, closed the work. Only a work head has it. */
   closed_at: string | null;
-  /** The work's bucket, as `skiff ledger ls` gives it. Every row of one work has the same one. */
-  bucket: "working" | "open" | "finished";
+  /** The work's bucket, as `skiff ledger ls` gives it. Every row of one work has the same one.
+   *  Missing from a Host that predates it: its rows file as not finished. */
+  bucket?: "working" | "open" | "finished";
   /** When skiff set the task done because its pane was gone. */
   gone_at: string | null;
   /** The pane is on another daemon. */
   elsewhere?: boolean;
+  /** The Host can show the result. */
   result_exists: boolean;
+  /** When Settings › Disk use flushed the row's work folder. */
+  flushed_at?: string | null;
 }
 
 /** Where a task stands, from its row and its pane. */
-type State = "pending" | "sent" | "approval" | "blocked" | "interrupted" | "gone" | "exited" | "done";
+export type State = "pending" | "sent" | "approval" | "blocked" | "interrupted" | "gone" | "exited" | "done";
 
 /** The states that need the person, and the word that takes the pane name's place. */
 const NEED: Partial<Record<State, MessageKey>> = { approval: "ledger.needApproval", blocked: "ledger.needBlocked", interrupted: "ledger.needRestarted", gone: "ledger.needGone", exited: "ledger.needExited" };
-/** The word for a state that needs the person, else "". */
-const needWord = (st: State) => (NEED[st] ? t(NEED[st]!) : "");
 /** The order of the needs, most urgent first: a plan shows the first its tasks have. */
 const URGENT: State[] = ["approval", "blocked", "interrupted", "gone", "exited"];
 
 /** The order in Open: needs the person, then done, then the rest. */
 const rank = (st: State) => (NEED[st] ? 0 : st === "done" ? 1 : 2);
 
-/** Finished keeps this many items. A plan counts as one. The backend reads no more. */
+/** Finished keeps this many items. A plan counts as one. The Host reads no more. */
 const KEEP = 100;
 
 /** A task as the panel shows it. */
@@ -135,16 +138,25 @@ interface Unit {
 let rows: Entry[] = [];
 let error: string | null = null;
 let loaded = false;
+/** The last read asked for. Only its reply shows. */
+let asked = 0;
 
+/** Reads the rows again. A reply shows only when no read was asked since and
+ *  the data connection it came on is still the one on screen. */
 export async function loadLedger() {
+  const mine = ++asked;
+  const at = dataEpoch();
+  let next: Entry[] = [];
+  let err: string | null = null;
   const before = loaded ? JSON.stringify([rows, error]) : null;
   try {
-    rows = await invoke<Entry[]>("ledger_rows");
-    error = null;
+    next = await hostInvoke<Entry[]>("ledger", "ledger_rows");
   } catch (e) {
-    rows = [];
-    error = String(e);
+    err = String(e);
   }
+  if (mine !== asked || at !== dataEpoch()) return;
+  rows = next;
+  error = err;
   loaded = true;
   // The file changes with every write to it, often with the same rows.
   if (JSON.stringify([rows, error]) !== before) render("ledger");
@@ -184,6 +196,14 @@ export function shortTitle(text: string): string {
 
 /** The title Skipper gave the row, else the one the task text gives. */
 const titleOf = (r: Entry) => r.title?.trim() || shortTitle(r.task);
+
+/** The rows as the panel holds them, for a surface that draws them its own way: mission control's strings. */
+export const ledgerRows = (): readonly Entry[] => rows;
+/** Where a task stands, for a surface outside the panel. */
+export const taskState = (r: Entry): State => look(r).st;
+/** The word for a state that needs the person, else `null`. */
+export const needWord = (st: State): string | null => (NEED[st] ? t(NEED[st]!) : null);
+export const ledgerTitle = titleOf;
 
 function look(r: Entry): Look {
   const s = r.pane_id ? sessions.get(r.pane_id) ?? null : null;
@@ -457,9 +477,9 @@ interface Acts {
 let ours = 0;
 
 const result = (r: Entry) =>
-  r.result_exists && r.result_path
+  r.result_exists
     ? () => {
-        openPath(r.result_path!);
+        openLedgerResult(r.uid, titleOf(r));
         ours = previewToken();
       }
     : null;
@@ -510,7 +530,9 @@ function line(r: Entry, st: State, label: string, a: Acts, o: { plan?: boolean; 
     });
     acts.append(b);
   }
-  row.append(mark(r), h("span", "lg-title", titleOf(r)), h("span", o.plan ? "lg-n" : "lg-pane", label));
+  // Disk use removed the work folder: the row stays, and says so.
+  const flushed = !need && !r.result_exists && !!r.flushed_at;
+  row.append(mark(r), h("span", "lg-title", titleOf(r)), h("span", o.plan ? "lg-n" : "lg-pane", flushed ? t("ledger.resultFlushed") : label));
   if (o.count) row.append(h("span", "lg-n", o.count));
   row.append(acts);
   if (a.click) row.addEventListener("click", a.click);
@@ -557,8 +579,8 @@ function unitRows(u: Unit, fin: boolean): HTMLElement[] {
 
 /** What the list draws. The panel is rebuilt only when it changes. */
 function signature(x: Sections): string {
-  const look = (l: Look): unknown[] => [l.r.id, l.r.state, l.r.title, l.r.task, l.r.updated_at, l.r.closed_at, l.r.result_exists, l.st, l.where, opens(l), l.kids?.map(look)];
-  const unit = (u: Unit) => [u.r.id, u.st, u.r.title, u.r.task, u.r.updated_at, u.r.closed_at, u.r.result_exists, u.look ? look(u.look) : null, u.kids?.map(look)];
+  const look = (l: Look): unknown[] => [l.r.id, l.r.state, l.r.title, l.r.task, l.r.updated_at, l.r.closed_at, l.r.result_exists, l.r.flushed_at, l.st, l.where, opens(l), l.kids?.map(look)];
+  const unit = (u: Unit) => [u.r.id, u.st, u.r.title, u.r.task, u.r.updated_at, u.r.closed_at, u.r.result_exists, u.r.flushed_at, u.look ? look(u.look) : null, u.kids?.map(look)];
   const tags = S.projects.map((p) => [p.name, p.short, accent(p)]);
   const skippers = [...sessions.keys()].map((id) => [id, coordinatorOf(id)]).filter(([, scope]) => scope);
   return JSON.stringify([error, scopeLabel(), filter(), tags, skippers, x.working.map(unit), x.open.map(unit), x.finished.map(unit)]);

@@ -6,6 +6,7 @@ import { showError } from "../ui/alerts";
 import { dialogFrame } from "../ui/dialogParts";
 import { $, button, h } from "../ui/dom";
 import { opensAtOnce } from "./daemonNotice";
+import { acceptHostIdentity, updateShownHost } from "./hosts";
 import { branchName, taskTitle } from "../workspace/model";
 import { sessions } from "./state";
 import { place } from "./stateQueries";
@@ -20,9 +21,15 @@ const WARNINGS: Record<DaemonWarning["kind"], [MessageKey, MessageKey]> = {
   newer: ["daemon.badgeNewer", "daemon.titleNewer"],
   hung: ["daemon.badgeHung", "daemon.titleHung"],
   failed: ["daemon.badgeFailed", "daemon.titleFailed"],
+  remote: ["daemon.badgeRemote", "daemon.titleRemote"],
+  identity: ["daemon.badgeIdentity", "daemon.titleIdentity"],
+  update: ["daemon.badgeUpdate", "daemon.titleUpdate"],
 };
 
 let shown: DaemonWarning | null = null;
+
+/** The warning the badge shows now. `null`: none. */
+export const daemonWarning = () => shown;
 /** Set by "Restart when idle": the restart waits until no agent works. */
 let whenIdle = false;
 
@@ -62,7 +69,7 @@ export function daemonBadge(warning: DaemonWarning | null, requested = false) {
   const badge = button("tb-cell daemon-badge", "", () => (pop.isConnected ? close() : open()));
   badge.id = "daemon-badge";
   const [label, title] = WARNINGS[warning.kind].map((key) => t(key));
-  badge.append(h("span", "dot " + (warning.kind === "newer" ? "idle" : "waiting")), whenIdle ? t("daemon.restartsIdle") : label);
+  badge.append(h("span", "dot " + (warning.kind === "newer" || warning.kind === "update" ? "idle" : "waiting")), whenIdle ? t("daemon.restartsIdle") : label);
   badge.setAttribute("aria-haspopup", "dialog");
   $("open-settings").before(badge);
 
@@ -83,7 +90,25 @@ export function daemonBadge(warning: DaemonWarning | null, requested = false) {
         else restartDialog();
       });
   const foot = h("div", "confirm-foot");
-  foot.append(later, restart);
+  // This app never restarts or updates skiffd on a remote Host.
+  if (warning.kind === "remote") foot.append(later);
+  else if (warning.kind === "update")
+    foot.append(
+      later,
+      button("confirm-act go", t("skiffAgent.updateSkiff"), () => {
+        close();
+        updateShownHost();
+      }),
+    );
+  else if (warning.kind === "identity")
+    foot.append(
+      later,
+      button("confirm-act", t("daemon.acceptIdentity"), () => {
+        close();
+        void acceptHostIdentity();
+      }),
+    );
+  else foot.append(later, restart);
   const body = whenIdle
     ? tn("daemon.idleWait", working().length)
     : warning.message;

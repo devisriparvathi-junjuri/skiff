@@ -1,5 +1,6 @@
 /** App keys, Tab order, F6 regions, arrows in the lists. */
-import { isSkiffAgent } from "./skiffAgent";
+import { isSkiffAgent, projectSkipperOf } from "./skiffAgent";
+import { pickSkipperRow, skippersOn } from "../workspace/skippersView";
 import { type Action, actionFor, isMac } from "./keys";
 import { runAction } from "./actionDispatch";
 import { switcher } from "./commandUi";
@@ -24,8 +25,9 @@ import { ledgerKey } from "../workspace/ledger";
 import { animateFold } from "../ui/fold";
 import { fleetKey, isOpen, projectKey as projectRowKey, toggleRow, visibleProjects } from "../workspace/tree";
 import { scopeFleet } from "../workspace/model";
+import { missionOpen, pickSkipper } from "../workspace/missionControl";
 
-/** Ctrl+Shift+1..9 picks a project row the tree shows (Command+Option+1..9 on macOS). Not in the keymap: it is a range, not one key. */
+/** Ctrl+Shift+1..9 picks a project row the tree shows (Command+Option+1..9 on macOS); in Mission control, a Skipper card. Not in the keymap: it is a range, not one key. */
 function projectKey(e: KeyboardEvent): number | null {
   if (isMac ? !e.metaKey || !e.altKey || e.shiftKey || e.ctrlKey : !e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey) return null;
   const m = /^Digit([1-9])$/.exec(e.code);
@@ -49,6 +51,16 @@ window.addEventListener("keydown", (e) => {
       runAction(key);
     }
     return;
+  }
+  // Mission control gives the number keys to its Skipper cards. The tree's projects wait until it closes.
+  if (missionOpen()) {
+    const n = projectKey(e);
+    if (n !== null) {
+      e.preventDefault();
+      e.stopPropagation();
+      pickSkipper(n);
+      return;
+    }
   }
   // An open menu or dialog keeps the keys until it closes. Holding Ctrl+Shift
   // from the shortcut that opened it, then pressing Enter, picks the item
@@ -83,13 +95,33 @@ export function listItems(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .fleet-pick, #sidebar-scroll .project-pick, #sidebar-scroll .wt-pick, #sidebar-scroll .group-pick, #sidebar-scroll button.session-row, #sidebar-scroll .files-head, #sidebar-scroll .file-row")];
 }
 
+/**
+ * The row with this key. A Skipper (or the Skiff agent) in a group has two
+ * rows with one key, its own row and its line in the group: the one in the
+ * group `S.roveAt` names, else its own row.
+ */
+export function findRow(items: HTMLElement[], key: string | null | undefined): HTMLElement | undefined {
+  if (!key) return undefined;
+  const rows = items.filter((x) => itemKey(x) === key);
+  if (rows.length < 2) return rows[0];
+  const group = S.roveAt?.key === key ? S.roveAt.group : null;
+  return rows.find((x) => (x.dataset.inGroup ?? null) === group) ?? rows[0];
+}
+
+/** Makes this row the current one: its key, and which of its rows when it has two. */
+export function roveTo(el: HTMLElement) {
+  const key = itemKey(el);
+  S.roveKey = key;
+  S.roveAt = { key, group: el.dataset.inGroup ?? null };
+}
+
 /** Where we are in the list: the last-roved row, else the picked group, else the
  *  session on screen. One row at most, whatever its kind. */
 export function currentRow(items = listItems()): HTMLElement | undefined {
-  const roved = S.roveKey ? items.find((x) => itemKey(x) === S.roveKey) : undefined;
+  const roved = findRow(items, S.roveKey);
   if (roved) return roved;
   if (S.groupPicked) return items.find((x) => x.dataset.group === S.groupPicked);
-  return S.focused ? items.find((x) => x.dataset.session === S.focused) : undefined;
+  return findRow(items, S.focused);
 }
 
 /** The roving tab stop: the current row, else the first row. */
@@ -97,13 +129,18 @@ function roveTarget(): HTMLElement | undefined {
   return currentRow() ?? listItems()[0];
 }
 
-/** Moves the one highlight to the current row. */
+/** Moves the one highlight to the current row. The row of the pane on screen, when it is another one, carries `shown`. */
 export function markCurrent() {
   const items = listItems();
-  const cur = currentRow(items);
+  // A row in rename is its name field, not a list item. It stays the current row until the rename ends.
+  const editing = document.querySelector<HTMLElement>("#sidebar-scroll .renaming");
+  const cur = editing ? undefined : currentRow(items);
   for (const x of items) x.classList.toggle("current", x === cur);
+  editing?.classList.add("current");
+  for (const x of document.querySelectorAll<HTMLElement>("#sidebar-scroll [data-session]")) x.classList.toggle("shown", !!S.focused && x.dataset.session === S.focused && x !== cur);
   // The worktree marker goes with it: on the project row, no worktree is marked.
-  if (cur) for (const w of document.querySelectorAll("#sidebar-scroll .wt")) w.classList.toggle("selected", !!cur && w.contains(cur));
+  const mark = editing ?? cur;
+  if (mark) for (const w of document.querySelectorAll("#sidebar-scroll .wt")) w.classList.toggle("selected", w.contains(mark));
 }
 
 /**
@@ -216,10 +253,10 @@ function landOn(next: HTMLElement) {
   const key = itemKey(next);
   document.body.classList.add("kbd");
   if (next.dataset.session) {
-    S.roveKey = key;
+    roveTo(next);
     revealSession(next.dataset.session);
   } else if (next.dataset.group) {
-    S.roveKey = key;
+    roveTo(next);
     showGroup(next.dataset.group, true);
   } else if (rowActs(key)?.preview && !rowActs(key)?.fold) {
     select(key, true);
@@ -233,16 +270,21 @@ function landOn(next: HTMLElement) {
 
 /**
  * Ctrl+Shift+1..9: the project row with that number, counted down the tree.
- * The panes show the first line under it (its first group, else its first
- * session), not the last one in use there. The keys go to the project row.
+ * The panes show its Skipper, else the first line under it (its first group,
+ * else its first session), not the last one in use there. The keys go to the
+ * project row. In the Skippers list the number counts the fleet and project
+ * Skippers there, not Admiral, and opens that Skipper as a click does.
  */
 function pickProject(n: number) {
+  if (skippersOn()) return pickSkipperRow(n);
   const p = visibleProjects()[n - 1];
   if (!p) return;
   selectProject(p.name);
+  const skipper = projectSkipperOf(p.name);
   const w = p.worktrees.find((x) => x.path === selectedWorktree.get(p.name));
   const first = w ? worktreeLines(w).find((l) => !l.pointer) : undefined;
-  if (first?.group) showGroup(first.group.id);
+  if (skipper) revealSession(skipper.id);
+  else if (first?.group) showGroup(first.group.id);
   else if (first?.session) revealSession(first.session.id);
   toProject();
   listItems().find((el) => el.dataset.key === projectRowKey(p.name))?.scrollIntoView({ block: "nearest" });

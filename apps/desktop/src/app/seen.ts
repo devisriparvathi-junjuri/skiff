@@ -1,8 +1,8 @@
 /** What the user has seen: the pane with the keys, while the window is in front. */
-import { invoke } from "@tauri-apps/api/core";
 
 import { S, sessions } from "./state";
 import { previewOnScreen } from "../terminal/peek";
+import { hostCan, hostInvoke } from "./hostCaps";
 
 /** A picked group row holds the keys: the focused pane is shown but not selected. */
 export const keysOffPanes = () => !!S.groupPicked && S.groupPicked === S.activeGroup;
@@ -21,7 +21,9 @@ export function markSeen(id: string) {
   if (quiet) return;
   const s = sessions.get(id);
   if (!s || (!s.unread && s.agent_exit == null)) return;
+  // A remote Host keeps its marks until M3 lets this app change them.
+  if (!hostCan("session_lifecycle")) return;
   s.unread = false;
   s.agent_exit = null;
-  invoke("session_seen", { session: id }).catch(console.error);
+  hostInvoke("session_lifecycle", "session_seen", { session: id }).catch(console.error);
 }

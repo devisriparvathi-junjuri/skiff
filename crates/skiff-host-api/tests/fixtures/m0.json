@@ -1,0 +1,206 @@
+{
+  "hosts": [
+    {
+      "host_id": "host-1",
+      "os": "linux",
+      "account": "jose"
+    }
+  ],
+  "endpoints": [
+    {
+      "kind": "local",
+      "socket": "/run/user/501/skiff/skiffd.sock"
+    },
+    {
+      "kind": "ssh",
+      "hostname": "build",
+      "account": "jose",
+      "port": 22,
+      "socket": "/run/user/501/skiff/skiffd.sock"
+    }
+  ],
+  "hellos": [
+    {
+      "host_id": "host-1",
+      "os": "linux",
+      "account": "jose",
+      "instance_id": "instance-1",
+      "service_versions": {
+        "skiff-host": "2.0.0",
+        "skiffd": "0.6.24"
+      },
+      "api_major": 1,
+      "capabilities": [
+        {
+          "name": "connection_status",
+          "version": 1
+        }
+      ],
+      "limits": {
+        "max_frame_bytes": 8388608,
+        "max_in_flight": 64
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "connection_status",
+      "version": 1
+    }
+  ],
+  "limits": [
+    {
+      "max_frame_bytes": 8388608,
+      "max_in_flight": 64
+    }
+  ],
+  "requests": [
+    {
+      "cmd": "hello"
+    },
+    {
+      "cmd": "connection_status"
+    }
+  ],
+  "envelopes": [
+    {
+      "id": 1,
+      "request": {
+        "cmd": "hello"
+      }
+    },
+    {
+      "id": 2,
+      "request": {
+        "cmd": "connection_status"
+      }
+    }
+  ],
+  "responses": [
+    {
+      "kind": "hello",
+      "hello": {
+        "host_id": "host-1",
+        "os": "linux",
+        "account": "jose",
+        "instance_id": "instance-1",
+        "service_versions": {
+          "skiff-host": "2.0.0",
+          "skiffd": "0.6.24"
+        },
+        "api_major": 1,
+        "capabilities": [
+          {
+            "name": "connection_status",
+            "version": 1
+          }
+        ],
+        "limits": {
+          "max_frame_bytes": 8388608,
+          "max_in_flight": 64
+        }
+      }
+    },
+    {
+      "kind": "ok"
+    }
+  ],
+  "errors": [
+    {
+      "code": "unsupported_capability",
+      "capability": {
+        "name": "connection_status",
+        "version": 1
+      }
+    },
+    {
+      "code": "incompatible_version",
+      "supported": 1,
+      "received": 2
+    },
+    {
+      "code": "malformed_contract",
+      "message": "bad frame"
+    },
+    {
+      "code": "not_found",
+      "message": "missing"
+    },
+    {
+      "code": "conflict",
+      "message": "changed"
+    },
+    {
+      "code": "permission",
+      "message": "denied"
+    },
+    {
+      "code": "host_busy"
+    },
+    {
+      "code": "transport_lost"
+    },
+    {
+      "code": "timed_out"
+    },
+    {
+      "code": "identity_changed",
+      "expected": "host-1",
+      "received": "host-2"
+    }
+  ],
+  "messages": [
+    {
+      "type": "reply",
+      "id": 1,
+      "result": {
+        "Ok": {
+          "kind": "hello",
+          "hello": {
+            "host_id": "host-1",
+            "os": "linux",
+            "account": "jose",
+            "instance_id": "instance-1",
+            "service_versions": {
+              "skiff-host": "2.0.0",
+              "skiffd": "0.6.24"
+            },
+            "api_major": 1,
+            "capabilities": [
+              {
+                "name": "connection_status",
+                "version": 1
+              }
+            ],
+            "limits": {
+              "max_frame_bytes": 8388608,
+              "max_in_flight": 64
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "reply",
+      "id": 3,
+      "result": {
+        "Ok": {
+          "kind": "ok"
+        }
+      }
+    },
+    {
+      "type": "reply",
+      "id": 10,
+      "result": {
+        "Err": {
+          "code": "unsupported_capability",
+          "capability": {
+            "name": "connection_status",
+            "version": 1
+          }
+        }
+      }
+    }
+  ]
+}

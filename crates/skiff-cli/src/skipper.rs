@@ -46,7 +46,7 @@ pub async fn run(socket: &Path, no_attach: bool) -> Result<()> {
     } else if found.typed {
         eprintln!("skiff: started the agent in {name}'s shell");
     }
-    attach::attach(&c, &s.id).await
+    attach::attach(&c, &s.id, None).await
 }
 
 /// `skiff skipper --project`: finds or starts the project Skipper of
@@ -68,7 +68,7 @@ pub async fn run_project(socket: &Path, project: &str, no_attach: bool) -> Resul
     if ps.created {
         eprintln!("skiff: started the {project} Skipper");
     }
-    attach::attach(&c, &s.id).await
+    attach::attach(&c, &s.id, None).await
 }
 
 /// Finds or starts the project Skipper of `project`, and the watcher, which
@@ -106,7 +106,7 @@ pub async fn run_fleet(socket: &Path, fleet: &str, no_attach: bool, yes: bool) -
     if fs.skipper.created {
         eprintln!("skiff: started the {fleet} Skipper");
     }
-    attach::attach(&c, &s.id).await
+    attach::attach(&c, &s.id, None).await
 }
 
 /// What [`start_fleet`] does with project Skippers in the fleet.

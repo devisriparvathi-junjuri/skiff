@@ -1,0 +1,19 @@
+{
+ "capabilities": {
+  "agents": {"name": "session_agents", "version": 1}
+ },
+ "agent_requests": [
+  {"cmd": "agent_list"}
+ ],
+ "replies": [
+  {"type": "reply", "id": 1, "result": {"Ok": {"kind": "agents", "agents": [
+   {"id": "claude", "command": "claude --model λ", "default_command": "claude", "custom": false, "installed": true, "enabled": true},
+   {"id": "mine", "command": "/opt/λ/bin/mine", "default_command": "", "custom": true, "installed": false, "enabled": false}
+  ]}}},
+  {"type": "reply", "id": 2, "result": {"Ok": {"kind": "agents", "agents": []}}},
+  {"type": "reply", "id": 3, "result": {"Err": {"code": "permission", "message": "A peek tool runs on this Mac only, not on a remote Host."}}}
+ ],
+ "legacy": {
+  "agent_list": {"cmd": "list_agents"}
+ }
+}

@@ -1,0 +1,35 @@
+{
+ "capabilities": {
+  "lifecycle": {"name": "session_lifecycle", "version": 1},
+  "groups": {"name": "session_groups", "version": 1}
+ },
+ "lifecycle_requests": [
+  {"cmd": "session_create", "spec": {"label": "claude", "name": "Fix the λ bug", "role": "agent", "cwd": "/srv/λ repo", "command": "claude", "args": ["--resume", ""], "peek": false, "cols": 65535, "rows": 0}},
+  {"cmd": "session_create", "spec": {"label": "", "name": null, "role": "shell", "cwd": null, "command": null, "args": [], "peek": true, "cols": 120, "rows": 40}},
+  {"cmd": "session_kill", "session": "s1"},
+  {"cmd": "session_rename", "session": "s1", "name": ""},
+  {"cmd": "session_set_theme", "session": "s1", "theme": "sea-dog"},
+  {"cmd": "session_set_theme", "session": "s1", "theme": null},
+  {"cmd": "session_seen", "session": "s1"}
+ ],
+ "group_requests": [
+  {"cmd": "group_list"},
+  {"cmd": "group_save", "group": {"id": "", "name": "Review", "layout": {"type": "split", "dir": "row", "ratio": 0.25, "a": {"type": "pane", "session": "s1"}, "b": {"type": "split", "dir": "col", "ratio": 0.5, "a": {"type": "pane", "session": "slot:1"}, "b": {"type": "pane", "session": "s2"}}}, "focus": "s2", "cwd": "/srv/repo"}},
+  {"cmd": "group_delete", "group": "g1"}
+ ],
+ "replies": [
+  {"type": "reply", "id": 1, "result": {"Ok": {"kind": "session", "session": {"id": "s1", "label": "sh", "role": "shell", "cwd": "/", "command": "/bin/sh", "foreground_program": null, "args": [], "state": "idle", "cols": 80, "rows": 24, "pid": 7, "exit_code": null, "theme": null, "name": null, "title": null, "started_at": 0, "last_output_at": 0, "output_bytes": 0, "away": [], "was": null, "resume": null, "unread": false, "agent_exit": null, "peek": false, "interactive": false, "input_gen": 0}}}},
+  {"type": "reply", "id": 2, "result": {"Ok": {"kind": "groups", "groups": [{"id": "g1", "name": "One", "layout": {"type": "pane", "session": "s1"}, "focus": null}]}}},
+  {"type": "reply", "id": 3, "result": {"Ok": {"kind": "group", "group": {"id": "g2", "name": "Two", "layout": {"type": "pane", "session": "s1"}, "focus": "s1", "cwd": "/"}}}},
+  {"type": "reply", "id": 4, "result": {"Err": {"code": "operation_failed", "message": "no such session"}}}
+ ],
+ "legacy": {
+  "session_create": {"cmd": "create_session", "spec": {"label": "", "name": null, "role": "shell", "cwd": null, "command": null, "args": [], "peek": true, "cols": 120, "rows": 40}},
+  "session_kill": {"cmd": "kill", "session": "s1"},
+  "session_rename": {"cmd": "rename_session", "session": "s1", "name": ""},
+  "session_set_theme": {"cmd": "set_session_theme", "session": "s1", "theme": null},
+  "session_seen": {"cmd": "seen", "session": "s1"},
+  "group_list": {"cmd": "list_groups"},
+  "group_delete": {"cmd": "delete_group", "group": "g1"}
+ }
+}

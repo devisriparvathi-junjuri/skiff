@@ -1,6 +1,6 @@
-//! The input bridge: keystrokes from the page to skiffd, in order.
+//! The input bridge: keystrokes from the page to the selected Host, in order.
 //!
-//! Input goes straight onto the live connection. It waits here instead while
+//! Input goes straight onto the live Host connection (`session_terminal@1`). It waits here instead while
 //! a reload runs (the gate is closed) or while no connection is up yet. Input
 //! that waits leaves in order, and new input queues behind it.
 
@@ -9,7 +9,7 @@ use std::{
     sync::Mutex,
     time::{Duration, Instant},
 };
-use skiff_client::Client;
+use skiff_client::host::{HostConnection, local::legacy_input};
 
 /// Input waits at most this long for a reload. Older input is dropped.
 pub(crate) const HOLD_FOR: Duration = Duration::from_secs(15);
@@ -49,11 +49,11 @@ pub(crate) enum Sent {
 impl Input {
     /// Sends `data` on `live`, or holds it. Under one lock with the gate, so
     /// a write is on the connection before the reload request, or it is held.
-    pub(crate) fn write(&self, live: Option<&Client>, session: &str, data: Vec<u8>) -> anyhow::Result<Sent> {
+    pub(crate) fn write(&self, live: Option<&HostConnection>, session: &str, data: Vec<u8>) -> anyhow::Result<Sent> {
         let mut st = self.0.lock().unwrap();
         if st.gate.is_none() && !st.connecting {
             if let Some(c) = live {
-                c.write_now(session, data)?;
+                legacy_input(c, session, data)?;
                 return Ok(Sent::Done);
             }
         }
@@ -85,7 +85,7 @@ impl Input {
 
     /// The connect task got a connection, or none. Sends the held input,
     /// unless a reload closed the gate meanwhile: the reload sends it.
-    pub(crate) fn connected(&self, c: Option<&Client>) {
+    pub(crate) fn connected(&self, c: Option<&HostConnection>) {
         let mut st = self.0.lock().unwrap();
         st.connecting = false;
         if st.gate.is_some() {
@@ -94,11 +94,17 @@ impl Input {
         for (id, held) in st.held.drain() {
             let Some(c) = c else { continue };
             for chunk in held.chunks {
-                if c.write_now(&id, chunk).is_err() {
+                if legacy_input(c, &id, chunk).is_err() {
                     break;
                 }
             }
         }
+    }
+
+    /// Drops every held input and opens the gate: another Host is selected,
+    /// so nothing typed for the old one may reach it.
+    pub(crate) fn discard(&self) {
+        *self.0.lock().unwrap() = State::default();
     }
 
     /// Holds all input from now on.
@@ -110,7 +116,7 @@ impl Input {
 
     /// Sends the held input to the sessions `keep` accepts, on `c`, and lets
     /// input through again. Returns the sessions whose held input was dropped.
-    pub(crate) fn open_gate(&self, c: Option<&Client>, keep: impl Fn(&str) -> bool) -> Vec<String> {
+    pub(crate) fn open_gate(&self, c: Option<&HostConnection>, keep: impl Fn(&str) -> bool) -> Vec<String> {
         let mut st = self.0.lock().unwrap();
         let expired = st.gate.is_some_and(|t| t.elapsed() > HOLD_FOR);
         let mut lost: BTreeSet<String> = std::mem::take(&mut st.lost);
@@ -118,7 +124,7 @@ impl Input {
             match c {
                 Some(c) if !expired && keep(&id) => {
                     for chunk in held.chunks {
-                        if c.write_now(&id, chunk).is_err() {
+                        if legacy_input(c, &id, chunk).is_err() {
                             lost.insert(id.clone());
                             break;
                         }

@@ -1,0 +1,33 @@
+/* The folder picker on a remote Host: places beside the folders, 20px rows. */
+.fp-panel { width: calc(720 * var(--u)); height: calc(560 * var(--u)); max-height: calc(100vh - calc(32 * var(--u))); }
+.fp-bar { height: var(--row); flex-shrink: 0; display: flex; align-items: center; border-bottom: 1px solid var(--rule); }
+.fp-crumbs { flex-grow: 1; min-width: 0; display: flex; align-items: center; gap: calc(2 * var(--u)); padding: 0 calc(14 * var(--u)); overflow: hidden; white-space: nowrap; }
+.fp-crumb { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; height: calc(24 * var(--u)); padding: 0 calc(6 * var(--u)); border: 0; background: transparent; color: var(--text-2); font-size: calc(13px * var(--zoom, 1)); }
+.fp-crumb:hover:not(:disabled) { background: var(--bg-raised); color: var(--text); }
+.fp-crumb:last-child, .fp-crumb:disabled { color: var(--text); font-weight: 600; cursor: default; }
+.fp-sep { flex-shrink: 0; color: var(--text-dim); font-size: calc(12px * var(--zoom, 1)); }
+.fp-hidden { flex-shrink: 0; height: 100%; padding: 0 calc(12 * var(--u)); border: 0; border-left: 1px solid var(--rule); background: transparent; color: var(--text-3); font-size: calc(12px * var(--zoom, 1)); }
+.fp-hidden:hover { background: var(--bg-raised); }
+.fp-hidden[aria-pressed="true"] { color: var(--text); background: var(--bg-raised); }
+.fp-filter { width: calc(200 * var(--u)); flex-shrink: 0; height: 100%; padding: 0 calc(14 * var(--u)); border: 0; border-left: 1px solid var(--rule); border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font: calc(13px * var(--zoom, 1)) var(--font); }
+.fp-filter:focus { box-shadow: inset 0 -2px 0 var(--state-working); }
+.fp-main { flex-grow: 1; min-height: 0; display: flex; border-bottom: 1px solid var(--rule); }
+.fp-places { width: calc(140 * var(--u)); flex-shrink: 0; display: flex; flex-direction: column; padding: calc(6 * var(--u)) 0; border-right: 1px solid var(--rule); }
+.fp-place { height: calc(20 * var(--u)); flex-shrink: 0; padding: 0 calc(16 * var(--u)); border: 0; background: transparent; color: var(--text-2); text-align: left; font-size: calc(12px * var(--zoom, 1)); }
+.fp-place:hover { background: var(--bg-raised); }
+.fp-place.on { color: var(--text); font-weight: 600; }
+.fp-list { flex-grow: 1; min-width: 0; overflow-y: auto; padding: calc(6 * var(--u)) 0; display: flex; flex-direction: column; }
+.fp-row { height: calc(20 * var(--u)); width: 100%; flex-shrink: 0; display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(16 * var(--u)) 0 calc(12 * var(--u)); border: 0; background: transparent; color: var(--text-2); text-align: left; font-size: calc(12px * var(--zoom, 1)); }
+.fp-row:hover { background: var(--bg-raised); }
+/* The lit row: the current-row tint and bar, as the tree and menus have. */
+.fp-row.lit { color: var(--text); background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); }
+.fp-lead { width: calc(14 * var(--u)); flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--text-dim); }
+.fp-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-sub { min-width: 0; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: calc(11px * var(--zoom, 1)); }
+.fp-branch { margin-left: auto; flex-shrink: 0; max-width: calc(160 * var(--u)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); color: var(--text-3); }
+.fp-when { width: calc(80 * var(--u)); flex-shrink: 0; text-align: right; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
+.fp-empty { padding: calc(4 * var(--u)) calc(16 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); }
+.fp-note { min-height: calc(20 * var(--u)); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(20 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); border-bottom: 1px solid var(--rule); }
+.fp-note:empty { display: none; }
+.fp-path { height: calc(32 * var(--u)); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(20 * var(--u)); border-bottom: 1px solid var(--rule); font: calc(12px * var(--zoom, 1)) var(--mono); color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.confirm-cancel:disabled { color: var(--text-dim); cursor: default; background: transparent; }

@@ -16,10 +16,26 @@
 #topbar .daemon-badge:hover, #topbar .daemon-badge[aria-expanded="true"] { background: var(--state-waiting-bg); }
 /* A downloaded app update: neutral, not a session state color. */
 #topbar .update-badge {
-  border: 0; background: transparent; color: var(--text-2); font-size: calc(12px * var(--zoom, 1)); font-weight: 500;
+  position: relative; gap: calc(8 * var(--u)); border: 0;
+  background: transparent; color: var(--text-2); font-size: calc(12px * var(--zoom, 1)); font-weight: 500;
 }
-#topbar .update-badge:hover:enabled, #topbar .update-badge[aria-expanded="true"] { background: var(--bg-raised); color: var(--text); }
-#topbar .update-badge:disabled { color: var(--text-3); }
+#topbar .update-badge:hover, #topbar .update-badge[aria-expanded="true"] { background: var(--bg-raised); color: var(--text); }
+#topbar .update-badge .v { font: 600 calc(12px * var(--zoom, 1)) var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+#topbar .update-badge .dot { width: calc(6 * var(--u)); height: calc(6 * var(--u)); border-radius: 50%; background: var(--text-2); }
+#topbar .update-badge.err { color: var(--error-text); }
+#topbar .update-badge.err .dot { background: var(--error); }
+#topbar .update-badge-bar { position: absolute; left: 0; right: 0; bottom: 0; }
+#update-pop .update-title { grid-template-columns: minmax(0, 1fr) auto auto; gap: calc(12 * var(--u)); padding-right: 0; }
+#update-pop .update-x { width: calc(56 * var(--u)); align-self: stretch; border: 0; border-left: 1px solid var(--rule); background: transparent; color: var(--text-3); font-size: calc(18px * var(--zoom, 1)); }
+#update-pop .update-x:hover { background: var(--bg-raised); color: var(--text); }
+#update-pop .update-notes { margin: 0; padding: calc(10 * var(--u)) calc(20 * var(--u)) calc(10 * var(--u)) calc(36 * var(--u)); border-bottom: 1px solid var(--rule); background: var(--bg-deep); font-size: calc(12px * var(--zoom, 1)); line-height: 1.7; color: var(--text-2); }
+#update-pop .update-page { width: 100%; height: var(--row); padding: 0 calc(20 * var(--u)); border: 0; border-bottom: 1px solid var(--rule); background: transparent; color: var(--text-2); font-size: calc(13px * var(--zoom, 1)); text-align: left; }
+#update-pop .update-page:hover { background: var(--bg-raised); color: var(--text); }
+/* No size known yet, or a check: the bar steps across. */
+.rp-bar.sweep { overflow: hidden; }
+.rp-bar.sweep > i { width: 30%; animation: rp-sweep 1.2s steps(10) infinite; }
+@keyframes rp-sweep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { .rp-bar.sweep > i { animation: none; width: 100%; opacity: 0.4; } }
 #daemon-pop, #update-pop {
   transform: translateZ(0); isolation: isolate; position: fixed; z-index: 50; width: calc(360 * var(--u));
   background: var(--bg-panel); border: 1px solid var(--rule-strong); box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);

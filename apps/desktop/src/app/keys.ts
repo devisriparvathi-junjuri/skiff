@@ -20,7 +20,7 @@ export type Action =
   | "focus-left" | "focus-right" | "focus-up" | "focus-down"
   | "project-menu" | "project-folder" | "project-copy-path" | "project-color" | "project-changes" | "project-files"
   | "region-next" | "region-prev" | "session-next" | "session-prev" | "list-project" | "list-back" | "list-main" | "shortcuts"
-  | "focus-mode" | "maximize" | "mission-control" | "skiff-agent" | "ledger" | "images" | "images-gallery";
+  | "focus-mode" | "maximize" | "mission-control" | "skiff-agent" | "ledger" | "sidebar-view" | "images" | "images-gallery";
 
 export const isMac = navigator.userAgent.includes("Macintosh");
 
@@ -71,6 +71,7 @@ export const DEFAULTS: Record<Action, string> = {
   "mission-control": "ctrl+shift+a",
   "skiff-agent": "ctrl+shift+l",
   ledger: "ctrl+shift+alt+l",
+  "sidebar-view": "ctrl+shift+alt+s",
   // No default key: the palette and the pane menu have it. `[keys]` can set one.
   images: "",
   "images-gallery": "",
@@ -207,6 +208,7 @@ export const DESCRIBE: [KeySection, Action][] = [
   ["view", "next-waiting"],
   ["view", "skiff-agent"],
   ["view", "ledger"],
+  ["view", "sidebar-view"],
   ["view", "back"],
   ["view", "session-next"],
   ["view", "session-prev"],

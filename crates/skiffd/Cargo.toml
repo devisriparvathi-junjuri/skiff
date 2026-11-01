@@ -2,7 +2,7 @@
 name = "skiffd"
 description = "Skiff daemon: owns every PTY and serves clients over a Unix socket"
 # The skiffd version, apart from the app. skiffd and skiff-core keep it in step.
-version = "0.6.34"
+version = "0.6.36"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -33,3 +33,5 @@ polling = "3"
 
 [dev-dependencies]
 skiff-client.workspace = true
+skiff-host-api.workspace = true
+libc = "0.2"

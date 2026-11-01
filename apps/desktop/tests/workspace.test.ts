@@ -225,3 +225,15 @@ test("the fleet filter shows its Skipper's rows, the hand-offs to it and its pro
   assert.deepEqual(Array.from(gesher, (u: any) => u.r.uid), ["release", "polish"]);
   assert.equal(gesher[0].kids.length, 0);
 });
+
+test("a project taken out of a fleet the workspace names stays in by its folder", async () => {
+  const h = workspaceHarness();
+  h.fixture("/work.skiffw", [], ["F"]);
+  await h.profile.openWorkspace("/work.skiffw");
+  const a = h.S.projects[0];
+  assert.equal(h.profile.shows(a), true);
+  h.profile.keepInView(a, null);
+  a.fleet = null;
+  assert.equal(h.profile.shows(a), true);
+  assert.equal(h.profile.workspaceEdited(), true);
+});

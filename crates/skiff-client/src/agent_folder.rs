@@ -138,6 +138,85 @@ pub struct Done {
     pub warning: Option<String>,
 }
 
+impl Counts {
+    pub fn to_host(&self) -> skiff_host_api::SkipperFolderCounts {
+        skiff_host_api::SkipperFolderCounts {
+            tasks: self.tasks,
+            open: self.open,
+            done: self.done,
+            results: self.results,
+            bytes: self.bytes,
+            agents_edited: self.agents_edited,
+            other: self.other.clone(),
+        }
+    }
+}
+
+impl Preview {
+    /// The preview as a Host answers it. `skipper_runs`: its session runs.
+    pub fn to_host(&self, skipper_runs: bool) -> skiff_host_api::SkipperFolderPreview {
+        let kind = match self.kind {
+            Kind::Current => "current",
+            Kind::New => "new",
+            Kind::Empty => "empty",
+            Kind::Skiff => "skiff",
+            Kind::Refused => "refused",
+        };
+        skiff_host_api::SkipperFolderPreview {
+            from: self.from.display().to_string(),
+            to: self.to.display().to_string(),
+            kind: kind.into(),
+            refused: self.refused.clone(),
+            can_copy: self.can_copy,
+            copy_refused: self.copy_refused.clone(),
+            from_counts: self.from_counts.as_ref().map(Counts::to_host),
+            to_counts: self.to_counts.as_ref().map(Counts::to_host),
+            moved: self.moved.clone(),
+            running: self
+                .running
+                .iter()
+                .map(|r| skiff_host_api::SkipperRunningTask { uid: r.uid.clone(), task: r.task.clone(), pane_id: r.pane_id.clone() })
+                .collect(),
+            ledger_env: self.ledger_env.clone(),
+            skipper_runs,
+        }
+    }
+}
+
+impl Done {
+    pub fn to_host(&self) -> skiff_host_api::SkipperFolderDone {
+        skiff_host_api::SkipperFolderDone {
+            from: self.from.display().to_string(),
+            to: self.to.display().to_string(),
+            mode: self.mode.into(),
+            copied: self.copied.as_ref().map(Counts::to_host),
+            moved_note: self.moved_note.as_ref().map(|p| p.display().to_string()),
+            warning: self.warning.clone(),
+        }
+    }
+}
+
+impl From<Mode> for skiff_host_api::SkipperFolderMode {
+    fn from(m: Mode) -> Self {
+        match m {
+            Mode::Copy => Self::Copy,
+            Mode::Empty => Self::Empty,
+            Mode::Switch => Self::Switch,
+        }
+    }
+}
+
+impl From<skiff_host_api::SkipperFolderMode> for Mode {
+    fn from(m: skiff_host_api::SkipperFolderMode) -> Self {
+        use skiff_host_api::SkipperFolderMode as M;
+        match m {
+            M::Copy => Self::Copy,
+            M::Empty => Self::Empty,
+            M::Switch => Self::Switch,
+        }
+    }
+}
+
 /// The live panes: id to generation. A task runs while its pane is there and
 /// has the generation the send saw.
 pub type Panes = HashMap<String, Option<i64>>;
@@ -448,7 +527,7 @@ fn copy_tree(from: &Path, to: &Path) -> Result<()> {
 
 /// Copies the ledger with SQLite, so a write at the same time leaves a
 /// consistent copy, and leaves the old file as it is. In the copy, a result
-/// path in the old folder moves to the new one, except for a task that still
+/// path or a work folder in the old folder moves to the new one, except for a task that still
 /// runs: its child writes the old path.
 fn copy_ledger(src: &Path, dst: &Path, old: &[PathBuf], new: &Path, panes: &Panes) -> Result<()> {
     let from = read_only(src)?;
@@ -459,18 +538,22 @@ fn copy_ledger(src: &Path, dst: &Path, old: &[PathBuf], new: &Path, panes: &Pane
     let copy = Connection::open(dst).with_context(|| format!("open {}", dst.display()))?;
     let gen = if has_column(&copy, "pane_gen")? { "pane_gen" } else { "NULL" };
     type Row = (i64, String, String, Option<String>, Option<i64>);
-    let rows: Vec<Row> = copy
-        .prepare(&format!("SELECT id, result_path, state, pane_id, {gen} FROM tasks WHERE result_path IS NOT NULL"))?
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
-        .collect::<Result<_, _>>()?;
     let tx = copy.unchecked_transaction()?;
-    for (id, path, state, pane, g) in rows {
-        if runs(&state, pane.as_deref(), g, panes) {
-            continue;
-        }
-        let moved = old.iter().find_map(|o| Path::new(&path).strip_prefix(o).ok().map(|rest| new.join(rest)));
-        if let Some(p) = moved {
-            tx.execute("UPDATE tasks SET result_path = ?2 WHERE id = ?1", rusqlite::params![id, p.to_string_lossy()])?;
+    // The result path, then the work folder (from ledger version 11), the same way.
+    let cols: &[&str] = if has_column(&tx, "work_dir")? { &["result_path", "work_dir"] } else { &["result_path"] };
+    for col in cols {
+        let rows: Vec<Row> = tx
+            .prepare(&format!("SELECT id, {col}, state, pane_id, {gen} FROM tasks WHERE {col} IS NOT NULL"))?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
+            .collect::<Result<_, _>>()?;
+        for (id, path, state, pane, g) in rows {
+            if runs(&state, pane.as_deref(), g, panes) {
+                continue;
+            }
+            let moved = old.iter().find_map(|o| Path::new(&path).strip_prefix(o).ok().map(|rest| new.join(rest)));
+            if let Some(p) = moved {
+                tx.execute(&format!("UPDATE tasks SET {col} = ?2 WHERE id = ?1"), rusqlite::params![id, p.to_string_lossy()])?;
+            }
         }
     }
     tx.commit()?;

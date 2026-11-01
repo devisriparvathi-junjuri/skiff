@@ -175,6 +175,7 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                 reload_state: Some(crate::session::reload::HANDOVER),
                 pid: Some(std::process::id()),
                 debug: Some(cfg!(debug_assertions)),
+                identity: crate::identity::get(),
             },
             // Writes before this one on the connection are queued already;
             // the reload drains them. It answers only when it fails: success

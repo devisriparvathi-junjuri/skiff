@@ -16,10 +16,30 @@
 .set-head { position: sticky; top: 0; z-index: 2; background: var(--bg); height: calc(80 * var(--u)); flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; gap: calc(4 * var(--u)); padding: 0 calc(24 * var(--u)); border-bottom: 1px solid var(--rule); }
 .set-h { font-size: calc(18px * var(--zoom, 1)); font-weight: 700; }
 .set-sub { font-size: calc(13px * var(--zoom, 1)); color: var(--text-3); }
+/*
+ * One grid for every Settings row (#205). A row starts with a --set-label
+ * column and ends with a --set-end column; the content takes the width
+ * between. A table that has a status before its buttons splits the end
+ * column: the status, then --set-acts for the buttons. A narrow pane takes
+ * smaller columns, so the content keeps its room.
+ */
+#settings { --set-label: calc(200 * var(--u)); --set-end: calc(380 * var(--u)); --set-acts: calc(160 * var(--u)); }
+.set-main { container: set-main / inline-size; }
+@container set-main (max-width: 800px) { .set-main > * { --set-label: calc(160 * var(--u)); --set-end: calc(300 * var(--u)); } }
 .set-row { height: var(--row); flex-shrink: 0; display: grid; grid-template-columns: 72px 200px minmax(0, 1fr) 220px; align-items: center; border-bottom: 1px solid var(--rule); }
 .set-row > * { display: flex; align-items: center; height: 100%; padding: 0 calc(12 * var(--u)); }
 .set-row > * + * { border-left: 1px solid var(--rule); }
 .set-row .c-on { justify-content: center; padding: 0; }
+/*
+ * Row actions: the last cell of a row. Its buttons sit at the row's right
+ * edge, 12 in from it, 8 apart. Text before them (a status, "At next start")
+ * stays at the left of the cell. A switch in the end column sits at the
+ * right edge too.
+ */
+.set-row > .c-acts { gap: calc(8 * var(--u)); justify-content: flex-end; min-width: 0; }
+.set-row > .c-acts > button { flex-shrink: 0; margin-left: 0; }
+.set-row > .c-acts > button:first-of-type { margin-left: auto; }
+.set-row > button.set-switch:last-child { justify-content: flex-end; }
 .set-cols { font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; color: var(--text-3); }
 .set-agent { color: var(--text-3); }
 .set-agent.on { color: var(--text); }
@@ -41,8 +61,7 @@
 .set-agent input.c-name { width: 100%; min-width: 0; border: 0; border-left: 1px solid var(--rule); border-radius: 0; outline: 0; background: transparent; color: inherit; font: 500 calc(14px * var(--zoom, 1)) var(--font); }
 .set-agent input.c-name::placeholder { color: var(--text-dim); font-weight: 400; }
 .set-agent input.c-name:focus { box-shadow: inset 0 -2px 0 var(--state-working); }
-.set-open { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) calc(160 * var(--u)); }
-.set-open.set-skipper-name { grid-template-columns: calc(280 * var(--u)) minmax(0, 1fr) calc(160 * var(--u)); }
+.set-open { grid-template-columns: var(--set-label) minmax(0, 1fr) var(--set-end); }
 .set-open select.c-mode, .set-open select.c-cmd { width: 100%; padding-right: calc(28 * var(--u)); border-left: 1px solid var(--rule); }
 .set-names-box { flex: 1 0 auto; min-height: calc(320 * var(--u)); display: flex; flex-direction: column; }
 .set-names-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; }
@@ -50,7 +69,7 @@
 .set-names-col + .set-names-col { border-left: 1px solid var(--rule); }
 .set-names-label { height: var(--row); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(12 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
 .set-names-col textarea { flex: 1; min-height: 0; width: 100%; resize: none; border: 0; border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font-size: calc(13px * var(--zoom, 1)); padding: calc(8 * var(--u)) calc(12 * var(--u)); }
-.set-opacity { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) calc(120 * var(--u)); }
+.set-opacity { grid-template-columns: var(--set-label) minmax(0, 1fr) var(--set-end); }
 .set-opacity .c-name { font-size: calc(13px * var(--zoom, 1)); color: var(--text-2); }
 .set-opacity .c-cmd { width: 100%; min-width: 0; box-sizing: border-box; border: 0; border-left: 1px solid var(--rule); border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font: calc(13px * var(--zoom, 1)) var(--font); text-align: left; }
 .switch { width: calc(28 * var(--u)); height: calc(14 * var(--u)); position: relative; border: 1px solid var(--rule-strong); background: var(--bg-deep); }
@@ -70,7 +89,7 @@
 /* Settings › Skippers. */
 .set-open span.c-cmd { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(13px * var(--zoom, 1)); }
 .set-open .c-mode { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
-.set-agent button.set-switch { justify-content: center; border: 0; background: transparent; }
+.set-agent button.set-switch { border: 0; background: transparent; }
 .set-agent button.set-switch:hover:not(:disabled) { background: var(--bg-panel); }
 .set-agent.missing button.set-switch { cursor: not-allowed; }
 /*
@@ -78,13 +97,15 @@
  * one --row high, so a wrapped error takes two rows. A section head is a
  * 40px tinted band; the 80px head is for the page title.
  */
+.set-note { flex-shrink: 0; padding: 0 calc(24 * var(--u)); line-height: var(--row); border-bottom: 1px solid var(--rule); font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
 .set-band { height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: calc(12 * var(--u)); padding: 0 calc(12 * var(--u)); background: var(--bg-raised); border-bottom: 1px solid var(--rule); }
 .set-band-title { font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-2); }
 .set-band-count { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Settings tables (appearance/rowTable.ts): Agents and Task types. Each cell is a span; a field fills its cell. */
 .set-table { flex-shrink: 0; display: flex; flex-direction: column; }
-.set-table.g-agents .set-row { grid-template-columns: calc(72 * var(--u)) calc(200 * var(--u)) minmax(0, 1fr) calc(320 * var(--u)); }
-.set-table.g-tasks .set-row { grid-template-columns: calc(180 * var(--u)) calc(140 * var(--u)) calc(140 * var(--u)) minmax(0, 1fr) calc(160 * var(--u)); }
+.set-table.g-agents .set-row { grid-template-columns: calc(72 * var(--u)) var(--set-label) minmax(0, 1fr) var(--set-end); }
+/* Type and Model share the width; Instructions holds the size, then Edit at its right; − and Add are in the end column. */
+.set-table.g-tasks .set-row { grid-template-columns: minmax(0, 1fr) calc(140 * var(--u)) minmax(0, 1fr) calc(160 * var(--u)) var(--set-acts); }
 .set-table.g-tasks .set-row > .c-lead { justify-content: flex-start; padding: 0 calc(12 * var(--u)); }
 .set-table.g-tasks .c-file { display: flex; align-items: center; gap: calc(8 * var(--u)); width: 100%; }
 .set-table.g-tasks .c-state { font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
@@ -101,6 +122,8 @@
 .set-table .set-row .c-field > select { width: 100%; height: 100%; font-size: calc(13px * var(--zoom, 1)); }
 .set-table .set-row .c-field > [aria-invalid="true"], .set-table .set-row .c-field > [aria-invalid="true"]:focus { box-shadow: inset 0 -2px 0 var(--error); }
 .set-table .set-row > .c-note { padding: 0 calc(12 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); }
+/* A note in a mono field's place reads as its placeholder. */
+.set-table .set-row > .c-note.mono { font-size: calc(13px * var(--zoom, 1)); }
 .set-table .set-row > .c-preview { min-width: 0; }
 .set-table .c-preview > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); user-select: text; -webkit-user-select: text; }
 .set-table .c-preview > span.bad { font-family: var(--font); color: var(--error-text); }
@@ -135,12 +158,86 @@
 .set-table .c-kept { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); }
 .set-table .c-remove:hover, body.kbd .set-table .c-remove:focus { border-color: var(--error); color: var(--error); }
 /* Settings › Skippers › Folder: the path to copy, its buttons, and an error row under it only when the folder is not usable. */
-.set-folder { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) auto; }
+.set-folder { grid-template-columns: var(--set-label) minmax(0, 1fr) minmax(var(--set-end), max-content); }
 /* The path is a read-only field: it reads as text, not as a field to type in. */
 .set-folder input.set-path { background: transparent; color: var(--text); text-overflow: ellipsis; cursor: text; }
 .set-folder input.set-path:focus { box-shadow: none; }
 body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rule-strong); }
-.set-folder-acts { gap: calc(8 * var(--u)); }
+/* Settings › Hosts: the list, and the Add and Edit form. */
+.set-head-words { display: flex; flex-direction: column; gap: calc(4 * var(--u)); min-width: 0; }
+/* One grid for the header and every row: mark, Name, Server, Skiff, State, menu. */
+.set-table.g-hosts .set-row { grid-template-columns: calc(40 * var(--u)) minmax(calc(160 * var(--u)), 1fr) minmax(0, 1.4fr) calc(128 * var(--u)) calc(148 * var(--u)) calc(40 * var(--u)); }
+/* A note or error on the Hosts pages: each line of text one row tall, so the rows under it stay on the nav's lines. */
+.set-line { min-height: var(--row); display: flex; align-items: center; line-height: var(--row); }
+.set-table.g-hosts .set-row > .c-more { padding: 0; justify-content: center; }
+.set-host.act { cursor: default; }
+.set-host.act:hover { background: var(--bg-raised); }
+/* The lit row: the current-row tint and bar. */
+.set-host.act:focus, .set-host.act:focus-within { outline: 0; background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); }
+.set-host .c-menu { width: 100%; height: 100%; border: 0; background: transparent; color: var(--text-3); font-size: calc(16px * var(--zoom, 1)); visibility: hidden; }
+.set-host.act:is(:hover, :focus, :focus-within) .c-menu { visibility: visible; }
+.set-host .c-menu:hover { color: var(--text); background: var(--bg-raised); }
+.set-host .c-skiff { font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); }
+.set-host .c-skiff.update { color: var(--state-waiting); }
+.set-host .c-state, .set-check .c-lead { gap: calc(8 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }
+.set-host .c-state .sq, .set-check .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; }
+.set-host .c-state.ok .sq { background: var(--ok); }
+.set-host .c-state.bad { color: var(--error-text); }
+.set-host .c-state.bad .sq { background: var(--error); }
+.set-host .c-state.none { color: var(--text-3); }
+.set-host .c-state.none .sq { border: 1px solid var(--text-dim); }
+/* The check list: mark, step, the plain line. */
+.set-table.g-check .set-row { grid-template-columns: calc(40 * var(--u)) calc(240 * var(--u)) minmax(0, 1fr); }
+.set-check .c-lead { justify-content: center; padding: 0; }
+.set-check .c-text { font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); white-space: normal; line-height: 1.35; }
+.set-check.passed .c-lead { color: var(--ok); }
+.set-check.failed .c-name, .set-check.failed .c-text { color: var(--error-text); }
+.set-check.failed .sq { background: var(--error); }
+.set-check:is(.skipped, .waiting) { color: var(--text-3); }
+.set-check:is(.skipped, .waiting) .sq { border: 1px solid var(--text-dim); }
+.set-host > * { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.set-host .c-name { font-size: calc(14px * var(--zoom, 1)); font-weight: 500; }
+.set-host .c-server { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
+.set-host .c-end { gap: calc(8 * var(--u)); justify-content: flex-end; }
+.set-host .c-end .set-rm { margin-left: 0; }
+.set-head-row .set-add { height: calc(26 * var(--u)); padding: 0 calc(10 * var(--u)); border: 1px solid var(--state-working); border-radius: 0; background: var(--state-working); color: var(--on-working); font: 500 calc(12px * var(--zoom, 1)) var(--font); white-space: nowrap; }
+.set-back { align-self: flex-start; padding: 0; border: 0; background: transparent; color: var(--text-3); font: calc(12px * var(--zoom, 1)) var(--font); }
+.set-back:hover { color: var(--text); }
+.set-host-field input.c-cmd { height: 100%; padding: 0 calc(12 * var(--u)); }
+.set-host-field { grid-template-columns: var(--set-label) minmax(0, 1fr); }
+/* Under the check list: the switch in the mark column, the label from the step column on. */
+.set-auto-update { grid-template-columns: calc(40 * var(--u)) minmax(0, 1fr); }
+.set-auto-update .c-text { font-size: calc(13px * var(--zoom, 1)); cursor: pointer; }
+.set-auto-update button.c-on:disabled { cursor: progress; }
+.set-resolve.bad { color: var(--error-text); }
+/* The foot of a form or the check list: each button fills a cell of the row, with a rule on its inner side. */
+.set-form-acts { height: var(--row); flex-shrink: 0; display: flex; align-items: stretch; border-bottom: 1px solid var(--rule); }
+.set-form-acts .set-rm, .set-form-acts .set-add { padding: 0 calc(16 * var(--u)); border: 0; border-right: 1px solid var(--rule); border-radius: 0; background: transparent; color: var(--text-2); font: 500 calc(12px * var(--zoom, 1)) var(--font); white-space: nowrap; }
+.set-form-acts .set-fill ~ :is(.set-rm, .set-add) { border-right: 0; border-left: 1px solid var(--rule); }
+.set-form-acts .set-rm:hover:not(:disabled) { background: var(--bg-raised); color: var(--text); }
+.set-form-acts .set-rm:disabled { color: var(--text-dim); cursor: default; }
+.set-form-acts .set-add.ready { background: var(--state-working); color: var(--on-working); }
+.set-fill { flex-grow: 1; }
+.set-host-field input.c-cmd { width: 100%; min-width: 0; border: 0; border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font-size: calc(13px * var(--zoom, 1)); }
+.set-host-field input.c-cmd::placeholder { color: var(--text-dim); }
+.set-host-field input.c-cmd:focus { box-shadow: inset 0 -2px 0 var(--state-working); }
+.set-check .c-text { gap: calc(12 * var(--u)); }
+.set-check .set-fix { flex-shrink: 0; margin-left: auto; height: calc(26 * var(--u)); padding: 0 calc(10 * var(--u)); border: 1px solid var(--state-working); border-radius: 0; background: var(--state-working); color: var(--on-working); font: 500 calc(12px * var(--zoom, 1)) var(--font); white-space: nowrap; }
+.set-check .set-fix + .set-fix { margin-left: 0; }
+.set-check .set-fix.on { display: inline-flex; align-items: center; gap: calc(6 * var(--u)); border-color: var(--rule-strong); background: transparent; color: var(--text); cursor: default; }
+.set-prints { display: flex; flex-direction: column; gap: calc(4 * var(--u)); }
+.set-prints-h { font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
+.set-prints.old .mono { text-decoration: line-through; color: var(--text-3); }
+.set-check.warning .c-name, .set-check.warning .c-text { color: var(--state-waiting-text); }
+.set-check.warning .sq { background: var(--state-waiting); }
+.set-remove-box { padding: calc(12 * var(--u)) calc(20 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(13px * var(--zoom, 1)); line-height: 1.6; color: var(--text-2); }
+.set-remove-box .set-sub { font-size: calc(12px * var(--zoom, 1)); }
+/* Also uninstall: Skiff's switch, red when on, as a destructive choice. */
+.set-check-label { display: flex; gap: calc(12 * var(--u)); align-items: center; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.set-check-label .switch { flex-shrink: 0; }
+.set-check-label.on .switch { border-color: var(--error); background: color-mix(in srgb, var(--error) 25%, transparent); }
+.set-check-label.on .switch::after { left: calc(16 * var(--u)); background: var(--error); }
+.set-check .c-secs { margin-left: calc(8 * var(--u)); font-family: var(--mono); color: var(--text-3); }
 
 /* Settings › Skippers › Agent: the agent, then its model, in one cell. */
 .set-open .c-split { display: grid; grid-template-columns: 1fr 1fr; padding: 0; }
@@ -150,31 +247,68 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-open .c-split > input.c-cmd { padding: 0 calc(12 * var(--u)); }
 .set-open .c-split > .c-note { display: flex; align-items: center; padding: 0 calc(12 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); }
 /* Settings › Skippers › Instructions: SCOPE | FILE | STATUS | Edit, Reset…. Teal: a file the person edited. */
-.set-table.g-instr .set-row { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) calc(260 * var(--u)) calc(200 * var(--u)); }
+.set-table.g-instr .set-row { grid-template-columns: var(--set-label) minmax(0, 1fr) calc(var(--set-end) - var(--set-acts)) var(--set-acts); }
 .set-table.g-instr .set-row > .c-lead { justify-content: flex-start; padding: 0 calc(12 * var(--u)); }
 .set-table.g-instr .c-scope { font-size: calc(14px * var(--zoom, 1)); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .set-table.g-instr .c-kind { margin-left: calc(8 * var(--u)); font-size: calc(11px * var(--zoom, 1)); font-weight: 400; color: var(--text-dim); }
-.set-table.g-instr .c-state { font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
+.set-table.g-instr .c-state { min-width: 0; overflow: hidden; font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
 .set-table.g-instr .c-state .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
 .set-table.g-instr .c-state.tpl .sq { background: var(--text-dim); }
 .set-table.g-instr .c-state.none { color: var(--text-dim); }
 .set-table.g-instr .c-state.none .sq { background: var(--rule-strong); }
-.set-table.g-instr .c-state .dim { color: var(--text-dim); }
-.set-table.g-instr .c-acts { display: flex; gap: calc(8 * var(--u)); margin-left: auto; }
-.set-table.g-instr .c-acts .set-rm { margin-left: 0; }
+.set-table.g-instr .c-state .dim { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-dim); }
 
-/* Disk use: TYPE | FILES | SIZE | FOLDER | action. Sub-rows indent; numbers align right. */
-.set-disk .set-row { grid-template-columns: calc(200 * var(--u)) calc(96 * var(--u)) calc(112 * var(--u)) minmax(0, 1fr) calc(180 * var(--u)); }
+/* Disk use: the agent folder as a tree. NAME | SIZE | CAN FLUSH | STATE | action. Numbers align right. */
+.set-disk .set-row { grid-template-columns: minmax(0, 1.3fr) calc(96 * var(--u)) calc(112 * var(--u)) minmax(0, 1fr) var(--set-acts); }
 .set-disk .set-row > * { min-width: 0; }
 .set-disk .c-num { justify-content: flex-end; font-variant-numeric: tabular-nums; font-size: calc(13px * var(--zoom, 1)); }
-.set-disk .c-where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
-.set-disk .sub .c-name { padding-left: calc(28 * var(--u)); font-size: calc(13px * var(--zoom, 1)); font-weight: 400; color: var(--text-2); }
-.set-disk .total .c-name, .set-disk .total .c-num { font-weight: 700; }
-.set-disk .c-act { justify-content: flex-end; }
+.set-disk .c-num.disk-can { color: var(--text); font-weight: 600; }
+.set-disk .c-num.disk-zero { color: var(--text-dim); }
+.set-disk-row { cursor: default; outline: 0; }
+.set-disk-row:hover { background: var(--bg-raised); }
+/* The current row: the current-row tint and bar. The focus line only after keys. */
+.set-disk-row.cur { background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); }
+body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset: -1px; }
+.set-disk-row .c-name { gap: calc(6 * var(--u)); font-size: calc(13px * var(--zoom, 1)); font-weight: 400; }
+.set-disk-row.root .disk-name { font-weight: 600; }
+.disk-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.disk-chev, .disk-leaf { width: calc(16 * var(--u)); height: calc(16 * var(--u)); flex-shrink: 0; }
+.disk-chev { display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--text-3); }
+.disk-chev svg { transition: transform 120ms; }
+.disk-chev.open svg { transform: rotate(90deg); }
+.set-disk .c-state { gap: calc(8 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }
+.set-disk .c-state .disk-state { flex-shrink: 0; white-space: nowrap; color: var(--text-2); }
+.set-disk .c-state .dim { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+/* The state marks: in use is the working blue, stale the done grey; protected, held and mixed are outlines. */
+.disk-mk { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; }
+.disk-mk.use { background: var(--state-working); }
+.disk-mk.stale { background: var(--state-done); }
+.disk-mk.prot { border: 1px solid var(--text-2); }
+.disk-mk.held { border: 1px dashed var(--text-2); }
+.disk-mk.mixed { border: 1px solid var(--state-done); background: linear-gradient(90deg, var(--state-done) 50%, transparent 50%); }
+/* Flush shows on the current row, a hovered row and the agent folder's row. */
+.set-disk-row:not(.cur, .root, :hover) .c-acts > * { visibility: hidden; }
+.set-disk .disk-why { font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); white-space: nowrap; }
+.set-disk .set-rm { font-variant-numeric: tabular-nums; }
 .set-disk .set-rm:disabled { opacity: 0.5; cursor: default; }
 .set-disk .set-rm:disabled:hover { border-color: var(--rule); color: var(--text-3); }
 .set-disk .set-rm:not(:disabled):is(:hover, :focus-visible) { border-color: var(--error); color: var(--error); }
+/* Show in file manager changes nothing: it is not red. */
+.set-disk .set-rm.set-ico:not(:disabled):is(:hover, :focus-visible) { border-color: var(--text-3); color: var(--text); }
 .set-disk-auto span.c-cmd { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
+/* The flush dialog: REMOVE and KEEP, one line for each reason. */
+.disk-scope { padding: calc(8 * var(--u)) calc(20 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
+.disk-list { max-height: calc(360 * var(--u)); overflow-y: auto; }
+.disk-band { height: var(--row); display: flex; align-items: center; justify-content: space-between; padding: 0 calc(20 * var(--u)); background: var(--bg-raised); border-bottom: 1px solid var(--rule); }
+.disk-band-title { font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-2); }
+.disk-band-count { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.disk-line { min-height: var(--row); display: grid; grid-template-columns: calc(8 * var(--u)) minmax(0, 1fr) auto; gap: calc(12 * var(--u)); align-items: center; padding: calc(4 * var(--u)) calc(20 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(12px * var(--zoom, 1)); }
+.disk-line-words, .disk-line-size { display: flex; flex-direction: column; min-width: 0; }
+.disk-line-why { color: var(--text); }
+.disk-line-names { color: var(--text-3); font-size: calc(11px * var(--zoom, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.disk-line-size { align-items: flex-end; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.disk-line-files { color: var(--text-dim); font-size: calc(11px * var(--zoom, 1)); }
+.disk-limit { padding: calc(10 * var(--u)) calc(20 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); border-bottom: 1px solid var(--rule); }
 
 /* skiffd activity: one grid for the whole table. STATE, SESSION and PROGRAM size to their content; WORKSPACE and FOLDER share the rest. */
 .set-daemon { flex-shrink: 0; display: grid; grid-template-columns: fit-content(calc(120 * var(--u))) fit-content(calc(300 * var(--u))) fit-content(calc(140 * var(--u))) minmax(calc(112 * var(--u)), 1fr) minmax(calc(104 * var(--u)), 1fr) calc(80 * var(--u)) calc(52 * var(--u)) calc(88 * var(--u)); min-width: 0; }
@@ -189,7 +323,7 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-daemon .c-name { font-size: calc(13px * var(--zoom, 1)); color: var(--text); }
 .set-daemon .c-state { gap: calc(8 * var(--u)); }.set-daemon .c-num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 .set-daemon-row.out { box-shadow: inset 2px 0 0 var(--error); }.set-daemon .bad { color: var(--error-text); }
-.set-daemon .c-acts { gap: calc(8 * var(--u)); justify-content: flex-end; }.set-daemon .set-rm { margin-left: 0; }
+.set-daemon .set-rm { margin-left: 0; }
 .set-daemon .set-rm:disabled { opacity: 0.5; cursor: default; }
 .set-daemon .set-rm:disabled:hover { border-color: var(--rule); color: var(--text-3); }
 /* A selected row: the current-row tint and bar. A row out of the workspace keeps its red bar. */

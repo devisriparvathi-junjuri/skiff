@@ -8,8 +8,16 @@
 .prompt-opt { padding: 0 calc(20 * var(--u)); font: calc(13px * var(--zoom, 1)) var(--mono); cursor: pointer; }
 .prompt-opt.clear { border-top: 1px solid var(--rule); font-family: var(--font); color: var(--text-2); }
 .prompt-scroll:empty + .prompt-opt.clear { border-top: 0; }
+.prompt-head { height: calc(20 * var(--u)); display: flex; align-items: flex-end; padding: 0 calc(20 * var(--u)); font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+/* A labelled choice under the field, such as New worktree's From. */
+.prompt-from { height: var(--row); display: flex; align-items: center; gap: calc(12 * var(--u)); padding: 0 calc(20 * var(--u)); border-bottom: 1px solid var(--rule); color: var(--text-2); font-size: calc(12px * var(--zoom, 1)); }
+.prompt-from[hidden] { display: none; }
+.prompt-from select { flex-grow: 1; min-width: 0; height: calc(28 * var(--u)); border: 1px solid var(--rule-strong); border-radius: 0; background: var(--bg-deep); color: var(--text); font: calc(13px * var(--zoom, 1)) var(--mono); }
 .prompt-error { padding: calc(10 * var(--u)) calc(20 * var(--u)); background: var(--error-bg); border-bottom: 1px solid var(--rule); color: var(--error-text); font-size: calc(12px * var(--zoom, 1)); white-space: pre-wrap; overflow-wrap: anywhere; }
 .prompt-error:empty { display: none; }
 .confirm-act.go { background: var(--state-working); color: var(--on-working); }
 .confirm-act.go:hover { background: color-mix(in srgb, var(--state-working) 85%, var(--text)); }
 .confirm-act:disabled { cursor: progress; }
+/* An install's or update's live steps: the server's lines, newest at the bottom. */
+.step-log { max-height: calc(140 * var(--u)); overflow-y: auto; padding: calc(8 * var(--u)) calc(20 * var(--u)); border-bottom: 1px solid var(--rule); background: var(--bg-deep); font: calc(11px * var(--zoom, 1)) / 1.6 var(--mono); color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.step-log[hidden] { display: none; }

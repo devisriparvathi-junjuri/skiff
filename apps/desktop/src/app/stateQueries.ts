@@ -3,7 +3,7 @@ import { DEFAULT_ACCENT, MAX_PANES, S, sessions, selectedWorktree } from "./stat
 import { ink } from "../appearance/appTheme";
 import { leaf, sessionsOf } from "../workspace/layout";
 import { byStart, locate, samePath, type Place } from "../workspace/model";
-import type { AgentInfo, Group, Layout, Project, SessionInfo, Worktree } from "../platform/types";
+import type { AgentInfo, Away, Group, Layout, Project, SessionInfo, Worktree } from "../platform/types";
 
 /** Agents turned on in Settings, in their configured order. */
 export function enabledAgents(): AgentInfo[] {
@@ -39,14 +39,36 @@ export function place(s: SessionInfo): Place | null {
   return at;
 }
 
+/** place() for an away folder: the same cache. place() keeps its own copy, a call
+ *  through this one measured slower on the hottest path of a render. */
+function located(path: string): Place | null {
+  if (placeFor !== S.projects) {
+    placeMemo.clear();
+    placeFor = S.projects;
+  }
+  let at = placeMemo.get(path);
+  if (at === undefined) {
+    at = locate(S.projects, path);
+    placeMemo.set(path, at);
+  }
+  return at;
+}
+
+/** Each session's away places, until the project list, its folder or its away list
+ *  changes. skiffd sends a new away list each time, so a change brings a new array. */
+const awayMemo = new WeakMap<SessionInfo, { projects: Project[]; cwd: string; away: Away[] | undefined; out: readonly Place[] }>();
+
 /** The worktrees the session works in other than its own, as the project list knows them. */
-export function awayPlaces(s: SessionInfo): Place[] {
+export function awayPlaces(s: SessionInfo): readonly Place[] {
+  const kept = awayMemo.get(s);
+  if (kept && kept.projects === S.projects && kept.cwd === s.cwd && kept.away === s.away) return kept.out;
   const home = place(s)?.worktree;
   const out: Place[] = [];
   for (const a of s.away ?? []) {
-    const at = locate(S.projects, a.path);
+    const at = located(a.path);
     if (at && at.worktree !== home && samePath(at.worktree.path, a.path) && !out.some((o) => o.worktree === at.worktree)) out.push(at);
   }
+  awayMemo.set(s, { projects: S.projects, cwd: s.cwd, away: s.away, out });
   return out;
 }
 

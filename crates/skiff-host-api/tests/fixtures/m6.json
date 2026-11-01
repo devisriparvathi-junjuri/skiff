@@ -1,0 +1,30 @@
+{
+  "capabilities": {
+    "ledger": { "name": "ledger", "version": 1 },
+    "skipper": { "name": "skipper", "version": 1 }
+  },
+  "ledger_requests": [
+    { "cmd": "ledger_rows" },
+    { "cmd": "ledger_stamp" },
+    { "cmd": "ledger_result", "uid": "a1b2c3d4" }
+  ],
+  "skipper_requests": [
+    { "cmd": "skipper_settings" }
+  ],
+  "replies": [
+    { "type": "reply", "id": 1, "result": { "Ok": { "kind": "ledger", "rows": [
+      { "id": 1, "uid": "a1b2c3d4", "kind": "plan", "owner": "grand", "parent": null, "pane_id": null, "pane_gen": null, "project": "web", "task": "Ship it", "sent_at": "2026-10-21 10:00:00", "title": "Ship the thing", "state": "sent", "updated_at": "2026-10-21 10:00:00", "type": null, "ref": null, "reported_at": null, "closed_at": null, "bucket": "open", "gone_at": null, "result_exists": true },
+      { "id": 2, "uid": "e5f6a7b8", "kind": "task", "owner": "grand", "parent": "a1b2c3d4", "pane_id": "0f3c", "pane_gen": 3, "project": "", "task": "Review", "sent_at": "2026-10-21 10:01:00", "title": null, "state": "done", "updated_at": "2026-10-21 11:00:00", "type": "review", "ref": "#12", "reported_at": "2026-10-21 11:05:00", "closed_at": null, "gone_at": null, "elsewhere": true, "result_exists": false }
+    ] } } },
+    { "type": "reply", "id": 2, "result": { "Ok": { "kind": "ledger", "rows": [] } } },
+    { "type": "reply", "id": 3, "result": { "Ok": { "kind": "ledger_stamp", "stamp": "9c1e…" } } },
+    { "type": "reply", "id": 4, "result": { "Ok": { "kind": "file", "file": { "content": "text", "size": 6, "text": "# Done\n", "truncated": false } } } },
+    { "type": "reply", "id": 5, "result": { "Ok": { "kind": "skipper", "skipper": { "name": "Skipper", "skipper_name": "Skipper", "agent": "claude", "model": "opus", "folder": "/home/me/skiff-agent", "folder_error": null, "configured": "/home/me/skiff-agent", "folder_status": "ready", "continue_on_restore": false, "project_agent": null, "project_model": null, "tasks": [
+      { "type": "review", "agent": "claude", "model": "opus", "command": "claude --model opus", "error": null }
+    ], "instructions": [
+      { "scope": { "kind": "skipper" }, "file": "AGENTS.md", "status": "edited", "modified": 1793000000000, "size": 9300 },
+      { "scope": { "kind": "project", "name": "ops-web" }, "file": "projects/ops-web/SKIPPER.md", "status": "none", "modified": null, "size": null }
+    ] } } } },
+    { "type": "reply", "id": 6, "result": { "Err": { "code": "not_found", "message": "row a1b2c3d4 has no result this Host can show" } } }
+  ]
+}

@@ -101,7 +101,7 @@ export function actionDialog(o: {
       if (document.activeElement === cancel) return;
       void run();
     } else if (e.key === "Tab") {
-      const stops = [...panel.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)")];
+      const stops = [...panel.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled)")];
       const i = stops.indexOf(document.activeElement as HTMLElement);
       stops[(i + (e.shiftKey ? -1 : 1) + stops.length) % stops.length]?.focus();
     } else return;

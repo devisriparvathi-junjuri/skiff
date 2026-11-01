@@ -33,7 +33,7 @@ Test every change with three questions:
 ## Visual rules
 
 - **Square and flush.** `border-radius: 0` everywhere. Dots and slider thumbs are round. Panes touch, with no gaps and no floating cards.
-- **A line marks a region edge.** The sidebar, the terminal area, the top bar and the panes have lines between them. Worktrees part with space.
+- **A line marks a region edge.** The sidebar, the terminal area, the top bar and the panes have lines between them.
 - **Show only what needs a look.** An idle session has no mark unless it has unread output. A shell at its prompt has no mark. The bell means an agent asks for approval. The flag means a turn or a command ended out of sight. Pane buttons show on the focused pane and on a hovered header. A changed file's folder shows on the current row and on hover.
 - **One rule weight.** Lines are 1px `--rule`. Pane dividers and edges of floating surfaces use `--rule-strong`. Do not stack accent lines.
 - **One row grid.** Main rows, menu items and pane headers are `--row` high (40px at zoom 1). Session rows, file rows and section headers use 20px. The top bar is 48px. Standard side padding is 16px; nested rows use indentation.
@@ -45,9 +45,9 @@ Test every change with three questions:
   - Project color (`--pc`) shows location: the project's icon or letters, the current row and the lit menu item.
   - State colors show session state: amber for waiting, blue for working, grey for done and idle. Project colors stay away from state colors.
   - Red shows errors, destructive items and deleted lines in diffs. Green marks added lines and unread output. A destructive item stays red when lit.
-- **Highlight, do not outline.** The current row and the lit menu item get a 22% project-color tint and a 2px inset bar on the left. A focus ring shows only after keyboard use (`body.kbd`), as a quiet 1px line. A selected pane gets a 2px frame in the working blue. The focused pane gets one in its project color.
+- **Highlight, do not outline.** The current row and the lit menu item get a 22% project-color tint and a 2px inset bar on the left. A focus ring shows only after keyboard use (`body.kbd`), as a quiet 1px line. A selected pane gets a 2px frame in the working blue. The focused pane gets one in its project color. While the keys are on another row, the row of the pane on screen keeps the 2px bar without the tint.
 - **Shadows on floating surfaces only.** Menus and dialogs have shadows. Menus are solid, never translucent.
-- **Little motion.** Small transitions take 120ms. Focus mode and maximize take 180ms and obey reduced-motion settings. The working skiff loops with `steps()`. Bells and flags stay still. Smooth loops cost frames on WebKit and in power-saver mode.
+- **Little motion.** Small transitions take 120ms. Focus mode and maximize take 180ms and obey reduced-motion settings. The working skiff rocks with `steps()`. While a Skipper idles and its watcher follows open work, its model icon turns once in 8 s, in steps. A Skipper's face blinks and sometimes turns its head. A done face does not move. Bells and flags stay still. Reduced motion stops every loop. Smooth loops cost frames on WebKit and in power-saver mode.
 - **Icons.** The Rune Icons outline set, stroke `currentColor`, 14px in menus. Add only the icons that the code uses.
 
 ## Theme scope
@@ -66,6 +66,7 @@ Themes are location cues. One look tells you which project or session you are in
 - **Keys act on what is highlighted.** The menu and theme keys use the highlighted scope. New session uses the row's worktree, else the focused pane's worktree. End session uses a highlighted session row, else the focused session. Close pane follows the row with DOM focus, else the focused pane or picked group. File-manager and copy-path keys use the highlighted file when there is one. See the [Glossary](https://github.com/solutionscay/skiff/wiki/Glossary).
 - **Menus show their keys, and the keys work.** An item's hint key picks that item while the menu is open. Enter always picks the lit item.
 - **Only a row with children folds.** A row with nothing under it has no chevron, no fold, and no fold key. A row whose click does nothing does not light on hover.
+- **Two views of the side panel.** The tree, or the Skippers list: the Skiff agent and every Skipper, one row each. TREE | SKIPPERS at the top and Ctrl+Alt+Shift+S switch them, and the choice lasts across restarts. A row adds no band or line for the state. The model icon and the time show it.
 - **One highlight.** The list has one current row at most. The focused pane's frame hides when the keys are elsewhere, such as on a group row.
 - **Focus goes back.** A menu or dialog gives the keys back to the row or terminal that opened it. It does not change the selection.
 - **Two regions.** The list and the terminal have one tab stop each. F6 steps between them.

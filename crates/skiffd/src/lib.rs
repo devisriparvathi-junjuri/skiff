@@ -2,6 +2,7 @@
 //! app, later a TUI or a remote client) speak the protocol in `skiff_core`.
 
 mod command;
+pub mod identity;
 pub mod paths;
 pub mod pty;
 pub mod screen;

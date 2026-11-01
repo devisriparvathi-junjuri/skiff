@@ -21,14 +21,16 @@ function menus(fleetRuns: boolean) {
   });
   const el = () => ({ append() {}, appendChild() {}, setAttribute() {}, addEventListener() {}, classList: { add() {} }, dataset: {} });
   let items: any[] = [];
-  const m = moduleFromSource(
+  // As the real launch entries: the Skipper first, then Shell.
+  const entries = (p: any) => [m.skipperStart(p), { label: "Shell" }].filter(Boolean);
+  const m: any = moduleFromSource(
     "../src/workspace/menus.ts",
     withStubs({
       "../app/skiffAgent": skiffAgent,
       "../app/state": { S, sessions: new Map(), removing: new Set(), removeErrors: new Map(), selectedWorktree: new Map() },
       "../app/stateQueries": orStub({ place: () => null }),
       "../ui/dom": { h: el, button: el, $: el },
-      "../app/panels": { launchMenu: { entries: () => [] } },
+      "../app/panels": { launchMenu: { entries } },
       "./tree": orStub({ bareWorktree: (p: any) => p.worktrees[0] }),
       "../ui/contextMenu": { ctxMenu: { open: (_x: number, _y: number, _t: string, list: any[]) => (items = list) } },
     }),
@@ -51,4 +53,13 @@ test("the project and fleet menus offer their Skipper with no setting behind it"
   const project = running.project();
   assert.ok(project.includes("Open fleet Skipper") && !project.includes("Start project Skipper"));
   assert.ok(running.fleet().includes("Open fleet Skipper"));
+});
+
+test("the start choices put the Skipper first and the project menu shows it once", () => {
+  for (const fleetRuns of [false, true]) {
+    const labels = menus(fleetRuns).project();
+    const first = fleetRuns ? "Open fleet Skipper" : "Start project Skipper";
+    assert.deepEqual([...labels.slice(0, 2)], [first, "Shell"]);
+    assert.equal(labels.filter((l: string) => l.includes("Skipper")).length, 1);
+  }
 });

@@ -9,6 +9,7 @@ import { ctxMenu } from "../ui/contextMenu";
 import type { MenuEntry } from "../ui/menu";
 import { basename, branchName, samePath } from "../workspace/model";
 import { locale, t, tn } from "../i18n";
+import { hostInvoke } from "../app/hostCaps";
 
 /**
  * Resume after a restart. A restored pane remembers the agent it ran and that
@@ -136,7 +137,7 @@ function commandFor(agent: string): string {
 function run(id: string, line: string) {
   const agent = sessions.get(id)?.resume?.agent;
   const flags = agent ? invoke<string>("agent_cache_flags", { agent }).catch(() => "") : Promise.resolve("");
-  void flags.then((f) => invoke("pty_write", { session: id, data: line + f + "\r" })).catch(showError);
+  void flags.then((f) => hostInvoke("session_terminal", "pty_write", { session: id, data: line + f + "\r" })).catch(showError);
 }
 
 /** A UUIDv7 starts with its creation time in ms. grok prints only a date, so its ids give the time. */

@@ -82,7 +82,7 @@ pub(crate) struct MenuLayout {
 }
 
 fn layout_now() -> MenuLayout {
-    let chosen = skiff_core::config::load().ok().and_then(|c| c.appearance.menu_layout);
+    let chosen = skiff_core::config::client::load().ok().and_then(|c| c.appearance.menu_layout);
     #[cfg(target_os = "linux")]
     let (available, auto, header) = (true, crate::header_bar::on_gnome(), crate::header_bar::active());
     #[cfg(not(target_os = "linux"))]

@@ -17,6 +17,10 @@ import { keepRow } from "./selection";
 import { openClosedProject } from "./projectClose";
 
 import { S } from "../app/state";
+import { checkShownHost, hostName, isRemote, updateShownHost } from "../app/hosts";
+import { daemonWarning } from "../app/daemonRestart";
+import { hostCan } from "../app/hostCaps";
+import { openRemoteNewSession } from "./remoteLaunch";
 import { accent, currentProject, launchChoices, shownIds } from "../app/stateQueries";
 import { t } from "../i18n";
 
@@ -58,14 +62,32 @@ export function renderWelcome() {
   const none = S.projects.length === 0 && !S.projectsError && !shownIds().length;
   const agent = skiffAgentFolder() ? [skiffAgentName(), skiffAgentChoice()?.id ?? null] : null;
   // Same content: keep the element, and the focus and hover on its buttons.
-  const sig = JSON.stringify([agent, S.projects.length, S.closedProjects.map((x) => x.name), !!S.projectsError, p?.name, p?.color, w?.path, S.justAdded === p?.name, !!S.focused, shownIds().length, launchChoices().map((a) => a?.id)]);
+  const gap = daemonWarning();
+  const sig = JSON.stringify([agent, gap?.kind, gap?.message, S.projects.length, S.closedProjects.map((x) => x.name), !!S.projectsError, p?.name, p?.color, w?.path, S.justAdded === p?.name, !!S.focused, shownIds().length, launchChoices().map((a) => a?.id), hostCan("session_lifecycle")]);
   if (sig === welcomeSig && (!welcomeBox || welcomeBox.isConnected)) return;
   welcomeSig = sig;
   host.querySelector(".empty")?.remove();
   welcomeBox?.remove();
   welcomeBox = null;
   const box = h("div", "welcome");
-  if (none && S.closedProjects.length) {
+  if (isRemote()) {
+    // A remote Host: its sessions, and new ones when its Skiff offers them.
+    if (S.focused || shownIds().length) return;
+    const can = hostCan("session_lifecycle");
+    const text = can
+      ? t("welcome.remotePickOrStart", { host: hostName() })
+      : t("welcome.remotePick");
+    box.append(h("div", "welcome-title", t("welcome.remoteTitle", { host: hostName() })), h("div", "welcome-text", text));
+    if (can) {
+      const start = button("welcome-primary", t("cmd.newSession"), () => {
+        const b = start.getBoundingClientRect();
+        openRemoteNewSession(b.left, b.bottom);
+      });
+      box.append(start);
+    } else {
+      box.append(...versionGap());
+    }
+  } else if (none && S.closedProjects.length) {
     // Every project is closed: open one again, or add another.
     const actions = h("div", "welcome-actions");
     for (const c of S.closedProjects) {
@@ -126,4 +148,24 @@ export function renderWelcome() {
   }
   host.appendChild(box);
   welcomeBox = box;
+}
+
+/** Why a remote Host offers no new sessions, and the one step that fixes it
+ *  from here. A Skiff that Skiff installed: Update Skiff…, the same update
+ *  as in Settings › Hosts. One from its own install, or a newer one: the
+ *  message only, as the badge says it. Neither: the check list. */
+function versionGap(): HTMLElement[] {
+  const w = daemonWarning();
+  const name = hostName();
+  if (w?.kind === "update") {
+    return [
+      h("div", "welcome-hint", t("welcome.hostOlder", { name })),
+      button("welcome-primary", t("skiffAgent.updateSkiff"), () => updateShownHost()),
+    ];
+  }
+  if (w?.kind === "remote") return [h("div", "welcome-hint", w.message)];
+  return [
+    h("div", "welcome-hint", t("welcome.noSessions", { name })),
+    button("welcome-primary", t("hosts.checkHost", { name }), () => checkShownHost()),
+  ];
 }

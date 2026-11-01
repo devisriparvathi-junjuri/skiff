@@ -92,7 +92,7 @@ States: `working`, `waiting`, `idle`, `done`.
 ## Send a task
 
 1. Find the pane in the JSON. Use its id. Confirm its working directory.
-2. Run `skiff peek S -n 40`. Check the current result and the input box. If the task already runs or is complete, report that. Do not send it again. Claude Code shows a prompt suggestion in gray in an empty input box. `peek` shows no color, so the suggestion looks like typed text after `❯`. It is not a draft, and the person did not type it. Do not report a draft from `peek`. Send: only exit 9 tells you that the box holds a real draft.
+2. Run `skiff peek S -n 40`. Check the current result and the input box. If the task already runs or is complete, report that. Do not send it again. A known agent can show a prompt suggestion in gray in an empty input box. `peek` does not print that gray text, so text in the box was typed. Do not report a draft from `peek` alone. Send: only exit 9 tells you that the box holds a real draft.
 3. Write a clear task: the result, the scope, the context, the permitted actions, and what to report. An investigation request permits an investigation only. Pass on a permission to fix or deploy only when the user gave it.
 4. For a long prompt, write a file and send it with `skiff send S - --enter < file`. Keep shell syntax and user text apart.
 
@@ -217,11 +217,12 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 | `ledger report UID... \| --all` | Mark done tasks as told to the person. |
 | `ledger close UID...` | Close work on the person's word, before each task is reported. |
 | `ledger reopen UID...` | Open closed work again, or keep open work open. Use it for work that waits on the person. |
-| `ledger prune [--older-than 7d] [--yes]` | Remove closed work. Without `--yes` it only prints it. |
-| `ledger rm UID` | Remove one row now. |
+| `ledger prune [--older-than 7d] [--yes [--flush]]` | Remove closed work. Without `--yes` it only prints it. |
+| `ledger rm UID [--flush]` | Remove one row now. |
+| `ledger dir UID` | Print the row's work folder. |
 
-- `add` prints the id, the uid and the result path. It makes no file. A task needs `--pane`. A plan has none.
-- `--send` and `ledger send` add " Write your result to PATH." to the task text. Do not put the path in `--task`.
+- `add` makes the row's work folder and prints the id, the uid, the folder and the result path. It makes no file in the folder. A task needs `--pane`. A plan has none.
+- `--send` and `ledger send` add " Put everything for this task in FOLDER: the result, screenshots, scratch copies and worktrees. Write your result to PATH." to the task text. Do not put the folder or the path in `--task`.
 - Both run every `send` check and exit with its code. Exit 0 sets `sent`. Exit 8 sets `blocked`. A refusal leaves the task `pending`.
 - `ledger send` exits 1 and types nothing for a task that is `sent`, `blocked` or `done`, for a plan, for a gone pane, or for a task on another daemon.
 - Give every task and plan a `--title` of 3 to 6 words, such as `--title "Fix found-set count"`. Without one, the Ledger panel uses the first sentence of the task.
@@ -232,23 +233,28 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 - Run `ledger report` in the same turn as you tell the person. A plan's uid reports its done tasks. A task that is not done is refused. A state change away from `done` clears the mark and opens the work again.
 - `ledger close` takes a plan, or a task with no plan. It refuses work with a task that is not done, and a task in a plan. It reports the done tasks of the work.
 - After each `ledger` command that writes, Skiff closes the work whose tasks are all done and reported, and prints one line for each to stderr. Work that `ledger reopen` named is not closed until a task in it changes state, is added, or moves into it.
-- `prune` removes only closed work, with its tasks. `rm` and `prune` keep the result files.
+- `prune` removes only closed work, with its tasks. `rm` and `prune` keep the work folders and result files. With `--flush` they also flush each work folder that Settings › Disk use would flush: the work is done, its pane is not working, nothing in it changed in the last 15 minutes, and no git checkout in it has changes or unpushed commits. A folder in use stays, and the output says why.
 
-Result paths, in `results/` in the agent folder, in `projects/<project>/results/` for a project Skipper's rows and a hand-off to it, or in `fleets/<fleet>/results/` for a fleet Skipper's:
+Work folders: `add` and `handoff` make one folder for each row, in `results/` in the agent folder, in `projects/<project>/results/` for a project Skipper's rows and a hand-off to it, or in `fleets/<fleet>/results/` for a fleet Skipper's. The name is `<uid>-<slug>`, from the title. It never changes.
 
-- A task with no plan: `results/<date>-<uid>-<slug>.md`.
-- A plan: the folder `results/<date>-<uid>-<slug>/`, with its notes in `plan.md`.
-- A task in a plan: `<uid>-<slug>.md` in the plan's folder.
+- A plan, or a task with no plan: `results/<uid>-<slug>/`. A plan's notes go in `plan.md` there. A task's result goes in `result.md` there.
+- A task in a plan: `<uid>-<slug>/` in the plan's folder, with `result.md`.
+- A hand-off: `<uid>-<slug>/` in the project's or fleet's `results/`, with `result.md`. The tasks under it get their folders in it.
+- Put everything for a task in its folder: the result, screenshots, scratch copies and worktrees. `ledger dir UID` prints it. Settings › Disk use flushes a done task's folder as one unit.
+- A row from before work folders keeps its old result path and has no folder.
 
 ### The watcher
 
 `skiff watch` runs while a Skipper runs: the Skiff agent, or a project or fleet Skipper. Each `[watch]` line goes to the coordinator that owns the task. A project Skipper hears of its own tasks; Admiral hears of its own, and once of each hand-off a project Skipper reports. It types one `[watch]` line into the coordinator when a ledger pane ends a turn, exits, restarts or is gone, or is idle with a pending task. It types only while the agent is idle and its input box is empty. A `waiting` pane gives the person a desktop notification and gives the agent nothing.
+
+A plan holds the turn ends of its tasks. While a task in the plan still runs, a pane that ends its turn on a `sent` task of the plan gives no line. When every task in the plan has ended, the watcher types one line for the plan: `[watch] plan UID: 3 of 3 tasks ended: pane NAME ID, ...`. A task has ended when it is `done` or `blocked`, or `sent` and its pane is idle, exited, restarted or gone. A `pending` task, a pane that works or waits, and a hand-off that is not done still run. A pane that exits, restarts or is gone, or is idle with a pending task, still gives its own line at once. A task with no plan works as before.
 
 1. Read each pane that a `[watch]` line names with `skiff peek`.
 2. Then run `skiff seen S`. An unread pane is named again on the next run.
 3. A gone pane cannot be marked seen. The `[watch]` line names the tasks that skiff set `done` with it. Tell the person, then run `skiff ledger report UID...`. To run a task again, reassign it with `skiff ledger update UID --pane S --state pending`.
 4. On `[watch] N done tasks not reported`, run `skiff ledger ls --unreported` and report them.
 5. On `[watch] the P Skipper reported hand-off UID`, read the hand-off's result, tell the person, then run `skiff ledger report UID`.
+6. On `[watch] plan UID: N of M tasks ended`, read each pane it names and mark it seen. Set each task `done` with its result, tell the person in one report, then run `skiff ledger report UID`.
 
 ### The Ledger panel
 

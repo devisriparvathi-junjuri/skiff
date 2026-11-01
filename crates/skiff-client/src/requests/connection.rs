@@ -27,6 +27,8 @@ pub struct DaemonInfo {
     pub pid: Option<u32>,
     /// A debug build. `None` from older daemons.
     pub debug: Option<bool>,
+    /// The Host it serves and this run of it. `None` from older daemons.
+    pub identity: Option<skiff_core::protocol::Identity>,
 }
 
 impl Client {
@@ -43,7 +45,9 @@ impl Client {
     /// Version, protocol, reload support and pid.
     pub async fn daemon_info(&self) -> Result<DaemonInfo> {
         match self.request(Request::Ping).await? {
-            Response::Pong { version, protocol, reload_state, pid, debug } => Ok(DaemonInfo { version, protocol, reload_state, pid, debug }),
+            Response::Pong { version, protocol, reload_state, pid, debug, identity } => {
+                Ok(DaemonInfo { version, protocol, reload_state, pid, debug, identity })
+            }
             other => bail!("unexpected reply: {other:?}"),
         }
     }

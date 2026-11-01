@@ -1,0 +1,94 @@
+/* The side panel's two views: the tree and the Skippers list. The toggle sits
+   over both, 32px like a section head. The view on is lit, the other plain. */
+#sidebar-view {
+  height: calc(32 * var(--u)); flex-shrink: 0;
+  display: grid; grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid var(--rule);
+}
+.sv-tab {
+  display: flex; align-items: center; justify-content: center; gap: calc(6 * var(--u));
+  border: 0; border-radius: 0; background: transparent; color: var(--text-dim);
+  font: 600 calc(11px * var(--zoom, 1)) var(--font); letter-spacing: 0.06em; text-transform: uppercase;
+}
+.sv-tab + .sv-tab { border-left: 1px solid var(--rule); }
+.sv-tab:hover { color: var(--text-2); }
+.sv-tab.on { color: var(--text); background: var(--bg-raised); }
+.sv-count { color: var(--state-waiting-text); font-family: var(--mono); letter-spacing: 0; }
+
+/* A Skipper: 60px, three lines of the row grid. The avatar, then the name
+   with the time, and the latest line of its work. */
+.session-row.sk-row {
+  height: calc(60 * var(--u)); gap: calc(10 * var(--u));
+  padding: 0 calc(16 * var(--u)) 0 calc(12 * var(--u));
+  border-bottom: 1px solid var(--rule);
+}
+.sk-text { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: calc(3 * var(--u)); }
+.sk-top, .sk-line { display: flex; align-items: baseline; gap: calc(8 * var(--u)); min-width: 0; }
+.sk-top > .agent-icon { align-self: center; }
+.sk-name { font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sk-tag { font: calc(10px * var(--zoom, 1)) var(--mono); color: var(--text-dim); flex-shrink: 0; }
+.sk-num { flex-shrink: 0; font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.sk-time { margin-left: auto; flex-shrink: 0; font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.sk-row.st-waiting .sk-time { color: var(--state-waiting-text); }
+.sk-row .sk-line .title { color: var(--text-3); }
+.sk-row .sk-line .unread { align-self: center; height: calc(12 * var(--u)); }
+.sk-row.unread-row .sk-line .title { color: var(--text-2); font-weight: 600; }
+#sidebar-scroll .sk-row.current .sk-line .title { color: var(--text-2); }
+
+/* A Skipper's face (skipperFace.ts): the SVG or a picture, --face px at zoom 1. */
+.skipper-face { width: calc(var(--face) * var(--u)); height: calc(var(--face) * var(--u)); flex-shrink: 0; display: inline-block; line-height: 0; }
+.skipper-face svg { display: block; width: 100%; height: 100%; }
+/* Living faces. The eyes blink: they squash flat for about 150 ms, in
+   steps. Now and then the head turns. The front moves as one, on one
+   centerline: the visor, the eyes centered in it, and the Admiral's
+   button slide 1.5 units and narrow a little (92 %) as their far side
+   goes back. The depth comes from what stays back: the whole face narrows
+   to 97 % toward the near side, with no rotation, so the centerline stays
+   upright, and the Admiral's crown and band slide only 0.5 and narrow to 97 %.
+   Eased in and out over about 250 ms, held about 1.2 s, then back. A cycle
+   holds three turns: one side, the other side, then up. Each face's rhythm
+   comes in its SVG's variables (skipperAvatar.ts). Done and no-session
+   faces sleep, and reduced motion stops all of it. */
+.skipper-face .sk-eyes { transform-box: fill-box; transform-origin: center; animation: var(--blink-anim, sk-blink) var(--blink, 5s) var(--blink-delay, 0s) infinite steps(1, end); }
+.skipper-face :is(.sk-turn, .sk-cap, .sk-front) { animation-duration: var(--face-turn, 42s); animation-delay: var(--face-turn-delay, 0s); animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+.skipper-face .sk-turn { transform-origin: 16px 16px; animation-name: sk-lean; }
+.skipper-face .sk-cap { transform-box: fill-box; transform-origin: center; animation-name: sk-capslide; }
+.skipper-face .sk-front { transform-box: fill-box; transform-origin: center; animation-name: sk-slide; }
+@keyframes sk-blink { 0% { transform: scaleY(1); } 97.4% { transform: scaleY(0.1); } 100% { transform: scaleY(1); } }
+@keyframes sk-blink2 { 0% { transform: scaleY(1); } 93.6% { transform: scaleY(0.1); } 95.4% { transform: scaleY(1); } 97.4% { transform: scaleY(0.1); } 100% { transform: scaleY(1); } }
+/* the three turns, at 30 %, 63 % and 96 % of the cycle: 0.6 % in, 2.9 % held, 0.6 % back */
+@keyframes sk-lean {
+  0%, 30%, 34.1%, 63%, 67.1%, 100% { transform: translate(0, 0) scaleX(1); }
+  30.6%, 33.5% { transform: translate(calc(var(--dir, 1) * 0.45px), 0) scaleX(0.97); }
+  63.6%, 66.5% { transform: translate(calc(var(--dir, 1) * -0.45px), 0) scaleX(0.97); }
+}
+@keyframes sk-capslide {
+  0%, 30%, 34.1%, 63%, 67.1%, 95%, 99.1%, 100% { transform: translate(0, 0) scaleX(1); }
+  30.6%, 33.5% { transform: translate(calc(var(--dir, 1) * 0.5px), 0) scaleX(0.97); }
+  63.6%, 66.5% { transform: translate(calc(var(--dir, 1) * -0.5px), 0) scaleX(0.97); }
+  95.6%, 98.5% { transform: translate(0, -0.5px) scaleX(1); }
+}
+@keyframes sk-slide {
+  0%, 30%, 34.1%, 63%, 67.1%, 95%, 99.1%, 100% { transform: translate(0, 0) scaleX(1); }
+  30.6%, 33.5% { transform: translate(calc(var(--dir, 1) * 1.5px), 0) scaleX(0.92); }
+  63.6%, 66.5% { transform: translate(calc(var(--dir, 1) * -1.5px), 0) scaleX(0.92); }
+  95.6%, 98.5% { transform: translate(0, -1px) scaleX(1); }
+}
+:is(.st-done, .sk-row:not([data-session]), .skiff-agent-row:not([data-session])) .skipper-face :is(.sk-eyes, .sk-look, .sk-front, .sk-cap, .sk-turn) { animation: none; }
+@media (prefers-reduced-motion: reduce) { .skipper-face :is(.sk-eyes, .sk-look, .sk-front, .sk-cap, .sk-turn) { animation: none; } }
+.mission-card .skipper-face { width: calc(var(--face) * 1px); height: calc(var(--face) * 1px); }
+.cell-head .title .skipper-face { vertical-align: calc(-3 * var(--u)); margin-right: calc(4 * var(--u)); }
+
+/* Avatar…: twelve faces, six to a row, then Shuffle across the foot. */
+.av-panel { width: calc(384 * var(--u)); }
+.av-grid { display: grid; grid-template-columns: repeat(6, 1fr); border-bottom: 1px solid var(--rule); }
+.av-opt { height: calc(64 * var(--u)); display: grid; place-items: center; padding: 0; border: 0; border-left: 1px solid var(--rule); background: transparent; }
+.av-opt:nth-child(6n + 1) { border-left: 0; }
+.av-opt:nth-child(n + 7) { border-top: 1px solid var(--rule); }
+.av-opt:hover { background: var(--bg-raised); }
+.av-opt[aria-pressed="true"] { background: color-mix(in srgb, var(--pc) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc); }
+.av-act { height: var(--row); border: 0; background: transparent; color: var(--text-2); font-size: calc(13px * var(--zoom, 1)); }
+.av-act:hover { background: var(--bg-raised); color: var(--text); }
+
+/* The face starts the row, plain, in the 40 px the row gives it. */
+.sk-row > .sk-face { align-self: center; }

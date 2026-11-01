@@ -7,7 +7,7 @@ import { type Action, keyLabel } from "../app/keys";
 import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { rune, type RuneName } from "../ui/runes";
 import { branchName, isProjectSkipper, scopeName, skipperBase, taskTitle } from "../workspace/model";
-import { projectIcon } from "../appearance/projectIcon";
+import { faceSig, skipperFace } from "../workspace/skipperFace";
 import { stateIcon } from "../appearance/stateIcon";
 
 import { button, h } from "../ui/dom";
@@ -53,7 +53,7 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   const grouped = inShownGroup(id);
   const away = s ? awayPlaces(s).map((a) => branchName(a.worktree)).join(", ") : "";
   // Rebuild only on change, so a click that spans a daemon event still lands.
-  const sig = s ? JSON.stringify([s.state, s.exit_code, s.agent_exit, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, grouped, away, resumeOffer(s), newestImage(), insertShown(id)]) : "";
+  const sig = s ? JSON.stringify([s.state, s.exit_code, s.agent_exit, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, grouped, away, resumeOffer(s), newestImage(), insertShown(id), faceSig(s.coordinator ? null : (s.skipper ?? null))]) : "";
   if (head.dataset.sig === sig) return;
   head.dataset.sig = sig;
   head.replaceChildren();
@@ -107,19 +107,14 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
 }
 
 /** The title in the head. A project Skipper reads "Skipper · gesher", with
- *  its project's icon or letters before the project, as the tree shows it. */
+ *  its face before the project; the Skiff agent's face comes first. */
 function headTitle(s: SessionInfo): HTMLElement {
   const title = h("span", "title", taskTitle(s));
-  if (!isProjectSkipper(s)) return title;
-  const p = S.projects.find((x) => x.name === s.skipper);
-  title.replaceChildren(`${skipperBase(s)} · `);
-  if (p) {
-    const mark = h("span", "head-project");
-    if (p.icon) mark.appendChild(projectIcon(p, 14));
-    else mark.textContent = p.short;
-    title.appendChild(mark);
+  if (s.coordinator) {
+    title.prepend(skipperFace(null, 16));
+    return title;
   }
-  // A fleet has no color and no icon: its name alone.
-  title.append(scopeName(s.skipper ?? ""));
+  if (!isProjectSkipper(s)) return title;
+  title.replaceChildren(`${skipperBase(s)} · `, skipperFace(s.skipper ?? "", 16), scopeName(s.skipper ?? ""));
   return title;
 }

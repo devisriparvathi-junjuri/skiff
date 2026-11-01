@@ -14,22 +14,24 @@ import { currentProject, place } from "../app/stateQueries";
 import { panes } from "../terminal/terminalState";
 import { skiffAgentSession } from "../app/skiffAgent";
 import { t } from "../i18n";
+import { hostInvoke } from "../app/hostCaps";
 
 const knownTheme = (id: string | null) => (S.themes.some((t) => t.id === id) ? id! : DEFAULT_THEME);
 
 export async function loadThemes() {
   const list = await invoke<TerminalTheme[]>("list_themes").catch(() => S.themes);
   S.themes = list.map((t) => ({ ...t, source: t.source === "file" ? "file" : "built-in" }));
+  // Skipper faces drawn before the themes came in take their colors now.
+  render("themes");
 }
 
 /** Projects with a `theme` in projects.toml: name to theme id. */
 const projectThemes = new Map<string, string>();
 
-/** Reads each project's own theme. Called with every project reload. */
-export async function loadProjectThemes() {
-  const list = await invoke<[string, string][]>("project_themes").catch(() => []);
+/** Each project's own theme, from the Host's rows. Called with every project read. */
+export function projectThemesFrom(list: Project[]) {
   projectThemes.clear();
-  for (const [name, id] of list) projectThemes.set(name, id);
+  for (const p of list) if (p.theme) projectThemes.set(p.name, p.theme);
 }
 
 /** The project's own theme id, or null when it follows the app. */
@@ -138,7 +140,7 @@ export async function sessionThemeMenu(s: SessionInfo) {
       applyThemes();
       applyApp();
       render();
-      invoke<SessionInfo>("set_session_theme", { session: s.id, theme: id }).catch(showError);
+      hostInvoke<SessionInfo>("session_lifecycle", "set_session_theme", { session: s.id, theme: id }).catch(showError);
     },
   });
 }
@@ -161,7 +163,7 @@ export async function groupThemeMenu(g: Group) {
         const s = sessions.get(sid);
         if (!s) continue;
         s.theme = id;
-        invoke<SessionInfo>("set_session_theme", { session: sid, theme: id }).catch(showError);
+        hostInvoke<SessionInfo>("session_lifecycle", "set_session_theme", { session: sid, theme: id }).catch(showError);
       }
       applyThemes();
       applyApp();
@@ -195,7 +197,7 @@ export async function projectThemeMenu(p: Project) {
       applyThemes();
       applyApp();
       render();
-      invoke("set_project_theme", { project: p.name, theme: id }).catch(showError);
+      hostInvoke("project_config", "set_project_theme", { project: p.name, theme: id }).catch(showError);
     },
   });
 }

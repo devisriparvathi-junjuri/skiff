@@ -8,6 +8,7 @@ import { ink } from "../appearance/appTheme";
 import { appliedTheme, ownTheme, signatureColor } from "../appearance/themes";
 import { glyph } from "./layoutIcon";
 import { agentName, basename, branchName, scopeName, taskTitle } from "./model";
+import { faceSig, skipperFace } from "./skipperFace";
 import type { Group, Project, SessionInfo, Worktree } from "../platform/types";
 
 import { changeCounts, changesBlock, changesSig, showsChanges } from "./changes";
@@ -19,9 +20,9 @@ import { fleetMenu, groupMenu, projectMenu, rowMenu, skiffAgentMenu, worktreeMen
 
 import { launchMenu } from "../app/panels";
 
-import { renameRow, startRename, startSessionRename } from "./rename";
+import { renameRow, renamingKey, startRename, startSessionRename } from "./rename";
 
-import { itemKey, listItems } from "../app/keyboard";
+import { findRow, itemKey, listItems } from "../app/keyboard";
 import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
 import { startPreview } from "../terminal/peek";
 import { stateIcon } from "../appearance/stateIcon";
@@ -37,8 +38,10 @@ import { render } from "../app/renderRequest";
 import { projectsPlus, renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
 import { ledgerCounts, ledgerNeeds, ledgerWorkTitle } from "./ledger";
 import { fleetScope, fleetSkipperOf, projectSkipperOf, projectWatch, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, skipperWord, syncSkiffAgent } from "../app/skiffAgent";
+import { hostConnected, hostName, isRemote } from "../app/hosts";
 import { step, tally } from "../diagnostics/stalls";
-import { t, tn } from "../i18n";
+import { sentences, t, tn } from "../i18n";
+import { renderSkippers, renderViewToggle, skippersOn } from "./skippersView";
 
 /** 20px lines, flush against whatever follows. */
 function sessionBlock(lines: Line[], color: string): HTMLElement {
@@ -81,7 +84,7 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
       revealSession(s.id);
       // The keys stay on the row, as on a picked group's, so Delete can end it.
       // Typing still reaches the terminal: see passToTerminal in keyboard.ts.
-      requestAnimationFrame(() => keepRow(s.id));
+      requestAnimationFrame(() => keepRow(s.id, o.in?.id ?? null));
     }
   });
   row.addEventListener("contextmenu", (e) => {
@@ -159,6 +162,29 @@ function pointerRow(s: SessionInfo): HTMLElement {
     requestAnimationFrame(() => keepRow(s.id));
   });
   return row;
+}
+
+/**
+ * What the list says about the projects themselves, from the selected
+ * Host's data plane: they load, they are out of reach and why, or there are
+ * none. Null when the projects show and say it all.
+ */
+export function projectsNote(): HTMLElement | null {
+  const remote = isRemote();
+  const host = remote ? hostName() : "";
+  // A remote Host says what it waits for: the connect, then its projects.
+  if (S.dataState === "loading" || (remote && !hostConnected())) {
+    if (S.projects.length) return null;
+    return h("div", "note-row", remote ? t("sidebar.waitingFor", { host }) : t("sidebar.loadingProjects"));
+  }
+  if (S.dataState === "unavailable") {
+    // Each cause says what is wrong and what Skiff does about it.
+    const why = S.dataNote ?? (remote ? t("sidebar.cannotShowOn", { host }) : t("sidebar.cannotShow"));
+    const text = S.projects.length ? sentences([why, t("sidebar.lastRead")]) : why;
+    // A remote Host without its service is a setup, not a fault: no red.
+    return remote ? h("div", "note-row", text) : errorRow(text);
+  }
+  return S.projects.length ? null : h("div", "note-row", remote ? t("sidebar.noProjectsOn", { host }) : t("sidebar.noProjects"));
 }
 
 function errorRow(text: string): HTMLElement {
@@ -243,7 +269,7 @@ function sidebarSig(): { all: string; parts: Map<string, string>; looks: Map<str
   // The agent icons are inked against the applied app theme: a new theme re-inks them.
   // The watcher state changes with no session event when the grace ends.
   const sa = skiffAgentSession();
-  const agent = skiffAgentFolder() ? [skiffAgentName(), sa?.id ?? null, skiffAgentChoice()?.id ?? null, sa ? skiffWatch(sa) : null, sa?.watch?.follows ?? null, ledgerNeeds(), sa ? [rowOf.get(sa.id), look(sa)] : null] : null;
+  const agent = skiffAgentFolder() ? [skiffAgentName(), sa?.id ?? null, skiffAgentChoice()?.id ?? null, sa ? skiffWatch(sa) : null, sa?.watch?.follows ?? null, ledgerNeeds(), sa ? [rowOf.get(sa.id), look(sa)] : null, faceSig(null)] : null;
   const base = [listGen, appliedTheme(), S.selection, S.renamingSession, S.renaming?.id ?? null, sa?.id ?? null];
   const parts = new Map<string, string>();
   parts.set(AGENT_BLOCK, JSON.stringify([base, agent]));
@@ -258,6 +284,7 @@ function sidebarSig(): { all: string; parts: Map<string, string>; looks: Map<str
   const all = JSON.stringify([
     listGen, appliedTheme(), S.selectedProject, folded.keys(), S.projects.map(shows), hiddenSig(),
     S.selection, S.renamingSession, S.renaming?.id ?? null, rows, groups, projects, agent,
+    S.dataState, S.dataNote,
   ]);
   return { all, parts, looks: looksUnder };
 }
@@ -291,6 +318,16 @@ export function renderSidebar() {
   if (treeDrag.active) return;
   renderWorkspaceStatus();
   syncSkiffAgent();
+  renderViewToggle();
+  if (skippersOn()) {
+    // The tree draws whole again when it comes back.
+    lastSig = "";
+    const active = document.activeElement as HTMLElement | null;
+    const key = active?.closest("#sidebar-scroll") ? active.dataset.session ?? active.dataset.key : undefined;
+    renderSkippers(side);
+    restoreFocus(side, key, null, []);
+    return;
+  }
   openToFocused();
   const sig = step("render.sidebar.sig", sidebarSig);
   if (lastSig === sig.all) return tally("sidebar.same");
@@ -370,8 +407,9 @@ export function renderSidebar() {
   }
   // A folded fleet's rows start over when it opens: the fold left them shrunk.
   for (const k of [...sectionKids.keys()]) if (!kidsNow.has(k)) sectionKids.delete(k);
-  if (!S.projects.length) nodes.push(h("div", "note-row", t("sidebar.noProjects")));
-  else if (!S.projects.some(shows)) nodes.push(h("div", "note-row", t("sidebar.noProjectsHere")));
+  const note = projectsNote();
+  if (note) nodes.push(note);
+  else if (S.projects.length && !S.projects.some(shows)) nodes.push(h("div", "note-row", t("sidebar.noProjectsHere")));
   // Sessions whose folder is in no project.
   if (worktreeLines(null).length) {
     nodes.push(keep(`${OTHER_BLOCK}-head`, "", otherHead));
@@ -435,7 +473,7 @@ function skiffAgentRow(): HTMLElement {
     const a = skiffAgentChoice();
     row.dataset.key = SKIFF_AGENT_KEY;
     row.setAttribute("aria-label", t("sidebar.agentOff", { name }));
-    row.append(launchIcon(a), h("span", "skiff-agent-name", name), h("span", "title", a ? t("sidebar.agentStart", { agent: a.id }) : t("sidebar.noAgentOn")));
+    row.append(skipperFace(null, 24), launchIcon(a), h("span", "skiff-agent-name", name), h("span", "title", a ? t("sidebar.agentStart", { agent: a.id }) : t("sidebar.noAgentOn")));
     row.addEventListener("click", () => {
       // The row is current before the start: newSession shows the pane only if
       // the current row has not moved while the agent starts.
@@ -464,7 +502,8 @@ function skiffAgentRow(): HTMLElement {
   if (watch.text) row.title = watch.text;
   const vars = { name, title: s.title ?? agentName(s), state: t(`state.${s.state}`), watch: watch.text };
   row.setAttribute("aria-label", watch.text ? t("sidebar.agentLabelWatch", vars) : t("sidebar.agentLabel", vars));
-  row.append(agentIcon(s), h("span", "skiff-agent-name", name), h("span", "title", s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? ""));
+  // Its face, 24 px and centered on the row, then the agent icon with the watcher, and the skiff under way while it works.
+  row.append(skipperFace(null, 24), agentIcon(s), ...underWay(s), h("span", "skiff-agent-name", name), h("span", "title", s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? ""));
   // One amber count, only while ledger tasks need the person.
   const needs = ledgerNeeds();
   if (needs) {
@@ -487,11 +526,14 @@ function skiffAgentRow(): HTMLElement {
   return row;
 }
 
+/** A Skipper row's skiff under way, the tree's working mark, while it works. */
+const underWay = (s: SessionInfo) => (s.state === "working" ? [stateIcon(s)] : []);
+
 /** What a project's or a fleet's Skipper row shows, for the block's signature. */
 function skipperSig(scope: string) {
   const s = projectSkipperOf(scope);
   if (!s) return null;
-  return [s.id, s.state, S.selection.includes(s.id), ledgerCounts(scope), ledgerWorkTitle(scope), s.watch ?? null, s.title ?? null, s.unread ?? false];
+  return [s.id, s.state, S.selection.includes(s.id), ledgerCounts(scope), ledgerWorkTitle(scope), s.watch ?? null, s.title ?? null, s.unread ?? false, faceSig(scope)];
 }
 
 /**
@@ -536,7 +578,7 @@ function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
   const { need, working } = ledgerCounts(scope);
   const vars = { scope: scopeName(scope), skipper: name, title: title || t(`state.${s.state}`), watch: watch.text };
   row.setAttribute("aria-label", watch.text ? t("sidebar.skipperLabelWatch", vars) : t("sidebar.skipperLabel", vars));
-  row.append(h("span", "chev-space"), agentIcon(s), h("span", "skiff-agent-name", name), h("span", "title", title));
+  row.append(h("span", "chev-space"), skipperFace(scope, 20), agentIcon(s), ...underWay(s), h("span", "skiff-agent-name", name), h("span", "title", title));
   const roll = rollCounts(need, working);
   if (roll) row.append(roll);
   row.append(unreadMark(row, s));
@@ -546,7 +588,7 @@ function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
   row.addEventListener("click", () => {
     clearSelection();
     revealSession(s.id);
-    requestAnimationFrame(() => keepRow(s.id));
+    requestAnimationFrame(() => keepRow(s.id, null));
   });
   row.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -725,9 +767,14 @@ function restoreHover() {
 
 function restoreFocus(side: HTMLElement, activeKey: string | undefined, caret: Caret | null, near: string[]) {
   restoreHover();
+  // The row whose rename begins is now its name field, which takes the keys. It
+  // has not gone: the rows near it must not become the current one.
+  if (activeKey && activeKey === renamingKey()) return;
   if (activeKey) {
-    const again = [...side.querySelectorAll<HTMLElement>("[data-key], [data-session], [data-wt], [data-group]")]
+    const first = [...side.querySelectorAll<HTMLElement>("[data-key], [data-session], [data-wt], [data-group]")]
       .find((el) => (el.dataset.key ?? el.dataset.session ?? el.dataset.wt ?? el.dataset.group) === activeKey);
+    // A Skipper in a group has two rows: the keys go back to the one they were on.
+    const again = first?.dataset.session ? findRow(listItems(), activeKey) ?? first : first;
     const disabled = again instanceof HTMLButtonElement || again instanceof HTMLInputElement || again instanceof HTMLSelectElement
       ? again.disabled
       : false;
@@ -760,6 +807,7 @@ function groupRow(g: Group, hasPrevious = false, hasNext = false): HTMLElement {
   const lead = sessions.get(g.focus ?? ids[0]);
   row.style.setProperty("--pc", accent(lead ? place(lead)?.project : null));
   if (S.renaming?.id === g.id) {
+    row.classList.add("renaming");
     const input = groupRenameInput(g);
     row.append(glyph(g.layout), input);
     return row;

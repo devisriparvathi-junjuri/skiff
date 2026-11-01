@@ -1,5 +1,5 @@
 /** The dialog for a project's pane opacity over its background image. The panes show each value as the slider moves. */
-import { invoke } from "@tauri-apps/api/core";
+import { hostInvoke } from "../app/hostCaps";
 import { h } from "../ui/dom";
 import { actionDialog } from "../ui/dialogParts";
 import { S } from "../app/state";
@@ -36,7 +36,7 @@ export function pickBackgroundOpacity(p: Project) {
     },
     submit: async () => {
       const percent = Number(slider.value);
-      await invoke("set_project_background_opacity", { project: p.name, percent });
+      await hostInvoke("project_config", "set_project_background_opacity", { project: p.name, percent });
       // Hold the value until the project list comes back with it.
       const mine = S.projects.find((x) => x.name === p.name);
       if (mine) mine.background_opacity = percent;

@@ -1,7 +1,7 @@
 use std::path::Path;
 use anyhow::{Context, Result};
 use super::types::{FolderInfo, ProjectConfig, short_name};
-use super::persistence::{load, config_path, edit_lock, home_relative, expand_home, write_doc};
+use super::persistence::{load, config_path, edit_lock, home_relative, expand_home, write_doc, check_label, Refused};
 
 /// Accent colors for new projects. Kept clear of the state colors.
 const PALETTE: [&str; 8] = [
@@ -94,16 +94,17 @@ pub fn add_project(
 ) -> Result<ProjectConfig> {
     let info = inspect_folder(dir);
     if let Some(e) = info.error {
-        anyhow::bail!(e);
+        // Inside a repository, the only refusal is a project already there.
+        return Err(if info.root.is_some() { Refused::Taken(e).into() } else { anyhow::anyhow!(e) });
     }
     let path = info.root.expect("root is set when there is no error");
     // The checks and the write under one lock: two adds of one folder at
     // once add it once.
-    let _edit = edit_lock();
+    let _edit = edit_lock()?;
     let cfg = load()?;
     if let Some(p) = cfg.projects.iter().find(|p| crate::project::same_path(&p.path, &path)) {
         if !p.closed {
-            anyhow::bail!("Already added as the project {}.", p.name);
+            return Err(Refused::Taken(format!("Already added as the project {}.", p.name)).into());
         }
         set_key_locked(&p.name, "closed", None::<bool>)?;
         return Ok(ProjectConfig { closed: false, ..p.clone() });
@@ -112,20 +113,26 @@ pub fn add_project(
         .map(|n| n.trim().to_string())
         .filter(|n| !n.is_empty())
         .unwrap_or(info.name);
+    let name = check_label("project name", &name)?.to_string();
     if name.is_empty() {
-        anyhow::bail!("type a project name");
+        return Err(Refused::Invalid("type a project name".into()).into());
     }
     if cfg.projects.iter().any(|p| p.name == name) {
-        anyhow::bail!("a project named {name} already exists");
+        return Err(Refused::Taken(format!("a project named {name} already exists")).into());
     }
     let short = short
         .map(|s| s.trim().chars().take(3).collect::<String>())
         .filter(|s| !s.is_empty() && *s != short_name(&name));
+    if let Some(s) = &short {
+        check_label("initials", s)?;
+    }
     let color = color.filter(|c| !c.is_empty()).unwrap_or(info.color);
+    check_color(&color)?;
     // A theme of its own, so a new project does not look like the app or the others.
     let fleet = fleet.map(|f| f.trim().to_string()).filter(|f| !f.is_empty());
+    let app_theme = super::client::load().map(|c| c.appearance.theme).unwrap_or_default();
     let theme = pick_unused(&crate::theme::builtin_ids(), |t| {
-        cfg.appearance.theme.as_deref() == Some(t) || cfg.projects.iter().any(|p| p.theme.as_deref() == Some(t))
+        app_theme.as_deref() == Some(t) || cfg.projects.iter().any(|p| p.theme.as_deref() == Some(t))
     });
 
     let file = config_path();
@@ -199,9 +206,9 @@ pub const SHORT_MAX: usize = 3;
 /// Sets `short`, the rail label, on the named project. An empty label removes
 /// the key, so the label is the first three letters of the name again.
 pub fn set_project_short(project: &str, short: &str) -> Result<()> {
-    let short = short.trim();
+    let short = check_label("initials", short)?;
     if short.chars().count() > SHORT_MAX {
-        anyhow::bail!("the initials take at most {SHORT_MAX} characters");
+        return Err(Refused::Invalid(format!("the initials take at most {SHORT_MAX} characters")).into());
     }
     set_project_key(project, "short", (!short.is_empty()).then_some(short))
 }
@@ -209,7 +216,7 @@ pub fn set_project_short(project: &str, short: &str) -> Result<()> {
 /// Sets `fleet` on the named project. An empty name removes the key, and the
 /// project stands on the rail by itself again.
 pub fn set_project_fleet(project: &str, fleet: &str) -> Result<()> {
-    let fleet = fleet.trim();
+    let fleet = check_label("fleet name", fleet)?;
     set_project_key(project, "fleet", (!fleet.is_empty()).then_some(fleet))
 }
 
@@ -225,11 +232,16 @@ pub fn set_project_background_opacity(project: &str, percent: Option<u8>) -> Res
 
 /// Sets `color` on the named project.
 pub fn set_project_color(project: &str, color: &str) -> Result<()> {
+    check_color(color)?;
+    set_project_key(project, "color", Some(color))
+}
+
+fn check_color(color: &str) -> Result<()> {
     let hex = color.strip_prefix('#').unwrap_or("");
     if hex.len() != 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
-        anyhow::bail!("not a #rrggbb color: {color}");
+        return Err(Refused::Invalid(format!("not a #rrggbb color: {color}")).into());
     }
-    set_project_key(project, "color", Some(color))
+    Ok(())
 }
 
 /// Sets `changes = false` on the named project, or removes the key: shown is the default.
@@ -239,6 +251,7 @@ pub fn set_project_changes(project: &str, on: bool) -> Result<()> {
 
 /// Sets `theme` on the named project, or removes the key: the app theme applies.
 pub fn set_project_theme(project: &str, theme: Option<&str>) -> Result<()> {
+    let theme = theme.map(|t| check_label("theme id", t)).transpose()?.filter(|t| !t.is_empty());
     set_project_key(project, "theme", theme)
 }
 
@@ -257,7 +270,7 @@ pub fn set_project_closed(project: &str, closed: bool) -> Result<()> {
 /// Drops the named project's `[[project]]` table and its settings. The
 /// folder stays. Comments and layout around the other tables are kept.
 pub fn remove_project(project: &str) -> Result<()> {
-    let _edit = edit_lock();
+    let _edit = edit_lock()?;
     let file = config_path();
     let text = std::fs::read_to_string(&file).with_context(|| format!("read {}", file.display()))?;
     let mut doc: toml_edit::DocumentMut = text
@@ -266,11 +279,11 @@ pub fn remove_project(project: &str) -> Result<()> {
     let tables = doc
         .get_mut("project")
         .and_then(|i| i.as_array_of_tables_mut())
-        .ok_or_else(|| anyhow::anyhow!("no [[project]] in {}", file.display()))?;
+        .ok_or_else(|| Refused::NoProject(project.into()))?;
     let i = tables
         .iter()
         .position(|t| t.get("name").and_then(|n| n.as_str()) == Some(project))
-        .ok_or_else(|| anyhow::anyhow!("no such project: {project}"))?;
+        .ok_or_else(|| Refused::NoProject(project.into()))?;
     tables.remove(i);
     if tables.is_empty() {
         doc.remove("project");
@@ -287,7 +300,10 @@ pub fn reorder_projects(order: &[String]) -> Result<()> {
 /// in one write. An empty fleet name removes the key. A drag on the rail can
 /// move a project and change its fleet at once.
 pub fn arrange_projects(order: &[String], fleets: &[(String, String)]) -> Result<()> {
-    let _edit = edit_lock();
+    for (_, fleet) in fleets {
+        check_label("fleet name", fleet)?;
+    }
+    let _edit = edit_lock()?;
     let file = config_path();
     let text = std::fs::read_to_string(&file).with_context(|| format!("read {}", file.display()))?;
     let mut doc: toml_edit::DocumentMut = text
@@ -298,6 +314,11 @@ pub fn arrange_projects(order: &[String], fleets: &[(String, String)]) -> Result
         .and_then(|i| i.as_array_of_tables_mut())
         .ok_or_else(|| anyhow::anyhow!("no [[project]] in {}", file.display()))?;
     let name = |t: &toml_edit::Table| t.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+    // Every name it is given is a project: an arrangement made from another
+    // list is refused, not half applied.
+    if let Some(n) = order.iter().chain(fleets.iter().map(|(p, _)| p)).find(|n| !tables.iter().any(|t| name(t) == **n)) {
+        return Err(Refused::NoProject(n.clone()).into());
+    }
     for t in tables.iter_mut() {
         let Some((_, fleet)) = fleets.iter().find(|(p, _)| *p == name(t)) else { continue };
         match fleet.trim() {
@@ -327,7 +348,7 @@ pub fn arrange_projects(order: &[String], fleets: &[(String, String)]) -> Result
 }
 
 fn set_project_key(project: &str, key: &str, value: Option<impl Into<toml_edit::Value>>) -> Result<()> {
-    let _edit = edit_lock();
+    let _edit = edit_lock()?;
     set_key_locked(project, key, value)
 }
 
@@ -341,11 +362,11 @@ fn set_key_locked(project: &str, key: &str, value: Option<impl Into<toml_edit::V
     let tables = doc
         .get_mut("project")
         .and_then(|i| i.as_array_of_tables_mut())
-        .ok_or_else(|| anyhow::anyhow!("no [[project]] in {}", file.display()))?;
+        .ok_or_else(|| Refused::NoProject(project.into()))?;
     let table = tables
         .iter_mut()
         .find(|t| t.get("name").and_then(|n| n.as_str()) == Some(project))
-        .ok_or_else(|| anyhow::anyhow!("no such project: {project}"))?;
+        .ok_or_else(|| Refused::NoProject(project.into()))?;
     match value {
         Some(v) => table[key] = toml_edit::value(v),
         None => {

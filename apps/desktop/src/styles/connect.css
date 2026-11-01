@@ -1,0 +1,32 @@
+/* Live output while a Host connects (main area) and while Skiff installs or
+   updates (dialog): mark 40 | seconds 56 | line, 20px rows, mono 12px. */
+.connect-panel { flex-shrink: 0; display: flex; flex-direction: column; background: var(--bg-panel); border-bottom: 1px solid var(--rule); }
+.cp-head { height: var(--row); display: grid; grid-template-columns: calc(40 * var(--u)) minmax(0, 1fr) auto; align-items: center; border-bottom: 1px solid var(--rule); font-weight: 600; font-size: calc(13px * var(--zoom, 1)); }
+.cp-time { padding: 0 calc(16 * var(--u)); font: calc(12px * var(--zoom, 1)) var(--mono); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.cp-mark { display: flex; align-items: center; justify-content: center; }
+.cp-mark .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); background: var(--state-working); }
+.cp-lines { display: flex; flex-direction: column; padding: calc(4 * var(--u)) 0; }
+.cp-line { height: calc(20 * var(--u)); flex-shrink: 0; display: grid; grid-template-columns: calc(40 * var(--u)) calc(56 * var(--u)) minmax(0, 1fr); align-items: center; font: calc(12px * var(--zoom, 1)) var(--mono); color: var(--text-3); }
+.cp-line > .cp-text { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding-right: calc(16 * var(--u)); }
+.cp-at { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.cp-line.now { color: var(--text); }
+.cp-line.bad, .cp-line.bad .cp-at { color: var(--error-text); }
+.cp-line.dim { color: var(--text-dim); }
+.connect-panel.failed .cp-head { color: var(--error-text); }
+.cp-cause { padding: calc(8 * var(--u)) calc(16 * var(--u)) calc(8 * var(--u)) calc(40 * var(--u)); border-top: 1px solid var(--rule); font-size: calc(13px * var(--zoom, 1)); color: var(--text); }
+.cp-acts { display: flex; border-top: 1px solid var(--rule); }
+.cp-btn { height: var(--row); padding: 0 calc(16 * var(--u)); border: 0; border-right: 1px solid var(--rule); background: transparent; color: var(--text-2); font-size: calc(13px * var(--zoom, 1)); }
+.cp-btn:hover { background: var(--bg-raised); color: var(--text); }
+/* In the Install and Update dialog: a 2px bar under the title, and the count. */
+.rp-title { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.rp-count { font: 400 calc(12px * var(--zoom, 1)) var(--mono); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.rp-bar { height: 2px; flex-shrink: 0; background: var(--rule); }
+.rp-bar > i { display: block; height: 100%; width: 0; background: var(--state-working); }
+.rp-panel { max-height: calc(260 * var(--u)); overflow-y: auto; border-bottom: 1px solid var(--rule); background: var(--bg-deep); }
+.rp-panel .cp-lines { padding: calc(4 * var(--u)) 0; }
+.rp-failed .confirm-title, .rp-failed .rp-count { color: var(--error-text); }
+.rp-failed .rp-bar > i { background: var(--error); }
+.rp-cause { padding: calc(10 * var(--u)) calc(20 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(13px * var(--zoom, 1)); color: var(--text); }
+.confirm-act.go.busy { display: flex; align-items: center; justify-content: center; gap: calc(8 * var(--u)); cursor: default; }
+.confirm-act.go.busy .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); background: var(--on-working); }
+.confirm-cancel:disabled { color: var(--text-dim); cursor: default; background: transparent; }

@@ -25,8 +25,9 @@ fn bundled() -> Option<PathBuf> {
 }
 
 /// Runs at app start, off the main thread. Never prompts. A failure leaves
-/// everything as it was and is only logged.
-pub fn sync() {
+/// everything as it was and is only logged. It links this Mac's CLI for the
+/// local Host's sessions, so only a local endpoint may: `_local` proves it.
+pub fn sync(_local: &skiff_client::host::local::ProcessControl) {
     if let Err(e) = imp::sync() {
         eprintln!("skiff CLI not updated: {e:#}");
     }

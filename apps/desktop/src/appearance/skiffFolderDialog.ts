@@ -1,6 +1,8 @@
-import { invoke } from "@tauri-apps/api/core";
 import { open as openFolder } from "@tauri-apps/plugin-dialog";
 import { isMac } from "../app/keys";
+import { hostInvoke } from "../app/hostCaps";
+import { hostName, isRemote } from "../app/hosts";
+import { openFolderPicker } from "../workspace/folderPicker";
 import { skiffAgentName } from "../app/skiffAgent";
 import { reveal } from "../platform/fileActions";
 import { confirmAction } from "../ui/confirm";
@@ -123,10 +125,15 @@ function details(p: Preview): string[] {
  * folder there decides what Skiff offers. Nothing changes before the action.
  * `current` is the folder now; the picker opens beside it. `changed` runs
  * after a change, so Settings reads the folder again. The keys
- * go back to what opened the dialog.
+ * go back to what opened the dialog. On a remote Host the Host reads and
+ * changes the folder, and Choose… opens the folder picker on that Host:
+ * there is no path to type.
  */
 export function changeSkiffFolder(o: { current: string; changed: () => void }) {
   const back = document.activeElement as HTMLElement | null;
+  const remote = isRemote();
+  // The selected Host reads and changes the folder: This Mac itself, a remote Host through its skiff-host.
+  const call = <T>(cmd: string, args: Record<string, unknown>) => hostInvoke<T>("skipper_config", cmd, args);
   const { overlay, panel } = dialogFrame("confirm-panel folder-panel", "dialog", t("folder.title"));
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
@@ -165,9 +172,10 @@ export function changeSkiffFolder(o: { current: string; changed: () => void }) {
   chooser.type = "button";
   chooser.append(
     h("span", "folder-choice-name", t("folder.choose")),
-    h("span", "folder-choice-hint", t(isMac ? "folder.pickerMac" : "folder.picker")),
+    h("span", "folder-choice-hint", remote ? t("folder.pickerRemote", { host: hostName() }) : t(isMac ? "folder.pickerMac" : "folder.picker")),
   );
   chooser.addEventListener("click", async () => {
+    if (remote) return openFolderPicker({ action: t("folder.useThis"), pick: (path) => show(path) });
     const dir = await openFolder({ directory: true, title: t("folder.chooseTitle"), defaultPath: o.current.replace(/\/[^/]+\/?$/, "") || undefined }).catch(() => null);
     if (typeof dir === "string") await show(dir);
   });
@@ -196,7 +204,7 @@ export function changeSkiffFolder(o: { current: string; changed: () => void }) {
     if (busy) return;
     error.textContent = "";
     try {
-      preview = await invoke<Preview>("preview_skiff_folder", { path });
+      preview = await call<Preview>("preview_skiff_folder", { path });
     } catch (e) {
       preview = null;
       error.textContent = String(e);
@@ -266,7 +274,7 @@ export function changeSkiffFolder(o: { current: string; changed: () => void }) {
     const lit = foot.querySelector<HTMLButtonElement>(`[data-mode="${mode}"]`);
     if (lit) lit.textContent = "…";
     try {
-      const done = await invoke<Done>("change_skiff_folder", { path: preview.to, mode, endSkipper: preview.skipper_runs, anyway });
+      const done = await call<Done>("change_skiff_folder", { path: preview.to, mode, endSkipper: preview.skipper_runs, anyway });
       busy = false;
       o.changed();
       finished(done);
@@ -294,7 +302,8 @@ export function changeSkiffFolder(o: { current: string; changed: () => void }) {
     if (d.warning) lines.push(d.warning);
     body.replaceChildren(h("div", "confirm-body", lines.join("\n\n")));
     foot.replaceChildren();
-    if (d.mode !== "switch") {
+    // A remote Host's old folder is on that Host: no file manager here opens it.
+    if (d.mode !== "switch" && !remote) {
       const old = h("button", "confirm-cancel", t("folder.showOld"));
       old.type = "button";
       old.addEventListener("click", () => reveal(d.from));
@@ -307,7 +316,7 @@ export function changeSkiffFolder(o: { current: string; changed: () => void }) {
     ok.focus();
   }
 
-  panel.append(title, choices, typed, body, error, foot);
+  panel.append(title, choices, ...(remote ? [] : [typed]), body, error, foot);
   draw();
 
   overlay.addEventListener("mousedown", (e) => {

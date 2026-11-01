@@ -11,3 +11,8 @@
 body.kbd #sidebar-scroll .wt-row:has(> .wt-pick.current:focus) { box-shadow: inset 2px 0 0 var(--pc), inset 0 1px 0 var(--pc), inset 0 -1px 0 var(--pc); }
 .wt-row .wt-plus { visibility: hidden; }
 .wt-row:hover .wt-plus, .wt-row > .hover ~ .wt-plus, .wt-row > .wt-plus.hover, .wt-row > .current ~ .wt-plus, .wt-row .wt-plus[aria-expanded="true"] { visibility: visible; }
+/* The Host this window shows: always in the top bar. A remote Host's name is in full text color. */
+#topbar .host-cell { gap: calc(8 * var(--u)); border: 0; border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); background: transparent; color: var(--text-2); font: inherit; font-size: calc(12px * var(--zoom, 1)); cursor: pointer; }
+#topbar .host-cell:hover { background: var(--bg-raised); color: var(--text); }
+#topbar .host-cell.remote .host-name { color: var(--text); font-weight: 600; }
+#topbar .host-cell .host-name { max-width: calc(200 * var(--u)); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

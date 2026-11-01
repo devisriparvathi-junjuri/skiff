@@ -1,5 +1,5 @@
 //! Open with: which command opens a diff or a file, and where. Edits `[open]`
-//! in projects.toml, as the Settings dialog does.
+//! in client.toml, as the Settings dialog does, and reads it from there.
 
 use anyhow::{Result, bail};
 use skiff_core::config::{self, OPEN_KEYS};
@@ -17,7 +17,8 @@ struct Row {
 }
 
 fn rows() -> Result<Vec<Row>> {
-    let o = config::load()?.open;
+    // client.toml, or projects.toml until the first client setting copies it.
+    let o = config::client::load()?.open;
     Ok(OPEN_KEYS
         .into_iter()
         .map(|key| {

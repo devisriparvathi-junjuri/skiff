@@ -1,6 +1,4 @@
-<p align="center"><img src=".github/skiff.png" width="160" alt="Skiff mascot: a small boat with a robot at the helm"></p>
-
-<h1 align="center">Skiff</h1>
+<h1 align="center"><img src="docs/crew.svg" width="880" alt="Skiff, with the crew: Admiral and five Skippers"></h1>
 
 <p align="center">
   <a href="https://github.com/solutionscay/skiff/releases/latest"><img src="https://img.shields.io/github/v/release/solutionscay/skiff?include_prereleases&label=release" alt="Latest release"></a>
@@ -8,12 +6,20 @@
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey" alt="Platforms: Linux and macOS">
 </p>
 
-Skiff is a desktop app for running many coding-agent sessions at once, on Linux and
-macOS. It keeps them in order across projects and Git worktrees. It shows where each
-session is and what it needs: a bell when an agent asks for approval, a flag when it
-finished a turn out of sight.
+<!-- hero: keep in step with the skiff-web home hero; check with scripts/hero-sync.py -->
+<h3 align="center">The multi-agent coding terminal.</h3>
 
-<p align="center"><img src=".github/screenshot.webp" alt="Skiff on Linux: the Skiff agent, Admiral, at the top of the side panel, the skiff project with its worktrees below it, and four agent sessions that Admiral started, shown side by side in one group"></p>
+<p align="center">Run Claude Code, Codex and other agents in parallel. They send each other tasks and report back.</p>
+
+<p align="center"><a href="https://skiff.solutionscay.com/"><img src="https://skiff.solutionscay.com/shots/skiff-mission-control-hero-poster.webp" width="1600" alt="Skiff Mission control: Admiral at the top, the Skippers under it, each project a cluster of session cards, and a string from each owner to each pane. Click to play the video on the website."></a></p>
+<!-- /hero -->
+
+Skiff is a terminal app for coding agents, on Linux and macOS. You code with Claude Code,
+Codex and other agents in its panes, many at once, across projects and Git worktrees.
+Each pane shows what its agent needs: a bell when it asks for approval, a flag when it
+finished a turn out of sight. Admiral, the Skiff agent, hands tasks to your other agents
+and to project Skippers, and collects their results in a ledger. Any agent can do the
+same with the `skiff` command.
 
 ## Philosophy
 
@@ -24,10 +30,9 @@ Settings › Open with.
 Sessions outlive the window. `skiffd`, a daemon, owns every terminal. Close the window
 and the agents keep running.
 
-Skiff stays out of your agents' setup. It installs no hooks or plugins and runs no
-automations. It reads a session's state from its screen and from the program in front
-of the terminal. All settings live in one file,
-`projects.toml`.
+Skiff stays out of your agents' setup. It installs no hooks or plugins. It reads a
+session's state from its screen and from the program in front of the terminal. All
+settings live in one file, `projects.toml`.
 
 ## Install
 
@@ -55,8 +60,10 @@ details: [Skiff agent](https://github.com/solutionscay/skiff/wiki/Skiff-agent),
 ## Layout
 
 ```
+crates/skiff-host-api V2 Host contract types only (M0–M4; no I/O)
 crates/skiff-core    session model, wire protocol, projects.toml config, git, themes
 crates/skiffd        daemon: owns every PTY, serves clients over a Unix socket
+crates/skiff-host    V2 data plane: a Host's projects and Git status over the Host API (M4, read-only)
 crates/skiff-client  async client for the socket; Skiff agent setup shared by the app and the CLI
 crates/skiff-cli     the `skiff` command: sessions, groups, the Skiff agent's ledger and watcher
 apps/desktop         Tauri v2 app, vanilla TypeScript + xterm.js
@@ -73,6 +80,11 @@ apps/desktop         Tauri v2 app, vanilla TypeScript + xterm.js
 ```
 
 ## Development
+
+The v2 Host contract, its seams and the import-boundary check are in
+[Host API](docs/v2/Host-API.md). Terminals, session lifecycle and groups go through the
+selected Host. Remote terminals run on an SSH Host picked from the Host cell in the top
+bar; see Host API § M2 for the demo and limits.
 
 ```
 cd apps/desktop && pnpm install && pnpm tauri dev

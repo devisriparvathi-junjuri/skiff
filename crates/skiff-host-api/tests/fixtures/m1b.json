@@ -1,0 +1,6 @@
+{
+  "request": {"cmd":"session_screen","session":"s","rows":12},
+  "reply": {"kind":"session_screen","lines":["","λ  "]},
+  "capability": {"name":"session_screen","version":1},
+  "error": {"code":"operation_failed","message":"unknown variant `screen`"}
+}

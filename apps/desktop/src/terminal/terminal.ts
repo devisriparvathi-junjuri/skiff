@@ -8,7 +8,6 @@ import { isSlot } from "../workspace/layoutSlots";
 import { sessionsOf } from "../workspace/layout";
 import { createLayoutView } from "../workspace/layoutView";
 
-import { invoke } from "@tauri-apps/api/core";
 
 import { modalOpen } from "../ui/dom";
 import type { SessionInfo } from "../platform/types";
@@ -24,6 +23,7 @@ import { activeGroupObj, viewLayout } from "../app/stateQueries";
 import { type Pane, panes } from "./terminalState";
 import { focusPane } from "./paneActions";
 import { previewOnScreen } from "./peek";
+import { hostInvoke } from "../app/hostCaps";
 import { step } from "../diagnostics/stalls";
 
 export const view = createLayoutView(host, {
@@ -166,7 +166,7 @@ function fitNow() {
       if (!sizeChanged(id, p)) continue;
       const { cols, rows } = p.term;
       sentSize.set(id, [cols, rows]);
-      invoke("pty_resize", { session: id, cols, rows }).catch((e) => {
+      hostInvoke("session_terminal", "pty_resize", { session: id, cols, rows }).catch((e) => {
         console.error(e);
         // The pty kept its size (skiffd reloads, or the connection dropped):
         // the next fit sends again. A later size sent meanwhile stays.

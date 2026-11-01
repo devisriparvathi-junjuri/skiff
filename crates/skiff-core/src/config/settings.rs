@@ -160,7 +160,7 @@ fn commands(t: &mut toml_edit::Table) -> Result<&mut toml_edit::Table> {
 /// Sets or removes `icon` on the named project. `None` removes the key, so
 /// Sets `[appearance] theme`, or removes it for the default.
 pub fn set_app_theme(theme: Option<&str>) -> Result<()> {
-    edit_table("appearance", |t| {
+    super::client::edit_table("appearance", |t| {
         match theme {
             Some(v) => t["theme"] = toml_edit::value(v),
             None => {
@@ -173,7 +173,7 @@ pub fn set_app_theme(theme: Option<&str>) -> Result<()> {
 
 /// Sets `[appearance] font_size`, or removes it for the default.
 pub fn set_font_size(size: Option<u8>) -> Result<()> {
-    edit_table("appearance", |t| {
+    super::client::edit_table("appearance", |t| {
         match size {
             Some(v) => t["font_size"] = toml_edit::value(i64::from(v)),
             None => {
@@ -187,7 +187,7 @@ pub fn set_font_size(size: Option<u8>) -> Result<()> {
 /// Sets `[appearance] mission_filter` to `running` or `all`. `all` is
 /// written out: an absent key means `running`.
 pub fn set_mission_filter(running: bool) -> Result<()> {
-    edit_table("appearance", |t| {
+    super::client::edit_table("appearance", |t| {
         t["mission_filter"] = toml_edit::value(if running { "running" } else { "all" });
         Ok(())
     })
@@ -218,7 +218,7 @@ pub fn set_menu_layout(layout: Option<&str>) -> Result<()> {
     if let Some(v) = layout.filter(|v| !MENU_LAYOUTS.contains(v)) {
         anyhow::bail!("unknown menu layout: {v}");
     }
-    edit_table("appearance", |t| {
+    super::client::edit_table("appearance", |t| {
         match layout {
             Some(v) => t["menu_layout"] = toml_edit::value(v),
             None => {
@@ -237,7 +237,7 @@ pub fn set_open_peek(key: &str, peek: bool) -> Result<()> {
     if !OPEN_KEYS.contains(&key) || key == "diff" || key == "image" {
         anyhow::bail!("unknown file kind: {key}");
     }
-    edit_table("open", |t| {
+    super::client::edit_table("open", |t| {
         let mut kinds = t.get("peek").and_then(|v| v.as_array()).cloned().unwrap_or_default();
         kinds.retain(|v| v.as_str() != Some(key));
         if peek { kinds.push(key); }
@@ -251,7 +251,7 @@ pub fn set_open(key: &str, command: Option<&str>) -> Result<()> {
     if !OPEN_KEYS.contains(&key) {
         anyhow::bail!("unknown [open] key: {key}");
     }
-    edit_table("open", |t| {
+    super::client::edit_table("open", |t| {
         match command {
             Some(v) => t[key] = toml_edit::value(v),
             None => {

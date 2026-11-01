@@ -24,7 +24,7 @@ pub(crate) fn active() -> bool {
 
 /// The layout the user chose, else the header bar on GNOME only.
 pub(crate) fn wanted() -> bool {
-    let chosen = skiff_core::config::load().ok().and_then(|c| c.appearance.menu_layout);
+    let chosen = skiff_core::config::client::load().ok().and_then(|c| c.appearance.menu_layout);
     match chosen.as_deref() {
         Some("header-bar") => true,
         Some("menu-bar") => false,

@@ -10,7 +10,8 @@
  *
  * A preview is a card (folder, an app that opens the file, or a placeholder),
  * a command in a terminal (a diff, a terminal tool), or a card with a command
- * over it. A command starts hidden, and what it does decides what shows:
+ * over it. A remote Host's diff is a card too: its git's text, drawn by
+ * diffView.ts, with no command on this Mac. A command starts hidden, and what it does decides what shows:
  * - It takes the terminal (raw input or the alternate screen), as `micro`,
  *   `less` or a pager does: a terminal tool. The peek shows. When the tool
  *   exits, the peek closes.
@@ -40,6 +41,12 @@ import { panes } from "./terminalState";
 import { fitShown } from "./terminal";
 import { FONT, TERM_THEME } from "./terminalRuntime";
 import { t, type MessageKey } from "../i18n";
+import { hostInvoke } from "../app/hostCaps";
+import { dataEpoch } from "../app/dataPlane";
+import { hostName } from "../app/hosts";
+import type { HostDiff, HostFile } from "../platform/types";
+import { diffBody, diffState } from "./diffView";
+import { fileBody } from "./fileView";
 
 /** Where to find tools for a row that has none. */
 export const TOOLS_URL = "https://github.com/solutionscay/skiff/wiki/Open-with";
@@ -84,6 +91,8 @@ interface Active {
   /** The preview takes the keys when it is ready. */
   keys: boolean;
   closed: boolean;
+  /** A ledger result shown over the row: its own preview, read again on a new data connection. */
+  result?: { uid: string; title: string };
 }
 
 let active: Active | null = null;
@@ -99,6 +108,10 @@ function peekEnded() {
 }
 /** The card over the panes. Under a shown command it is hidden. */
 let card: HTMLElement | null = null;
+/** The card's own action: the Enter keycap. Its Esc keycap is not one. */
+const cardAction = () => card?.querySelector<HTMLButtonElement>("button.file-preview-key, button.peek-open") ?? null;
+/** The blob URL of a Host image on the card, revoked when the card goes. */
+let cardUrl: string | null = null;
 /** The command of the active preview. */
 let open: Peek | null = null;
 /** File tools kept running off screen while another row is current. */
@@ -141,7 +154,7 @@ export function strayPeek(s: SessionInfo) {
   if (s.id === open?.session || s.id === held?.p.session || [...parked.values()].some((p) => p.session === s.id)) return;
   // An app still running keeps its window. Its session goes when it exits.
   // A terminal tool out of the peek has no screen left: it ends.
-  if (s.state === "done" || s.interactive) invoke("kill_session", { session: s.id }).catch(console.error);
+  if (s.state === "done" || s.interactive) hostInvoke("session_lifecycle", "kill_session", { session: s.id }).catch(console.error);
   else released.add(s.id);
 }
 
@@ -183,15 +196,23 @@ export function syncPreview() {
 
 function begin(mine: number, preview: Preview, fresh = false) {
   if (preview.kind === "folder") {
-    showCard(mine, "folder", preview.path, t("menu.showInFileManager"), () => openPath(preview.path));
+    if (preview.local === false) showCard(mine, "folder", preview.path);
+    else showCard(mine, "folder", preview.path, t("menu.showInFileManager"), () => openPath(preview.path));
+  } else if (preview.kind === "host-diff" && preview.wait && !fresh) {
+    const key = active!.key;
+    showCard(mine, "diff", `${preview.wt}/${preview.file ?? allChanges(preview.base)}`, t("menu.reviewChanges"), () => startPreview(key, true, true));
+  } else if (preview.kind === "host-diff") {
+    showHostDiff(mine, preview);
+  } else if (preview.kind === "host-file") {
+    showHostFile(mine, preview);
   } else if (preview.kind === "diff" && preview.wait && !fresh) {
     // Landing on the row shows the card. Enter, or Review all changes, runs the diff.
     const key = active!.key;
-    showCard(mine, "diff", `${preview.wt}/${preview.file ?? t("peek.allChanges")}`, t("menu.reviewChanges"), () => startPreview(key, true, true));
+    showCard(mine, "diff", `${preview.wt}/${preview.file ?? allChanges(preview.base)}`, t("menu.reviewChanges"), () => startPreview(key, true, true));
   } else if (preview.kind === "diff") {
-    showCard(mine, "diff", `${preview.wt}/${preview.file ?? t("peek.allChanges")}`);
+    showCard(mine, "diff", `${preview.wt}/${preview.file ?? allChanges(preview.base)}`);
     void invoke<Opened>("open_diff", { path: preview.wt, file: preview.file ?? null })
-      .then((o) => { if (live(mine)) handle(o, "diff", preview.file ?? t("peek.allChanges"), preview.branch); })
+      .then((o) => { if (live(mine)) handle(o, "diff", preview.file ?? allChanges(preview.base), preview.branch); })
       .catch(failed(mine));
   } else {
     const { path } = preview;
@@ -225,7 +246,7 @@ export function giveKeys(): boolean {
   if (!active || active.closed) return false;
   active.keys = true;
   if (open?.shown) open.term.focus();
-  else if (card) (card.querySelector<HTMLButtonElement>("button") ?? card).focus();
+  else if (card) (card.querySelector<HTMLElement>(".diff-view-body") ?? cardAction() ?? card).focus();
   // A command still starting takes the keys when it shows.
   return !!(open || card);
 }
@@ -240,7 +261,7 @@ document.addEventListener("focusin", (e) => {
 /** Enter on the row or the card: the card's action runs; a tool or diff takes the keys. */
 export function enterPreview() {
   if (!active || active.closed) return;
-  const b = !open?.shown ? card?.querySelector<HTMLButtonElement>("button") : null;
+  const b = !open?.shown ? cardAction() : null;
   if (b) b.click();
   else giveKeys();
 }
@@ -273,6 +294,7 @@ export function openPath(path: string) {
   // Its own generation: a reply still due for the row's preview, or an older Open, shows nothing.
   active.gen = ++gen;
   active.keys = true;
+  active.result = undefined;
   const mine = active.gen;
   // The command on screen, or still starting, belongs to the Open now: it may be the same tool.
   if (open) open.gen = mine;
@@ -293,7 +315,7 @@ export function openPath(path: string) {
 
 /** An Open that shows nothing here (an app, an error) leaves no empty preview behind: only a card with an action stays. */
 function settle(mine: number) {
-  if (!live(mine) || open || card?.querySelector("button")) return;
+  if (!live(mine) || open || cardAction()) return;
   active!.closed = true;
   clearCard();
   repaintPanes();
@@ -317,12 +339,12 @@ export function closePeek(hold = false) {
   } else drop(p, p.shown);
   // A diff leaves its card when it closes, so its row still owns the main area. Enter shows it again.
   const preview = active && !active.closed ? rowActs(active.key)?.preview : undefined;
-  if (active && preview?.kind === "diff" && !card?.querySelector("button")) {
+  if (active && preview?.kind === "diff" && !cardAction()) {
     const key = active.key;
-    showCard(active.gen, "diff", `${preview.wt}/${preview.file ?? t("peek.allChanges")}`, preview.file ? t("menu.showDiff") : t("menu.reviewChanges"), () => startPreview(key, true, true));
+    showCard(active.gen, "diff", `${preview.wt}/${preview.file ?? allChanges(preview.base)}`, preview.file ? t("menu.showDiff") : t("menu.reviewChanges"), () => startPreview(key, true, true));
   }
   // A card with an action stays: the app opened from it runs on.
-  if (card?.querySelector("button")) {
+  if (card && cardAction()) {
     card.hidden = false;
     if (hadKeys || active?.keys) giveKeys();
     return peekEnded();
@@ -400,17 +422,26 @@ function repaintPanes() {
 function clearCard() {
   card?.remove();
   card = null;
+  if (cardUrl) URL.revokeObjectURL(cardUrl);
+  cardUrl = null;
 }
 
-function showCard(mine: number, kind: string, path: string, label?: string, act?: () => void) {
-  if (!live(mine)) return;
+/** A card's frame: its head, with the kind, the name, its folder and Esc. */
+function cardFrame(kind: string, path: string, cls = "peek file-preview"): HTMLElement {
   const name = path.split("/").pop() ?? path;
   const dir = path.slice(0, path.length - name.length - 1);
-  const el = h("div", "peek file-preview");
+  const el = h("div", cls);
   el.tabIndex = -1;
   el.setAttribute("aria-label", name);
   const head = h("div", "peek-head");
   head.append(h("span", "peek-kind", kindName(kind)), h("span", "peek-title mono", name), h("span", "peek-where mono", dir), escButton());
+  el.append(head);
+  return el;
+}
+
+function showCard(mine: number, kind: string, path: string, label?: string, act?: () => void) {
+  if (!live(mine)) return;
+  const el = cardFrame(kind, path);
   const body = h("div", "file-preview-body");
   if (label && act) {
     // A keycap you can click, with the action under it: the hint and the button in one.
@@ -425,7 +456,12 @@ function showCard(mine: number, kind: string, path: string, label?: string, act?
     text.append(h("b", "", space < 0 ? label : label.slice(0, space)), space < 0 ? "" : label.slice(space));
     body.append(cap, text);
   }
-  el.append(head, body);
+  el.append(body);
+  mountCard(el);
+}
+
+/** Puts `el` up as the card, over the panes. */
+function mountCard(el: HTMLElement) {
   // Tab does nothing here. Space opens or closes the row, as on the row. Enter runs the button.
   el.addEventListener("keydown", (e) => {
     if (e.key === "Tab") e.preventDefault();
@@ -445,6 +481,145 @@ function showCard(mine: number, kind: string, path: string, label?: string, act?
   else if (hadKeys || active?.keys) giveKeys();
 }
 
+/** The whole-worktree diff's title: what it counts from, when not HEAD. */
+const allChanges = (base?: string) => (base ? t("peek.allChangesSince", { base }) : t("peek.allChanges"));
+
+type HostDiffPreview = Extract<Preview, { kind: "host-diff" }>;
+
+/**
+ * A remote Host's diff: the viewer shows at once, says it loads, then shows
+ * the Host's text or why there is none. A reply for a row the user left, or
+ * from an older data connection, shows nothing; the latter is asked again.
+ */
+function showHostDiff(mine: number, p: HostDiffPreview) {
+  const el = cardFrame("diff", `${p.wt}/${p.file ?? allChanges(p.base)}`, "peek diff-view");
+  showHostView(
+    mine,
+    el,
+    t("peek.loadingDiff", { host: hostName() }),
+    () => hostInvoke<HostDiff>("git_diff", "git_diff", { path: p.wt, file: p.file ?? null }),
+    (d) => diffBody(d, p.file, p.base),
+    t("peek.noDiff"),
+  );
+}
+
+/**
+ * A Host's read in the card `el`: it shows at once, says it loads, then
+ * shows `render` of what `read` gave, or why there is none. A reply for a
+ * row the user left shows nothing; one from an older data connection is
+ * asked again.
+ */
+function showHostView<T>(mine: number, el: HTMLElement, loading: string, read: () => Promise<T>, render: (value: T) => HTMLElement, none: string) {
+  if (!live(mine)) return;
+  el.append(diffState(loading));
+  mountCard(el);
+  const at = dataEpoch();
+  const shows = () => live(mine) && card === el;
+  const fill = (body: HTMLElement) => {
+    const hadKeys = el.contains(document.activeElement);
+    el.querySelector(".diff-view-body")?.replaceWith(body);
+    if (hadKeys || active?.keys) body.focus();
+  };
+  const again = () => showHostView(mine, el, loading, read, render, none);
+  read()
+    .then((value) => {
+      if (!shows()) return;
+      if (at !== dataEpoch()) return again();
+      fill(render(value));
+    })
+    .catch((e) => {
+      if (!shows()) return console.error(e);
+      if (at !== dataEpoch()) return again();
+      fill(diffState(t("peek.noneReason", { none, error: String(e) }), true));
+    });
+}
+
+type HostFilePreview = Extract<Preview, { kind: "host-file" }>;
+
+/**
+ * Opens a local copy of a Host's file as Settings › Open with says: a
+ * configured command (a peek tool runs here, over the row), else the
+ * default app. Only the copy's path reaches an opener, never the Host's.
+ */
+export function openHostCopy(wt: string, file: string) {
+  // An Open from a row with no preview, or a closed one, still shows its tool there.
+  if (!active || active.closed) {
+    endPreview();
+    active = { key: currentKey(), gen: 0, keys: true, closed: false };
+  }
+  active.gen = ++gen;
+  active.keys = true;
+  active.result = undefined;
+  const mine = active.gen;
+  if (open) open.gen = mine;
+  const name = file.split("/").pop() ?? file;
+  hostInvoke<Opened>("files", "open_file_copy", { worktree: wt, file })
+    .then((o) => {
+      if (!live(mine)) return;
+      handle(o, "file", name, wt);
+    })
+    .catch((e) => (live(mine) ? showError(e) : console.error(e)));
+}
+
+/**
+ * A Host's file: the viewer shows at once, says it loads, then shows the
+ * Host's bounded preview or why there is none. Enter opens a local copy as Open with says.
+ * A reply for a row the user left shows nothing; one from an older data
+ * connection is asked again.
+ */
+function showHostFile(mine: number, p: HostFilePreview) {
+  const copy = p.copy ? () => openHostCopy(p.wt, p.file) : null;
+  showHostRead(mine, p.path, () => hostInvoke<HostFile>("files", "read_file", { worktree: p.wt, file: p.file }), copy);
+}
+
+/** The Host's bounded read `read` in the page's viewer, under `title`. `copy`: the Open a copy button. */
+function showHostRead(mine: number, title: string, read: () => Promise<HostFile>, copy: (() => void) | null) {
+  const el = cardFrame("file", title, "peek diff-view file-view");
+  if (copy) {
+    const open = button("peek-open", "", copy);
+    open.title = t("peek.openCopyTitle");
+    open.setAttribute("aria-label", t("menu.openCopy"));
+    open.append(h("span", "peek-open-key", "Enter"), " " + t("menu.openCopy"));
+    el.querySelector(".peek-esc")?.before(open);
+  }
+  showHostView(mine, el, t("peek.loadingFile", { host: hostName() }), read, (f) => fileBody(f, (b) => (cardUrl = URL.createObjectURL(b))), t("peek.noPreview"));
+}
+
+/**
+ * A ledger row's result over the current row, in the page's own viewer: the
+ * selected Host reads the path its row records (`ledger@1`). No path is
+ * named or opened on this Mac. `title` names the work.
+ */
+export function openLedgerResult(uid: string, title: string) {
+  if (!active || active.closed) {
+    endPreview();
+    active = { key: currentKey(), gen: 0, keys: true, closed: false };
+  }
+  active.gen = ++gen;
+  active.keys = true;
+  active.result = { uid, title };
+  // A tool on screen gives way to the result.
+  const p = open;
+  open = null;
+  if (p) retire(p);
+  showLedgerResult(active.gen, active.result);
+}
+
+function showLedgerResult(mine: number, r: { uid: string; title: string }) {
+  const { uid } = r;
+  showHostRead(mine, t("peek.result", { title: r.title }), () => hostInvoke<HostFile>("ledger", "ledger_result", { uid }), null);
+}
+
+/** The data plane is back: a Host diff, file or ledger result on screen is read again from it. */
+export function refreshHostDiff() {
+  if (!active || active.closed || !card?.classList.contains("diff-view")) return;
+  // A result keeps its own uid and title: the row's preview does not replace it.
+  if (active.result) return showLedgerResult(active.gen, active.result);
+  const p = rowActs(active.key)?.preview;
+  if (p?.kind === "host-diff") showHostDiff(active.gen, p);
+  if (p?.kind === "host-file") showHostFile(active.gen, p);
+}
+
 // ── Commands ────────────────────────────────────────────────────────────────
 
 /** Takes the peek down. Its command ends, unless it is an app that runs on. */
@@ -457,7 +632,7 @@ function drop(p: Peek, end: boolean) {
   p.term.dispose();
   p.el.remove();
   if (!p.session) return;
-  if (end || p.exited) invoke("kill_session", { session: p.session }).catch(console.error);
+  if (end || p.exited) hostInvoke("session_lifecycle", "kill_session", { session: p.session }).catch(console.error);
   else released.add(p.session);
 }
 
@@ -525,7 +700,7 @@ function frame(mine: number, kind: string, title: string, where: string, program
     return key === null;
   });
   term.onData((data) => {
-    if (p.session && !p.exited) invoke("pty_write", { session: p.session, data }).catch(console.error);
+    if (p.session && !p.exited) hostInvoke("session_terminal", "pty_write", { session: p.session, data }).catch(console.error);
   });
   p.resize.observe(box);
   open = p;
@@ -543,7 +718,7 @@ function show(p: Peek) {
   p.el.classList.remove("pending");
   if (!p.exited) p.el.classList.add("busy");
   // A placeholder card goes. A card with an action waits under the command.
-  if (card?.querySelector("button")) card.hidden = true;
+  if (card && cardAction()) card.hidden = true;
   else clearCard();
   resized(p);
   if (active?.keys) p.term.focus();
@@ -552,7 +727,7 @@ function show(p: Peek) {
 function resized(p: Peek) {
   if (open !== p) return;
   p.fit.fit();
-  if (p.session && !p.exited) invoke("pty_resize", { session: p.session, cols: p.term.cols, rows: p.term.rows }).catch(console.error);
+  if (p.session && !p.exited) hostInvoke("session_terminal", "pty_resize", { session: p.session, cols: p.term.cols, rows: p.term.rows }).catch(console.error);
 }
 
 /** Starts `script` for the active preview, hidden. What it does decides whether the peek shows. */
@@ -573,7 +748,7 @@ async function run(kind: string, title: string, where: string, script: string, c
   const p = frame(mine, kind, title, where, program, request);
   let info: SessionInfo;
   try {
-    info = await invoke<SessionInfo>("create_session", {
+    info = await hostInvoke<SessionInfo>("session_lifecycle", "create_session", {
       spec: { label: program, role: "task", cwd, command: "/bin/sh", args: ["-c", script], peek: true, cols: p.term.cols, rows: p.term.rows },
     });
   } catch (e) {
@@ -584,13 +759,13 @@ async function run(kind: string, title: string, where: string, script: string, c
   // The row changed meanwhile, or a newer command came: this one runs on its own.
   if (open !== p) {
     earlyInteractive.delete(info.id);
-    if (info.interactive) invoke("kill_session", { session: info.id }).catch(console.error);
+    if (info.interactive) hostInvoke("session_lifecycle", "kill_session", { session: info.id }).catch(console.error);
     else released.add(info.id);
     return;
   }
   // A skiffd from before the peek ran it as a plain session, with a shell after it.
   if (!info.peek) {
-    invoke("kill_session", { session: info.id }).catch(console.error);
+    hostInvoke("session_lifecycle", "kill_session", { session: info.id }).catch(console.error);
     closePeek();
     return showError(t("peek.oldDaemon"));
   }
@@ -607,7 +782,7 @@ async function run(kind: string, title: string, where: string, script: string, c
     if (bytes.length) p.got = true;
     p.term.write(bytes, () => invoke("ack_output", { session: info.id, stream: n, bytes: bytes.length }).catch(console.error));
   };
-  await invoke("subscribe_output", { session: info.id, stream: n, onOutput: channel }).catch(showError);
+  await hostInvoke("session_terminal", "subscribe_output", { session: info.id, stream: n, onOutput: channel }).catch(showError);
   if (info.interactive || earlyInteractive.delete(info.id)) peekUpdated({ ...info, interactive: true });
   if (early.has(info.id)) {
     const code = early.get(info.id) ?? null;
@@ -621,7 +796,7 @@ export function peekUpdated(info: SessionInfo) {
   if (!info.interactive) return;
   if (held?.p.session === info.id) return reclaim(held);
   // A command let go as an app turned out to be a terminal tool: nothing shows it, so it ends.
-  if (released.delete(info.id)) return void invoke("kill_session", { session: info.id }).catch(console.error);
+  if (released.delete(info.id)) return void hostInvoke("session_lifecycle", "kill_session", { session: info.id }).catch(console.error);
   const p = open;
   if (!p) return;
   // A start is in flight: the update may be its command's, ahead of the reply.
@@ -665,7 +840,7 @@ function printed(term: Terminal): boolean {
 /** skiffd says a peek command ended. True when the session was a peek's. */
 export function peekExited(id: string, code: number | null): boolean {
   if (released.delete(id)) {
-    invoke("kill_session", { session: id }).catch(console.error);
+    hostInvoke("session_lifecycle", "kill_session", { session: id }).catch(console.error);
     return true;
   }
   // A held app ended. What it printed was for no one.

@@ -2,23 +2,27 @@
 resolver = "2"
 members = [
   "crates/skiff-core",
+  "crates/skiff-host-api",
   "crates/skiff-client",
   "crates/skiffd",
   "crates/skiff-cli",
+  "crates/skiff-host",
   "apps/desktop/src-tauri",
 ]
 # Vendored dependencies are patched in, not built and tested as members.
 exclude = ["vendor"]
 
 [workspace.package]
-version = "1.7.10"
+version = "1.8.8"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/solutionscay/skiff"
 
 [workspace.dependencies]
+skiff-host-api = { path = "crates/skiff-host-api" }
 skiff-core = { path = "crates/skiff-core" }
 skiff-client = { path = "crates/skiff-client" }
+skiff-host = { path = "crates/skiff-host" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "process", "signal"] }

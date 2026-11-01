@@ -3,13 +3,20 @@
 //! which is the library. The page types the words with `term.paste()`, so an
 //! agent that reads a pasted path attaches the image. Skiff never presses
 //! Enter.
+//!
+//! On a remote Host's pane each file goes to that Host (`drops@1`), and the
+//! pane gets the Host path. An image also stays in this computer's cache,
+//! so Images lists it here. Insert from Images sends the file the same way.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use skiff_client::cache::{self, Who};
+use skiff_client::{
+    cache::{self, Who},
+    host::data,
+};
 use tauri::{AppHandle, Emitter, State};
 
-use crate::connection::{ensure_client, err, App};
+use crate::connection::{data_now, ensure_client, err, App};
 
 /// What the page types, and whether to say an image was too large.
 #[derive(serde::Serialize)]
@@ -58,11 +65,40 @@ fn cache_dir() -> anyhow::Result<PathBuf> {
     cache::ensure(&cfg)
 }
 
-/// Files dropped on a session's pane, in drop order.
+/// Files dropped on a session's pane, in drop order. `host` names a remote
+/// Host for its messages.
 #[tauri::command]
-pub(crate) async fn drop_files(handle: AppHandle, who: Who, paths: Vec<PathBuf>) -> Result<Typed, String> {
-    let t = blocking(move || cache::files(&cache_dir()?, &paths)).await?;
+pub(crate) async fn drop_files(handle: AppHandle, app: State<'_, App>, who: Who, paths: Vec<PathBuf>, host: Option<String>) -> Result<Typed, String> {
+    let t = if app.remote() {
+        let mut files = Vec::new();
+        for p in &paths {
+            files.push(data::drop_file(p, host.as_deref()).await?);
+        }
+        let names = paths.iter().map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).collect();
+        to_host(&app, files, names, host.as_deref()).await?
+    } else {
+        blocking(move || cache::files(&cache_dir()?, &paths)).await?
+    };
     finish(&handle, who, t).await
+}
+
+/// Sends each file to the remote Host and types its Host path. An image
+/// is kept here too, for Images. `names`: each file's own name for Images,
+/// `None` for a paste.
+async fn to_host(app: &App, files: Vec<(String, Vec<u8>)>, names: Vec<Option<String>>, host: Option<&str>) -> Result<cache::Typed, String> {
+    let c = data_now(app).await?;
+    let mut out = cache::Typed::default();
+    for ((name, bytes), own) in files.into_iter().zip(names) {
+        let ext = Path::new(&name).extension().and_then(|e| e.to_str()).map(str::to_string);
+        let local = cache::image_ext(&bytes, ext.as_deref()).map(|ext| (ext, bytes.clone()));
+        let path = data::drop_send(&c, &name, bytes, host).await?;
+        if let Some((ext, bytes)) = local {
+            let stored = blocking(move || cache::store(&cache_dir()?, &bytes, ext)).await?;
+            out.images.push(cache::Stored { path: stored, name: own });
+        }
+        out.words.push(skiff_core::shell::quote_word(&path));
+    }
+    Ok(out)
 }
 
 /// What Skiff's Paste found on the clipboard besides text.
@@ -75,9 +111,18 @@ enum Clip {
 /// Skiff's Paste with no text on the clipboard: a file list does what a
 /// drop does; an image is saved as PNG in the cache. `None`: neither.
 #[tauri::command]
-pub(crate) async fn clipboard_image(handle: AppHandle, who: Who) -> Result<Option<Typed>, String> {
+pub(crate) async fn clipboard_image(handle: AppHandle, app: State<'_, App>, who: Who, host: Option<String>) -> Result<Option<Typed>, String> {
     let t = match read_clip(&handle).await? {
         Clip::Nothing => return Ok(None),
+        Clip::Files(paths) if app.remote() => {
+            let mut files = Vec::new();
+            for p in &paths {
+                files.push(data::drop_file(p, host.as_deref()).await?);
+            }
+            let names = paths.iter().map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).collect();
+            to_host(&app, files, names, host.as_deref()).await?
+        }
+        Clip::Png(bytes) if app.remote() => to_host(&app, vec![("clipboard.png".into(), bytes)], vec![None], host.as_deref()).await?,
         Clip::Files(paths) => blocking(move || cache::files(&cache_dir()?, &paths)).await?,
         Clip::Png(bytes) => {
             blocking(move || {
@@ -149,10 +194,20 @@ pub(crate) async fn images() -> Result<Vec<cache::Image>, String> {
 
 /// Insert: the library images go to the top with `who` as their session, and
 /// the page types their paths as a drop of several files does. The first
-/// path ends up newest.
+/// path ends up newest. On a remote Host's pane each file goes to the Host
+/// first, and the page types the Host paths.
 #[tauri::command]
-pub(crate) async fn image_insert(handle: AppHandle, paths: Vec<PathBuf>, who: Who) -> Result<Typed, String> {
-    let text = paths.iter().map(|p| format!("{} ", skiff_core::shell::quote_word(&p.to_string_lossy()))).collect();
+pub(crate) async fn image_insert(handle: AppHandle, app: State<'_, App>, paths: Vec<PathBuf>, who: Who, host: Option<String>) -> Result<Typed, String> {
+    let mut text = String::new();
+    if app.remote() {
+        let c = data_now(&app).await?;
+        for p in &paths {
+            let (name, bytes) = data::drop_file(p, host.as_deref()).await?;
+            text += &format!("{} ", skiff_core::shell::quote_word(&data::drop_send(&c, &name, bytes, host.as_deref()).await?));
+        }
+    } else {
+        text = paths.iter().map(|p| format!("{} ", skiff_core::shell::quote_word(&p.to_string_lossy()))).collect();
+    }
     let image = paths.first().map(|p| p.to_string_lossy().into_owned());
     blocking(move || {
         let dir = cache_dir()?;
@@ -187,6 +242,19 @@ pub(crate) async fn image_delete(handle: AppHandle, paths: Vec<PathBuf>) -> Resu
     done
 }
 
+/// A library image's bytes, for its thumbnail. Only files in the cache.
+#[tauri::command]
+pub(crate) async fn image_thumb(path: PathBuf) -> Result<tauri::ipc::Response, String> {
+    let cfg = skiff_core::config::load().unwrap_or_default();
+    let dir = cache::dir(&cfg).map_err(|e| format!("{e:#}"))?.canonicalize().map_err(|e| e.to_string())?;
+    let file = path.canonicalize().map_err(|e| format!("read {}: {e}", path.display()))?;
+    if file.parent() != Some(dir.as_path()) {
+        return Err(format!("{} is not in the Images folder", path.display()));
+    }
+    let bytes = tokio::fs::read(&file).await.map_err(|e| format!("read {}: {e}", file.display()))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// Opens a library image with `[open] image`, else the OS default app. It
 /// never runs in the peek.
 #[tauri::command]
@@ -208,6 +276,10 @@ pub(crate) async fn open_image(path: PathBuf) -> Result<(), String> {
 /// space in front. Empty for an agent that gets none.
 #[tauri::command]
 pub(crate) async fn agent_cache_flags(app: State<'_, App>, agent: String) -> Result<String, String> {
+    // A remote Host's cache path is its own: this computer's means nothing there.
+    if app.remote() {
+        return Ok(String::new());
+    }
     let (c, _) = ensure_client(&app).await?;
     let agents = c.list_agents().await.map_err(err)?;
     let cfg = skiff_core::config::load().unwrap_or_default();

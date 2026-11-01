@@ -70,6 +70,10 @@ export const S = {
   /** Closed projects: kept with their settings, out of the tree. */
   closedProjects: [] as Project[],
   projectsError: null as string | null,
+  /** The selected Host's data plane (skiff-host), which serves projects and
+   *  Git: still loading, ready, or out of reach with `dataNote` as the cause. */
+  dataState: "loading" as "loading" | "ready" | "unavailable",
+  dataNote: null as string | null,
   selectedProject: null as string | null,
   /** Known agents with installed and enabled state, from list_agents. */
   agents: [] as AgentInfo[],
@@ -82,6 +86,11 @@ export const S = {
   selection: [] as string[],
   /** The list item the session list's single Tab stop lands on. */
   roveKey: null as string | null,
+  /**
+   * The group of the current row's line. A Skipper in a group has two rows
+   * with one key: its own row and its line in the group. Null: the row in no group.
+   */
+  roveAt: null as { key: string; group: string | null } | null,
   /** A pane asked for the keys before its terminal opened. It takes them when it opens. */
   grab: null as string | null,
   /** Focus mode: the terminal area alone, no tree, top bar or status bar. */

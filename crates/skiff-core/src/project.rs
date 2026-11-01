@@ -60,6 +60,17 @@ pub struct Project {
     /// The fleet it sits in on the rail. Absent: on the rail by itself.
     #[serde(default)]
     pub fleet: Option<String>,
+    /// `changes = false`: the Changes section is hidden. Absent: shown.
+    #[serde(default)]
+    pub changes: Option<bool>,
+    /// The project's own theme id. Absent: the app theme. Left out when
+    /// absent, so a row without it reads as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
+    /// Shows a Files tree under each worktree: the `files` key, else on for
+    /// a plain folder and off for a git project. Left out when off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub files: bool,
 }
 
 impl Project {
@@ -96,6 +107,9 @@ impl Project {
             error,
             closed: p.closed,
             fleet: p.fleet.clone().filter(|f| !f.trim().is_empty()),
+            changes: p.changes,
+            theme: p.theme.clone(),
+            files: p.files.unwrap_or(kind == ProjectKind::Folder),
         }
     }
 }
@@ -136,11 +150,14 @@ const ICON_NAMES: [&str; 11] = [
     "icon.ico",
 ];
 
-/// The configured background image, made absolute. `None` when unset or missing.
+/// The configured background image, made absolute. `None` when unset, missing,
+/// or not a regular file reached without a link ([`crate::files::open_background`]).
 pub fn background_file(project: &Path, configured: Option<&str>) -> Option<String> {
-    let p = Path::new(configured?.trim());
+    let configured = configured?;
+    crate::files::open_background(project, configured).ok()?;
+    let p = Path::new(configured.trim());
     let p = if p.is_absolute() { p.to_path_buf() } else { project.join(p) };
-    p.is_file().then(|| p.display().to_string())
+    Some(p.display().to_string())
 }
 
 /// The icon file for a project: the configured one, else the first candidate.
@@ -216,8 +233,14 @@ pub fn data_url(file: &Path) -> Option<String> {
 /// Reads `projects.toml` again on every call. Projects load in parallel:
 /// each one runs git and searches its tree for an icon.
 pub fn list() -> Result<Vec<Project>> {
+    Ok(list_with_revision()?.0)
+}
+
+/// [`list`], and the revision of the very `[[project]]` tables it read.
+pub fn list_with_revision() -> Result<(Vec<Project>, String)> {
     let projects = crate::config::load()?.projects;
-    Ok(std::thread::scope(|s| {
+    let revision = crate::config::projects_revision(&projects);
+    let rows = std::thread::scope(|s| {
         let handles: Vec<_> = projects
             .iter()
             .map(|p| s.spawn(|| Project::from_config(p)))
@@ -226,7 +249,8 @@ pub fn list() -> Result<Vec<Project>> {
             .into_iter()
             .map(|h| h.join().unwrap_or_else(|e| std::panic::resume_unwind(e)))
             .collect()
-    }))
+    });
+    Ok((rows, revision))
 }
 
 pub fn find(name: &str) -> Result<ProjectConfig> {
@@ -234,7 +258,7 @@ pub fn find(name: &str) -> Result<ProjectConfig> {
         .projects
         .into_iter()
         .find(|p| p.name == name)
-        .ok_or_else(|| anyhow!("no such project: {name}"))
+        .ok_or_else(|| crate::config::Refused::NoProject(name.into()).into())
 }
 
 /// `<parent>/<dir>-worktrees/<branch with '/' as '-'>`.
@@ -250,15 +274,122 @@ pub fn worktree_path(project: &Path, branch: &str) -> PathBuf {
         .join(branch.replace('/', "-"))
 }
 
-/// Adds a worktree on a new branch and returns it as git reports it.
-pub fn add_worktree(name: &str, branch: &str, base: Option<&str>) -> Result<Worktree> {
+/// A new branch name git would take, checked before git runs: its folder
+/// name comes from it, so it never climbs out of `<dir>-worktrees`.
+pub fn check_branch(branch: &str) -> Result<()> {
+    let bad = branch.is_empty()
+        || branch.starts_with(['-', '/', '.'])
+        || branch.ends_with(['/', '.'])
+        || branch.ends_with(".lock")
+        || branch.contains("..")
+        || branch.contains("//")
+        || branch.contains("@{")
+        || branch.chars().any(|c| c.is_control() || c.is_whitespace() || "~^:?*[\\".contains(c));
+    if bad {
+        return Err(crate::config::Refused::Invalid(format!("{branch:?} is not a branch name git takes")).into());
+    }
+    Ok(())
+}
+
+/// Adds a worktree on a new branch and returns it as git reports it. With
+/// `checkout`, the branch is one `branches` lists without a worktree, and
+/// git checks it out instead; `base` must then be `None`.
+pub fn add_worktree(name: &str, branch: &str, base: Option<&str>, checkout: bool) -> Result<Worktree> {
+    check_branch(branch)?;
+    if base.is_some_and(|b| b.is_empty() || b.starts_with('-')) || (checkout && base.is_some()) {
+        return Err(crate::config::Refused::Invalid("not a base git takes".into()).into());
+    }
     let p = find(name)?;
+    if p.closed {
+        return Err(crate::config::Refused::NoProject(name.into()).into());
+    }
     let path = worktree_path(&p.path, branch);
-    git::add_worktree(&p.path, branch, &path, base)?;
+    if checkout {
+        if !free_branch(&git::branches(&p.path)?, branch) {
+            return Err(crate::config::Refused::Invalid(format!("{branch} is not a branch without a worktree")).into());
+        }
+        git::checkout_worktree(&p.path, branch, &path)?;
+    } else {
+        git::add_worktree(&p.path, branch, &path, base)?;
+    }
     git::list_worktrees(&p.path)?
         .into_iter()
         .find(|w| same_path(&w.path, &path))
         .ok_or_else(|| anyhow!("git added {} but does not list it", path.display()))
+}
+
+/// A local branch no worktree has, or a name only one remote has.
+fn free_branch(list: &[git::Branch], branch: &str) -> bool {
+    match list.iter().find(|b| !b.remote && b.name == branch) {
+        Some(local) => !local.worktree,
+        None => list.iter().filter(|b| b.remote && b.name.split_once('/').is_some_and(|(_, n)| n == branch)).count() == 1,
+    }
+}
+
+/// The open project's branches, and the one its folder has checked out.
+pub fn branches(name: &str) -> Result<(Option<String>, Vec<git::Branch>)> {
+    let p = find(name)?;
+    if p.closed {
+        return Err(crate::config::Refused::NoProject(name.into()).into());
+    }
+    Ok((git::head_branch(&p.path), git::branches(&p.path)?))
+}
+
+/// Why a worktree stays: the edit is refused, nothing is removed.
+#[derive(Debug)]
+pub enum Keep {
+    /// The project's main checkout.
+    Main,
+    /// A session that is not done runs in it.
+    Live(String),
+    /// Uncommitted changes, and no `force`.
+    Dirty,
+    /// Not a worktree of the project.
+    NotFound(String),
+}
+
+impl std::fmt::Display for Keep {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Main => f.write_str("refusing to remove the main worktree"),
+            Self::Live(label) => write!(f, "session \"{label}\" is still running in this worktree"),
+            Self::Dirty => f.write_str("worktree has uncommitted changes"),
+            Self::NotFound(m) => f.write_str(m),
+        }
+    }
+}
+impl std::error::Error for Keep {}
+
+/// Removes a linked worktree of the named project. Refuses the main
+/// worktree, and any worktree a live session of `sessions` runs in.
+/// Refuses uncommitted changes unless `force`, which deletes them.
+pub fn remove_worktree(name: &str, path: &Path, force: bool, sessions: &[crate::session::SessionInfo]) -> Result<()> {
+    let p = find(name)?;
+    // As for add: a closed project's worktrees are not listed, so none goes.
+    if p.closed {
+        return Err(crate::config::Refused::NoProject(name.into()).into());
+    }
+    let wt = git::list_worktrees(&p.path)?
+        .into_iter()
+        .find(|w| same_path(&w.path, path))
+        .ok_or_else(|| Keep::NotFound(format!("{} is not a worktree of {name}", path.display())))?;
+    if wt.is_main {
+        return Err(Keep::Main.into());
+    }
+    // git reports realpaths; session cwds may go through symlinks.
+    let real = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let root = real(&wt.path);
+    let live = sessions
+        .iter()
+        .filter(|s| s.state != crate::session::SessionState::Done)
+        .find(|s| real(&s.cwd).starts_with(&root) || s.cwd.starts_with(path));
+    if let Some(s) = live {
+        return Err(Keep::Live(s.label.clone()).into());
+    }
+    if !force && wt.path.is_dir() && git::is_dirty(&wt.path)? {
+        return Err(Keep::Dirty.into());
+    }
+    git::remove_worktree(&p.path, &wt.path, force)
 }
 
 /// The agents Skiff offers, in menu order, with their default command.
@@ -332,10 +463,19 @@ pub fn mark_used(list: &mut [AgentInfo]) {
 
 /// Every known agent with its installed and enabled state.
 pub fn agents() -> Vec<AgentInfo> {
+    let cfg = crate::config::load().map(|c| c.agents).unwrap_or_default();
+    let mut list = agents_in(&cfg, |_, _| None);
+    mark_used(&mut list);
+    list
+}
+
+/// [`agents`] from `cfg`, with no [`AgentInfo::used_by`]: [`mark_used`]
+/// adds it. `installed` answers for an agent id and its command
+/// line when the caller knows better than this process's PATH (as the app
+/// does for This Mac, from skiffd); `None` checks this PATH.
+pub fn agents_in(cfg: &crate::config::Agents, installed: impl Fn(&str, &str) -> Option<bool>) -> Vec<AgentInfo> {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let dirs: Vec<PathBuf> = std::env::split_paths(&path).collect();
-    let full = crate::config::load().unwrap_or_default();
-    let cfg = &full.agents;
     // Known agents first, then the user's own, in the order the file sorts them.
     let custom: Vec<(&str, &str)> = cfg
         .commands
@@ -358,11 +498,13 @@ pub fn agents() -> Vec<AgentInfo> {
             // Installed means the program, the first word, is on PATH.
             let first = command.split_whitespace().next().unwrap_or(default);
             let program = crate::alias::expand(first).map_or(first, |w| w[0].as_str());
-            let installed = if program.contains('/') {
-                is_executable(Path::new(program))
-            } else {
-                dirs.iter().any(|d| is_executable(&d.join(program)))
-            };
+            let installed = installed(id, &command).unwrap_or_else(|| {
+                if program.contains('/') {
+                    is_executable(Path::new(program))
+                } else {
+                    dirs.iter().any(|d| is_executable(&d.join(program)))
+                }
+            });
             let on = cfg.enabled.as_ref().is_none_or(|e| e.iter().any(|x| x == id));
             AgentInfo {
                 id: id.to_string(),
@@ -371,7 +513,7 @@ pub fn agents() -> Vec<AgentInfo> {
                 custom: !KNOWN_AGENTS.iter().any(|&(k, _)| k == id),
                 installed,
                 enabled: installed && on,
-                used_by: used_by(&full, id),
+                used_by: None,
             }
         })
         .collect()

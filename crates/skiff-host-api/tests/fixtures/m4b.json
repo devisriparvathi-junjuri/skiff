@@ -1,0 +1,44 @@
+{
+  "capabilities": {
+    "project_config": { "name": "project_config", "version": 1 },
+    "worktrees": { "name": "worktrees", "version": 1 }
+  },
+  "project_requests": [
+    { "cmd": "project_inspect", "path": "/srv/new" },
+    { "cmd": "project_add", "path": "/srv/new", "revision": "00ff00ff00ff00ff", "name": "new λ", "short": "nw", "color": "#123456" },
+    { "cmd": "project_edit", "project": "web", "revision": "00ff00ff00ff00ff", "edit": { "key": "short", "short": "wb" } },
+    { "cmd": "project_edit", "project": "web", "revision": "00ff00ff00ff00ff", "edit": { "key": "fleet", "fleet": "" } },
+    { "cmd": "project_edit", "project": "web", "revision": "00ff00ff00ff00ff", "edit": { "key": "color", "color": "#abcdef" } },
+    { "cmd": "project_edit", "project": "web", "revision": "00ff00ff00ff00ff", "edit": { "key": "theme", "theme": null } },
+    { "cmd": "project_edit", "project": "web", "revision": "00ff00ff00ff00ff", "edit": { "key": "changes", "on": false } },
+    { "cmd": "project_edit", "project": "web", "revision": "00ff00ff00ff00ff", "edit": { "key": "files", "on": true } },
+    { "cmd": "project_edit", "project": "web", "revision": "00ff00ff00ff00ff", "edit": { "key": "background_opacity", "percent": 70 } },
+    { "cmd": "project_edit", "project": "web", "revision": "00ff00ff00ff00ff", "edit": { "key": "closed", "closed": true } },
+    { "cmd": "project_arrange", "revision": "00ff00ff00ff00ff", "order": ["api", "web"], "fleets": [{ "project": "web", "fleet": "F" }] },
+    { "cmd": "project_remove", "project": "web", "revision": "00ff00ff00ff00ff" }
+  ],
+  "worktree_requests": [
+    { "cmd": "worktree_add", "project": "web", "branch": "feat/x", "base": null },
+    { "cmd": "worktree_add", "project": "web", "branch": "feat/y", "base": "origin/main" },
+    { "cmd": "worktree_add", "project": "web", "branch": "fix/z", "base": null, "checkout": true },
+    { "cmd": "branch_list", "project": "web" },
+    { "cmd": "worktree_remove", "project": "web", "path": "/srv/web-worktrees/feat-x", "force": false }
+  ],
+  "replies": [
+    { "type": "reply", "id": 1, "result": { "Ok": { "kind": "projects", "projects": [], "revision": "00ff00ff00ff00ff" } } },
+    { "type": "reply", "id": 2, "result": { "Ok": { "kind": "folder", "folder": { "root": "/srv/new", "name": "new", "short": "new", "color": "#7ee0cb", "branch": "main", "worktrees": 1, "icon": null, "error": null } } } },
+    { "type": "reply", "id": 3, "result": { "Ok": { "kind": "project_added", "project": { "name": "new λ", "short": "nw", "path": "/srv/new", "color": "#123456", "agents": [], "icon": null, "background": null, "background_opacity": null, "worktrees": [], "default_branch": null, "error": null, "closed": false, "fleet": null, "changes": null, "theme": "lagoon", "files": true }, "revision": "1111222233334444" } } },
+    { "type": "reply", "id": 4, "result": { "Ok": { "kind": "revision", "revision": "1111222233334444" } } },
+    { "type": "reply", "id": 5, "result": { "Ok": { "kind": "worktree", "worktree": { "path": "/srv/web-worktrees/feat-x", "branch": "feat/x", "head": "0123abcd", "is_main": false, "locked": false, "prunable": false } } } },
+    { "type": "reply", "id": 6, "result": { "Ok": { "kind": "ok" } } },
+    { "type": "reply", "id": 9, "result": { "Ok": { "kind": "branches", "branches": { "head": "main", "branches": [
+      { "name": "main", "worktree": true },
+      { "name": "fix/z" },
+      { "name": "origin/main", "remote": true },
+      { "name": "origin/feat/λ", "remote": true }
+    ] } } } },
+    { "type": "reply", "id": 10, "result": { "Ok": { "kind": "branches", "branches": { "head": null, "branches": [] } } } },
+    { "type": "reply", "id": 7, "result": { "Err": { "code": "conflict", "message": "The projects changed on this Host since they were read." } } },
+    { "type": "reply", "id": 8, "result": { "Err": { "code": "invalid", "message": "not a #rrggbb color: red" } } }
+  ]
+}

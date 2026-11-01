@@ -3,6 +3,6 @@
     "beforeBuildCommand": "sh scripts/sidecar.sh && pnpm build"
   },
   "bundle": {
-    "externalBin": ["binaries/skiffd", "binaries/skiff"]
+    "externalBin": ["binaries/skiffd", "binaries/skiff", "binaries/skiff-host"]
   }
 }

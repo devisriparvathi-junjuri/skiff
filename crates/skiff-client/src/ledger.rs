@@ -22,11 +22,19 @@ pub const GONE: &str = "gone";
 /// The schema version, in `user_version`. 4 added `tasks.socket` and
 /// `owner`, 5 added `tasks.reported_at`, 6 added `tasks.title`, 7 added
 /// `tasks.closed_at`, 8 added `tasks.gone_at`, 9 added `tasks.owner` and the
-/// `handoff` kind, 10 added `tasks.reopened_at`; an older file from version 3
-/// on takes each in place, with its rows.
-pub const VERSION: i64 = 10;
+/// `handoff` kind, 10 added `tasks.reopened_at`, 11 added `tasks.work_dir`
+/// and `tasks.flushed_at`; an older file from version 3 on takes each in
+/// place, with its rows. The readers take a version 10 file: the version 11
+/// columns read as empty there.
+pub const VERSION: i64 = 11;
 
 pub const COLUMNS: &str = "id, uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, reported_at, title, closed_at, gone_at, owner";
+
+/// The version 11 columns, or empty values on an older file.
+fn columns_11(db: &Connection) -> rusqlite::Result<&'static str> {
+    let n: i64 = db.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name IN ('work_dir', 'flushed_at')", [], |r| r.get(0))?;
+    Ok(if n == 2 { "work_dir, flushed_at" } else { "NULL, NULL" })
+}
 
 /// The owner of the grand Skipper's rows. A project Skipper's rows have its
 /// project's name.
@@ -83,6 +91,13 @@ pub struct Row {
     /// The coordinator whose row it is: [`GRAND`], or the project of a
     /// project Skipper. Only it, or the person, changes the row.
     pub owner: String,
+    /// The row's work folder, which `skiff ledger add` made: everything for
+    /// the task goes in it, the result too. `None`: a row from before work
+    /// folders, whose result path stands alone.
+    pub work_dir: Option<String>,
+    /// When Settings › Disk use flushed the work folder. The row stays; the
+    /// panel shows "Result flushed" in place of a missing result.
+    pub flushed_at: Option<String>,
     /// [`WORKING`], [`OPEN`] or [`FINISHED`], for the whole work. Set by
     /// [`buckets`].
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -200,10 +215,12 @@ pub fn heads(rows: &[Row]) -> std::collections::HashMap<String, String> {
 
 /// `SKIFF_LEDGER`, else `ledger.db` in the Skiff agent's folder: the
 /// `[skiff_agent] folder` override, else `~/skiff-agent`, or the folder in
-/// the socket's private state.
+/// the socket's private state. A relative `SKIFF_LEDGER` is taken from the
+/// working folder, so the ledger always has a folder: results, stamps and
+/// rows all follow the one full path.
 pub fn path() -> Result<PathBuf> {
     if let Some(p) = std::env::var_os("SKIFF_LEDGER") {
-        return Ok(PathBuf::from(p));
+        return std::path::absolute(PathBuf::from(p)).context("SKIFF_LEDGER is not a usable path");
     }
     Ok(crate::skipper::configured(&skiff_core::config::load()?)?.join("ledger.db"))
 }
@@ -277,7 +294,7 @@ pub fn open_read(file: &Path) -> Result<Connection> {
 }
 
 pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) -> Result<Vec<Row>> {
-    let sql = format!("SELECT {COLUMNS} FROM tasks {where_} ORDER BY id");
+    let sql = format!("SELECT {COLUMNS}, {} FROM tasks {where_} ORDER BY id", columns_11(db)?);
     let mut st = db.prepare(&sql)?;
     let map = |r: &rusqlite::Row| {
         Ok(Row {
@@ -301,6 +318,8 @@ pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) ->
             closed_at: r.get(17)?,
             gone_at: r.get(18)?,
             owner: r.get(19)?,
+            work_dir: r.get(20)?,
+            flushed_at: r.get(21)?,
             bucket: None,
             agent_on: false,
             elsewhere: false,
@@ -313,6 +332,60 @@ pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) ->
         None => st.query_map([], map)?.collect::<rusqlite::Result<Vec<_>>>()?,
     };
     Ok(out)
+}
+
+/// Finished in the app's Ledger panel shows this many closed items, newest
+/// first. Keep in step with `KEEP` in `apps/desktop/src/workspace/ledger.ts`.
+pub const PANEL_KEEP: i64 = 100;
+
+/// The rows the panel shows: all work not closed, and the last
+/// [`PANEL_KEEP`] closed work heads with their tasks, a hand-off's tasks
+/// included. Older closed work stays in the file. The head of a hand-off's
+/// task is two steps up.
+const PANEL: &str = "WHERE coalesce((SELECT h.parent FROM tasks h WHERE h.uid = tasks.parent), parent, uid) NOT IN (SELECT uid FROM tasks WHERE closed_at IS NOT NULL) \
+     OR coalesce((SELECT h.parent FROM tasks h WHERE h.uid = tasks.parent), parent, uid) IN (SELECT uid FROM tasks WHERE closed_at IS NOT NULL ORDER BY closed_at DESC, id DESC LIMIT ?1)";
+
+/// The panel's rows from `file`, oldest first, plans rolled up. No file
+/// gives none; nothing is made or migrated.
+pub fn panel(file: &Path) -> Result<Vec<Row>> {
+    if !file.exists() {
+        return Ok(Vec::new());
+    }
+    let db = open_read(file)?;
+    let mut rows = rows(&db, PANEL, Some(&PANEL_KEEP))?;
+    roll_up(&mut rows);
+    Ok(rows)
+}
+
+/// One row by its uid, read-only. `None` when no row has it.
+pub fn by_uid(file: &Path, uid: &str) -> Result<Option<Row>> {
+    if !file.exists() {
+        return Ok(None);
+    }
+    let db = open_read(file)?;
+    Ok(rows(&db, "WHERE uid = ?1", Some(&uid))?.into_iter().next())
+}
+
+/// A value that changes when the ledger does: the size, change time and
+/// inode of `file` itself and of its SQLite WAL, `<file>-wal`, whatever the
+/// file's name, and the file's name. Read from metadata only; the database
+/// is not opened.
+pub fn stamp(file: &Path) -> String {
+    use std::hash::{Hash, Hasher};
+    #[cfg(unix)]
+    use std::os::unix::fs::MetadataExt;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    file.hash(&mut h);
+    let mut wal = file.as_os_str().to_owned();
+    wal.push("-wal");
+    for f in [file.to_path_buf(), PathBuf::from(wal)] {
+        let m = std::fs::metadata(f).ok();
+        let modified = m.as_ref().and_then(|m| m.modified().ok());
+        (m.as_ref().map(|m| m.len()), modified).hash(&mut h);
+        #[cfg(unix)]
+        m.map(|m| (m.ino(), m.ctime(), m.ctime_nsec())).hash(&mut h);
+    }
+    format!("{:016x}", h.finish())
 }
 
 /// A plan's state from its tasks in `rows`: `done` once every task is done,

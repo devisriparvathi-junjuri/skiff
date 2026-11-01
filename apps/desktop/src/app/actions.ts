@@ -7,6 +7,9 @@ import { currentRow, cycleRegion, fromProject, listItems, stepList, toMainWorktr
 
 import { endEntry, killGroup, newWorktree, projectMenu, projectRun, splitMenu, ungroup } from "../workspace/menus";
 import { ctxMenu } from "../ui/contextMenu";
+import { isRemote } from "./hosts";
+import { hostCan } from "./hostCaps";
+import { openRemoteNewSession } from "../workspace/remoteLaunch";
 import { isFolder } from "../workspace/model";
 import { addProject, launchMenu, settings } from "./panels";
 
@@ -33,12 +36,20 @@ import { showShortcuts } from "../ui/infoDialogs";
 import { isSkiffAgent, openSkiffAgent, skiffAgentSession } from "./skiffAgent";
 import { groupThemeMenu, projectThemeMenu, sessionThemeMenu } from "../appearance/themes";
 import { toggleLedger } from "../workspace/ledger";
+import { setSidebarView, skippersOn } from "../workspace/skippersView";
 import { quitApp } from "../workspace/profile";
 function openNewSession() {
   // Its key works from inside a menu, such as the worktree menu that shows it: that menu goes.
   ctxMenu.close(false);
   // The highlighted row's worktree, as its + would; else the focused one.
   const row = currentRow();
+  // A remote Host has no worktrees yet: a folder on that Host, the
+  // highlighted session's first, else the focused one's.
+  if (isRemote()) {
+    const near = sessions.get(row?.dataset.session ?? "") ?? (S.focused ? sessions.get(S.focused) : undefined);
+    const b = (row ?? $("sidebar-scroll")).getBoundingClientRect();
+    return openRemoteNewSession(b.left + 24, row ? b.bottom : b.top + 24, near?.cwd);
+  }
   const rowPlus = row?.closest("#sidebar-scroll .wt")?.querySelector<HTMLElement>(".wt-plus");
   if (rowPlus) return rowPlus.click();
   const at = currentWorktree();
@@ -49,8 +60,10 @@ function openNewSession() {
 
 export function runAction(a: Action) {
   const shown = S.focused && shownIds().includes(S.focused);
-  // Mission control holds the keys as a dialog does. Its own key closes it; maximize opens the lit session;
-  // the palette key searches its sessions; the list keys step its screens.
+  // Mission control holds the keys as a dialog does. Its own key closes it; maximize goes to the lit session;
+  // the palette key searches the board; the focus mode key switches Running / All; the list keys move
+  // through the graph; Next waiting lights the next waiting card; the Ledger key folds the panel; the
+  // menu key opens the board menu. Settings and the Skiff agent close the board first.
   if (missionOpen() && a === "maximize") return maximizeLit();
   if (missionOpen() && a === "palette") return toggleSearch();
   // The focus mode key toggles Running / All. The menu bar sends it here.
@@ -72,6 +85,8 @@ export function runAction(a: Action) {
     case "palette": return switcher.toggle();
     case "new-session": return openNewSession();
     case "new-worktree": {
+      // The Host makes it, when it offers worktrees.
+      if (!hostCan("worktrees")) return;
       const p = currentProject();
       return p && !isFolder(p) ? newWorktree(p) : undefined;
     }
@@ -91,6 +106,8 @@ export function runAction(a: Action) {
     case "project-copy-path": {
       // On a file or change row, the key acts on that file.
       const path = rowPath();
+      // A remote Host's paths are copied as text, never opened on this Mac.
+      if (isRemote() && a !== "project-copy-path") return;
       if (path) return a === "project-copy-path" ? copy(path.path) : path.dir ? open(path.path) : reveal(path.path);
       const p = currentProject();
       return p ? projectRun(p)[a]() : undefined;
@@ -98,6 +115,8 @@ export function runAction(a: Action) {
     case "project-color":
     case "project-changes":
     case "project-files": {
+      // The Host keeps these settings, and lists the Files tree (`files@1`).
+      if (!hostCan("project_config") || (a === "project-files" && !hostCan("files"))) return;
       const p = currentProject();
       return p ? projectRun(p)[a]() : undefined;
     }
@@ -112,9 +131,13 @@ export function runAction(a: Action) {
     case "next-waiting": return goToSession(nextWaiting());
     case "skiff-agent": {
       const s = skiffAgentSession();
-      return s && missionOpen() ? goToSession(s.id) : openSkiffAgent();
+      if (s && missionOpen()) return goToSession(s.id);
+      // Again from its pane: the side panel switches between the tree and the Skippers list. The pane keeps focus.
+      if (isSkiffAgent(S.focused)) return setSidebarView(skippersOn() ? "tree" : "skippers");
+      return openSkiffAgent();
     }
     case "ledger": return toggleLedger();
+    case "sidebar-view": return setSidebarView(skippersOn() ? "tree" : "skippers");
     case "mission-control": return toggleMission();
     case "back": return goBack();
     case "rename": {
@@ -179,7 +202,8 @@ function closeKey(shown: boolean) {
 function openTheme() {
   const project = () => {
     const p = currentProject();
-    if (p) void projectThemeMenu(p);
+    // A project theme is its Host's setting: it changes when that Host takes project changes.
+    if (p && hostCan("project_config")) void projectThemeMenu(p);
   };
   const row = currentRow();
   const sid = row ? row.dataset.session : S.focused;

@@ -1,5 +1,5 @@
 /** Fleets: the order of projects, a drop that moves them, and naming a new fleet. */
-import { invoke } from "@tauri-apps/api/core";
+import { hostCan, hostInvoke } from "../app/hostCaps";
 
 import type { Project } from "../platform/types";
 
@@ -10,7 +10,8 @@ import { render } from "../app/renderRequest";
 
 import { S } from "../app/state";
 import { renameHidden } from "./tree";
-import { fleetSkipperOf, joinFleet, projectSkipperOf } from "../app/skiffAgent";
+import { keepInView, renameWorkspaceFleet } from "./profile";
+import { fleetSkipperOf, joinFleet, projectSkipperOf, renameFleetOn } from "../app/skiffAgent";
 import { t } from "../i18n";
 
 export interface Fleet {
@@ -75,6 +76,8 @@ function freeFleetName(): string {
  * after one confirm; Cancel changes nothing.
  */
 export function applyDrop(moving: Project[], d: Drop): string | null {
+  // The Host keeps the order and the fleets: one that takes no project changes keeps them as they are.
+  if (!hostCan("project_config")) return null;
   const joins = d.fleet && !d.make && fleetSkipperOf(d.fleet) ? moving.filter((p) => p.fleet !== d.fleet && projectSkipperOf(p.name)) : [];
   if (!joins.length) return place(moving, d);
   void (async () => {
@@ -99,10 +102,11 @@ function place(moving: Project[], d: Drop): string | null {
   for (const f of next.values()) if (f) size.set(f, (size.get(f) ?? 0) + 1);
   for (const [p, f] of next) if (f && size.get(f) === 1 && !fleetSkipperOf(f)) next.set(p, null);
   const fleets = [...next].filter(([p, f]) => (p.fleet ?? null) !== f).map(([p, f]) => [p.name, f ?? ""]);
+  for (const [p, f] of next) if ((p.fleet ?? null) !== f) keepInView(p, f);
   for (const [p, f] of next) p.fleet = f;
   S.projects = order;
   render();
-  invoke("reorder_projects", { order: order.map((x) => x.name), fleets }).catch(showError);
+  hostInvoke("project_config", "reorder_projects", { order: order.map((x) => x.name), fleets }).catch(showError);
   return made;
 }
 
@@ -144,8 +148,9 @@ export function nameFleet(name: string) {
     const members = S.projects.filter((p) => p.fleet === name);
     for (const p of members) p.fleet = next;
     renameHidden(name, next);
+    renameWorkspaceFleet(name, next);
     render();
-    invoke("rename_fleet", { old: name, new: next }).catch(showError);
+    renameFleetOn(name, next, members.map((p) => p.name)).catch(showError);
   };
   input.addEventListener("keydown", (e) => {
     e.stopPropagation();

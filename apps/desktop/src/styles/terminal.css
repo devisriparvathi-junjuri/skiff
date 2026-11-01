@@ -22,6 +22,14 @@
   font: 500 calc(11px * var(--zoom, 1)) var(--mono); cursor: pointer;
 }
 .peek-esc:hover { border-color: var(--text-3); color: var(--text); }
+/* A Host file's action, left of Esc: opens a local copy. Enter runs it. */
+.peek-open {
+  padding: 0 calc(6 * var(--u)); height: calc(20 * var(--u));
+  border: 1px solid var(--rule-strong); background: var(--bg-raised); color: var(--text-2);
+  font: 500 calc(11px * var(--zoom, 1)) var(--font); cursor: pointer;
+}
+.peek-open:hover { border-color: var(--text-3); color: var(--text); }
+.peek-open-key { font-family: var(--mono); color: var(--pc); }
 .peek-body { flex-grow: 1; min-height: 0; padding: calc(8 * var(--u)) 0 0 calc(12 * var(--u)); }
 .file-preview-body { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(14 * var(--u)); }
 /* A clickable Enter keycap. Pressing it drops it 2px, the card's only motion. */
@@ -37,6 +45,17 @@ button.file-preview-key:active:not(:disabled) { background-image: none; box-shad
 .file-preview-key-arrow { position: absolute; top: calc(8 * var(--u)); right: calc(12 * var(--u)); width: calc(16 * var(--u)); height: calc(16 * var(--u)); color: var(--pc); }
 .file-preview-label { color: var(--text-2); font-size: calc(13px * var(--zoom, 1)); }
 .file-preview-label b { color: var(--text); font-weight: 600; }
+/* A remote Host's diff: its git's plain text, drawn here. It scrolls with the arrow and page keys. */
+.diff-view-body { flex-grow: 1; min-height: 0; overflow: auto; padding: calc(8 * var(--u)) calc(16 * var(--u)); outline: none; }
+.diff-view-note { padding: calc(4 * var(--u)) 0; color: var(--text-2); font-size: calc(12px * var(--zoom, 1)); }
+.diff-view-error { color: var(--error); white-space: pre-wrap; }
+/* A Host's image, from the bytes it sent: never wider or taller than the viewer. */
+.file-view-image { display: block; margin-top: calc(8 * var(--u)); max-width: 100%; max-height: calc(100% - calc(32 * var(--u))); object-fit: contain; }
+.diff-text { margin: calc(4 * var(--u)) 0 0; font: calc(13px * var(--zoom, 1)) / 1.4 var(--mono); color: var(--text); white-space: pre; tab-size: 4; }
+.diff-text .dl-file { color: var(--text); font-weight: 700; }
+.diff-text .dl-meta, .diff-text .dl-hunk { color: var(--text-3); }
+.diff-text .dl-add { color: var(--diff-add); }
+.diff-text .dl-del { color: var(--diff-del); }
 #main { --pc: var(--project-default); }
 #banner {
   height: var(--row); flex-shrink: 0;
@@ -101,8 +120,6 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .cell.selected::after, #terminal-host.group-picked .cell.selected::after { content: ""; display: block; position: absolute; inset: 0; border: calc(2 * var(--u)) solid var(--state-working); pointer-events: none; z-index: 5; }
 .cell-head .title { color: var(--text); font-size: calc(16px * var(--zoom, 1)); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* A project Skipper's head: "Skipper · gesher", with the project's icon or letters before the project. */
-.cell-head .title .head-project { display: inline-flex; align-items: center; justify-content: center; vertical-align: -2px; width: calc(14 * var(--u)); height: calc(14 * var(--u)); margin-right: calc(4 * var(--u)); font-size: calc(9px * var(--zoom, 1)); font-weight: 700; color: var(--pc); overflow: hidden; }
-.cell-head .title .head-project img { width: 100%; height: 100%; object-fit: contain; }
 .cell:not(.focused) .cell-head .title { color: var(--text-3); font-weight: 500; }
 .cell-head .head-gap { flex-grow: 1; }
 .cell-head .copy-notice { margin-left: auto; color: var(--state-done); font-size: calc(11 * var(--zoom, 1)); font-weight: 600; }

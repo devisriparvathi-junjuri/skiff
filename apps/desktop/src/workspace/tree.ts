@@ -7,6 +7,7 @@ import { isFolder, isUnread } from "./model";
 import { BELL, SKIFF } from "../appearance/stateIcon";
 import { projectIcon } from "../appearance/projectIcon";
 import { storedSet } from "../app/stored";
+import { shownHost } from "../app/hosts";
 import { removeErrors, removing, S, sessions } from "../app/state";
 import { place } from "../app/stateQueries";
 import { h } from "../ui/dom";
@@ -75,21 +76,29 @@ export function visibleProjects(): Project[] {
   return treeSections().flatMap((s) => (s.fleet && (folded.has(fleetKey(s.fleet)) || projectsHidden(s.fleet)) ? [] : s.projects));
 }
 
-/** Fleets that hide their projects, as `fleet:<name>`, in every workspace. Every fleet starts with its projects shown. */
+/**
+ * Fleets that hide their projects, in every workspace: `fleet:<name>` on this
+ * computer, `host:<id>/fleet:<name>` on a remote Host, so two Hosts with a
+ * fleet of one name keep their own choice. Every fleet starts with its projects shown.
+ */
 const savedHidden = storedSet("skiff.tree.hidden");
+const hiddenKey = (fleet: string) => {
+  const host = shownHost();
+  return host ? `host:${host}/${fleetKey(fleet)}` : fleetKey(fleet);
+};
 
-export const projectsHidden = (fleet: string) => savedHidden.has(fleetKey(fleet));
+export const projectsHidden = (fleet: string) => savedHidden.has(hiddenKey(fleet));
 
 /** Hide projects / Show projects in the fleet menu, and the count on its head. */
 export function setProjectsHidden(fleet: string, hide: boolean) {
-  if (hide) savedHidden.add(fleetKey(fleet));
-  else savedHidden.delete(fleetKey(fleet));
+  if (hide) savedHidden.add(hiddenKey(fleet));
+  else savedHidden.delete(hiddenKey(fleet));
 }
 
 /** A renamed fleet keeps its choice. */
 export function renameHidden(from: string, to: string) {
-  if (!savedHidden.delete(fleetKey(from))) return;
-  savedHidden.add(fleetKey(to));
+  if (!savedHidden.delete(hiddenKey(from))) return;
+  savedHidden.add(hiddenKey(to));
 }
 
 /**

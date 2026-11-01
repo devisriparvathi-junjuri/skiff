@@ -1,8 +1,9 @@
 use std::{future::Future, pin::Pin, sync::{Arc, atomic::{AtomicUsize, Ordering}}};
+use skiff_client::host::{local::{legacy_attach, legacy_detach, legacy_output}, OutputGap, TerminalFrame};
 use skiff_core::protocol::Event;
-use tauri::{ipc::{Channel, InvokeResponseBody}, State};
-use tokio::sync::{broadcast, Notify};
-use crate::connection::{App, ensure_client, err};
+use tauri::{ipc::{Channel, InvokeResponseBody}, AppHandle, Emitter, State};
+use tokio::sync::Notify;
+use crate::connection::{App, ensure_host, err, host_now};
 
 /// One write to the page holds at most this much, so xterm can yield to the
 /// page between pieces instead of parsing one long chunk.
@@ -47,9 +48,10 @@ impl Flow {
     }
 }
 
-/// Streams raw PTY bytes for one session, starting with a screen snapshot.
-/// Replaces any earlier subscription. Output the page cannot keep up with is
-/// dropped; once it catches up, a snapshot redraws the screen.
+/// Streams raw PTY bytes for one session, starting with a screen snapshot,
+/// from the selected Host's `session_terminal@1` plane. Replaces any earlier
+/// subscription. Output the page cannot keep up with is dropped; once it
+/// catches up, a snapshot redraws the screen. Nothing is replayed.
 #[tauri::command]
 pub(crate) async fn subscribe_output(
     app: State<'_, App>,
@@ -57,10 +59,10 @@ pub(crate) async fn subscribe_output(
     stream: u32,
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<(), String> {
-    let (c, _) = ensure_client(&app).await?;
-    // Listen first: the snapshot can arrive before the subscribe reply.
-    let mut rx = c.output(&session);
-    c.subscribe(&session).await.map_err(err)?;
+    let c = host_now(&app).await?;
+    // Listen first: the snapshot can arrive before the attach reply.
+    let mut rx = legacy_output(&c, &session).map_err(err)?;
+    legacy_attach(&c, &session).await.map_err(err)?;
     let flow = Arc::new(Flow {
         stream,
         parsed: AtomicUsize::new(0),
@@ -68,7 +70,7 @@ pub(crate) async fn subscribe_output(
     });
     app.flows.lock().unwrap().insert(session.clone(), flow.clone());
     let sid = session.clone();
-    // Weak, so a replaced client still drops and closes `rx`.
+    // Weak, so a replaced Host connection still drops and closes `rx`.
     let client = Arc::downgrade(&c);
     let task = tauri::async_runtime::spawn(async move {
         // Output from an earlier subscription predates the snapshot. Skip it.
@@ -86,7 +88,7 @@ pub(crate) async fn subscribe_output(
         let start_resubscribe = || -> Option<Resubscribe> {
             let c = client.upgrade()?;
             let sid = sid.clone();
-            Some(Box::pin(async move { c.subscribe(&sid).await.is_ok() }))
+            Some(Box::pin(async move { legacy_attach(&c, &sid).await.is_ok() }))
         };
         loop {
             let event = tokio::select! {
@@ -111,13 +113,13 @@ pub(crate) async fn subscribe_output(
                 }
             };
             match event {
-                Ok(Event::Snapshot { session, data, .. }) if session == sid => {
+                Ok(TerminalFrame::Snapshot { data, .. }) => {
                     live = true;
                     let Ok(n) = flow.send(&on_output, data) else { break };
                     sent += n;
                     snapshot_end = sent;
                 }
-                Ok(Event::Output { session, data, echo }) if live && !behind && session == sid => {
+                Ok(TerminalFrame::Output { data, echo }) if live && !behind => {
                     // Live bytes past the last snapshot that xterm has not parsed.
                     let parsed = flow.parsed.load(Ordering::Relaxed).max(snapshot_end);
                     if sent.saturating_sub(parsed) >= BEHIND_HIGH {
@@ -134,7 +136,7 @@ pub(crate) async fn subscribe_output(
                     sent += n;
                 }
                 Ok(_) => {}
-                Err(broadcast::error::RecvError::Lagged(_)) => {
+                Err(OutputGap::Lagged) => {
                     // Output was lost. Ask for a fresh snapshot and skip
                     // everything before it. A pane that is behind asks
                     // once it catches up.
@@ -146,7 +148,7 @@ pub(crate) async fn subscribe_output(
                     let Some(r) = start_resubscribe() else { break };
                     resubscribe = Some(r);
                 }
-                Err(broadcast::error::RecvError::Closed) => break,
+                Err(OutputGap::Closed) => break,
             }
         }
     });
@@ -173,29 +175,50 @@ pub(crate) async fn unsubscribe_output(app: State<'_, App>, session: String) -> 
     if let Some(task) = app.subs.lock().await.remove(&session) {
         task.abort();
     }
-    let (c, _) = ensure_client(&app).await?;
-    c.unsubscribe(&session).await.map_err(err)
+    let c = host_now(&app).await?;
+    legacy_detach(&c, &session).await.map_err(err)
 }
+
+/// The selected remote Host's connection ended.
+pub(crate) const HOST_LOST: &str = "skiff:host-lost";
 
 /// Streams every non-output event: state changes, exits, created, removed.
 /// The client routes output elsewhere, so a busy terminal cannot make this lag.
 #[tauri::command]
-pub(crate) async fn subscribe_events(app: State<'_, App>, on_event: Channel<Event>) -> Result<(), String> {
-    let (c, _) = ensure_client(&app).await?;
-    let mut rx = c.events();
+pub(crate) async fn subscribe_events(handle: AppHandle, app: State<'_, App>, on_event: Channel<Event>) -> Result<(), String> {
+    // Through the selected Host; a lag is skipped there, as it was here.
+    // Both from the one connection, so a Host switch between the two
+    // cannot pair one Host's updates with another's link.
+    let (host, _) = ensure_host(&app).await?;
+    let connection = host.connection();
+    let mut updates = skiff_client::host::local::legacy_updates(&connection).map_err(err)?;
+    let remote = app.remote();
+    let link = connection.clone();
     let task = tauri::async_runtime::spawn(async move {
+        // The stream does not end when the link drops: look each second.
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
         loop {
-            match rx.recv().await {
-                Ok(e) => {
-                    if on_event.send(e).is_err() {
-                        break;
-                    }
-                }
-                Err(broadcast::error::RecvError::Lagged(_)) => {}
-                Err(broadcast::error::RecvError::Closed) => break,
+            tokio::select! {
+                e = updates.recv() => match e {
+                    Some(e) => if on_event.send(e).is_err() { return },
+                    None => break,
+                },
+                _ = tick.tick() => if link.is_closed() { break },
             }
         }
+        // A remote Host's page reconnects on this: handshake, identity,
+        // then fresh subscriptions and snapshots. This Mac keeps its policy.
+        if remote {
+            let _ = handle.emit(HOST_LOST, ());
+        }
     });
+    // A switch while this ran replaced the selection: this task would keep
+    // the old Host's link open, so it goes, and the reloaded page subscribes.
+    let same = app.live.lock().unwrap().as_ref().is_some_and(|live| Arc::ptr_eq(live, &connection));
+    if !same {
+        task.abort();
+        return Err("The Host changed. The page subscribes again.".into());
+    }
     if let Some(old) = app.events.lock().await.replace(task) {
         old.abort();
     }

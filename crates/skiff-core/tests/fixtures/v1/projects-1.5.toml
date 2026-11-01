@@ -1,0 +1,27 @@
+# A Skiff 1.5 projects.toml: removed default agents and fleets. Private fixture.
+[[project]]
+name = "api"
+path = "/fixture/code/api"
+color = "#7ee0cb"
+fleet = "Backend"
+agents = ["claude"]
+
+[keys]
+new-session = "ctrl+shift+t"
+
+[appearance]
+font_size = 12
+
+[agents]
+removed = ["grok"]
+
+[open]
+text = "zed {path}"
+markdown = "zed {path}"
+
+[[project]]
+name = "web"
+path = "/fixture/code/web"
+color = "#e0c07e"
+fleet = "Backend"
+icon = ""

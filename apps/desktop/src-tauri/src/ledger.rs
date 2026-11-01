@@ -1,90 +1,88 @@
-//! Skipper's ledger for the panel beside its pane. The app reads `ledger.db`
-//! read-only with the CLI's read code. It never writes: only Skipper changes
-//! rows, through the CLI.
+//! Skipper's ledger for the panel beside its pane, from the selected Host
+//! (`ledger@1`): This Mac and an SSH Host alike. The Host reads its own
+//! `ledger.db` read-only and serves a row's result as bounded text or bytes.
+//! The app never opens a ledger, a result or its path, and never writes:
+//! only Skipper changes rows, through `skiff ledger` on the Host.
 
-use std::{path::Path, time::Duration};
+use std::{sync::atomic::Ordering, time::Duration};
 
-use serde::Serialize;
-use skiff_client::ledger::{self, Row};
-use skiff_core::session::SessionInfo;
-use tauri::{AppHandle, Emitter, State};
+use skiff_host_api::{HostFile, HostLedgerRow};
+use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::connection::{err, open_sessions, App};
+use crate::connection::{data_read, App};
 
 /// The page reads the ledger again on this event.
 const LEDGER_CHANGED: &str = "skiff:ledger-changed";
 
-/// How often the watcher looks at the files.
+/// How often the watcher asks the Host for the ledger's stamp.
 const TICK: Duration = Duration::from_secs(1);
+/// A remote Host is asked less often: each ask crosses the link.
+const REMOTE_TICK: Duration = Duration::from_secs(3);
 
-/// A row as the panel takes it.
-#[derive(Serialize)]
-pub struct Entry {
-    #[serde(flatten)]
-    row: Row,
-    /// The result file is on disk.
-    result_exists: bool,
-}
-
-/// Every row, reported ones included, oldest first. Plans carry the state
-/// their tasks give them. Each row carries its work's bucket, as `skiff
-/// ledger ls` gives it, from the sessions on the open connection. No
-/// `ledger.db` yet gives none.
+/// Every row the panel shows, oldest first. Plans carry the state their
+/// tasks give them. A Host with no `ledger.db` gives none.
 #[tauri::command]
-pub async fn ledger_rows(app: State<'_, App>) -> Result<Vec<Entry>, String> {
-    let all = open_sessions(&app).await;
-    tauri::async_runtime::spawn_blocking(move || read(all.as_deref())).await.map_err(|e| e.to_string())?.map_err(err)
+pub async fn ledger_rows(app: State<'_, App>) -> Result<Vec<HostLedgerRow>, String> {
+    data_read(&app, |c| async move { skiff_client::host::data::ledger_rows(&c).await }).await
 }
 
-/// Finished shows this many closed items, newest first. Keep in step with
-/// `KEEP` in `workspace/ledger.ts`.
-const KEEP: i64 = 100;
-
-/// The rows the panel shows: all work not closed, and the last [`KEEP`]
-/// closed work heads with their tasks, a hand-off's tasks included. Older
-/// closed work stays in the file. The head of a hand-off's task is two
-/// steps up.
-const PANEL: &str = "WHERE coalesce((SELECT h.parent FROM tasks h WHERE h.uid = tasks.parent), parent, uid) NOT IN (SELECT uid FROM tasks WHERE closed_at IS NOT NULL) \
-     OR coalesce((SELECT h.parent FROM tasks h WHERE h.uid = tasks.parent), parent, uid) IN (SELECT uid FROM tasks WHERE closed_at IS NOT NULL ORDER BY closed_at DESC, id DESC LIMIT ?1)";
-
-fn read(all: Option<&[SessionInfo]>) -> anyhow::Result<Vec<Entry>> {
-    let file = ledger::path()?;
-    if !file.exists() {
-        return Ok(Vec::new());
-    }
-    let db = ledger::open_read(&file)?;
-    let mut rows = ledger::rows(&db, PANEL, Some(&KEEP))?;
-    ledger::roll_up(&mut rows);
-    ledger::mark_live(&skiff_core::state::socket(), all, &mut rows);
-    Ok(rows
-        .into_iter()
-        .map(|row| {
-            let result_exists = row.result_path.as_deref().is_some_and(|p| Path::new(p).is_file());
-            Entry { row, result_exists }
-        })
-        .collect())
+/// A row's result, read by the Host from the path its row records, for the
+/// page's own viewer. No path is named here, and nothing is opened on this Mac.
+#[tauri::command]
+pub async fn ledger_result(app: State<'_, App>, uid: String) -> Result<HostFile, String> {
+    data_read(&app, |c| async move { skiff_client::host::data::ledger_result(&c, &uid).await }).await
 }
 
-/// What the watcher compares: the size and mtime of the file and its WAL.
-fn stamp(file: &Path) -> Vec<Option<(u64, std::time::SystemTime)>> {
-    ["db", "db-wal"]
-        .iter()
-        .map(|ext| std::fs::metadata(file.with_extension(ext)).ok().and_then(|m| Some((m.len(), m.modified().ok()?))))
-        .collect()
-}
+/// What the watcher saw last: the data connection and the Host's stamp.
+type Seen = Option<(u64, String)>;
 
-/// Runs at app start on its own thread. Emits [`LEDGER_CHANGED`] when
-/// `ledger.db` or its WAL changes, or when the ledger moves to another folder.
+/// Runs at app start for the app's lifetime. Emits [`LEDGER_CHANGED`] when
+/// the selected Host's ledger stamp changes, or when a new data connection
+/// (a reconnect, a Host switch, a restarted `skiff-host`) may bring other
+/// rows. It asks only over a live session plane and never starts skiffd.
 pub fn watch(app: AppHandle) {
-    let mut last = None;
-    loop {
-        if let Ok(file) = ledger::path() {
-            let now = Some((stamp(&file), file));
-            if last.is_some() && now != last {
+    tauri::async_runtime::spawn(async move {
+        let mut last = None;
+        loop {
+            let state = app.state::<App>();
+            let tick = if state.remote() { REMOTE_TICK } else { TICK };
+            if look(&state, &mut last).await {
                 let _ = app.emit(LEDGER_CHANGED, ());
             }
-            last = now;
+            tokio::time::sleep(tick).await;
         }
-        std::thread::sleep(TICK);
+    });
+}
+
+/// One tick. True when the ledger may have changed since the last tick.
+async fn look(app: &App, last: &mut Seen) -> bool {
+    if app.live_session().await.is_none() {
+        return false;
+    }
+    let stamp = data_read(app, |c| async move { skiff_client::host::data::ledger_stamp(&c).await }).await;
+    let Ok(stamp) = stamp else { return false };
+    seen(last, (app.data_gen.load(Ordering::SeqCst), stamp))
+}
+
+/// Notes a stamp read. True when it differs from the last one, the first
+/// read included: a Host whose ledger could not be read before (its service
+/// or capability came late) is read now, even when the ledger did not change.
+fn seen(last: &mut Seen, now: (u64, String)) -> bool {
+    let changed = last.as_ref() != Some(&now);
+    *last = Some(now);
+    changed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_first_stamp_read_reads_the_ledger_then_only_a_change_does() {
+        let mut last = None;
+        assert!(seen(&mut last, (1, "a".into())), "the first stamp the Host gives");
+        assert!(!seen(&mut last, (1, "a".into())), "the same ledger on the same connection");
+        assert!(seen(&mut last, (1, "b".into())), "a write");
+        assert!(seen(&mut last, (2, "b".into())), "a new data connection");
     }
 }

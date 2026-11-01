@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { showError } from "../ui/alerts";
+import { updateDaemon } from "./daemon";
 import type { AgentInfo, DaemonStatus, SessionInfo } from "../platform/types";
 import { setSkiffAgentName } from "./keys";
 import { render } from "./renderRequest";
@@ -9,6 +10,8 @@ import { agentKind } from "../appearance/agentIcon";
 import { keepRow } from "../workspace/selection";
 import { revealSession } from "../workspace/view";
 import { openPath } from "../terminal/peek";
+import { hostCan, hostInvoke } from "./hostCaps";
+import { checkShownHost, hostName, isRemote } from "./hosts";
 import { actionDialog } from "../ui/dialogParts";
 import { h } from "../ui/dom";
 import { scopeName } from "../workspace/model";
@@ -29,7 +32,7 @@ export const mainName = (stored: string | null | undefined) => {
 /** The row key while no Skiff agent session runs. */
 export const SKIFF_AGENT_KEY = "skiff-agent";
 
-/** `[skiff_agent]` in projects.toml. */
+/** `[skiff_agent]` in the selected Host's projects.toml (`skipper@1`). */
 export interface SkiffAgentSettings {
   name: string | null;
   skipper_name: string | null;
@@ -72,14 +75,13 @@ export interface TaskType {
 }
 
 /** One instruction file: AGENTS.md, the base of every Skipper, or the SKIPPER.md of a fleet or a project. */
-export type InstructionScope = { kind: "skipper" } | { kind: "fleet" | "project"; name: string };
+export type InstructionScope = { kind: "skipper" } | { kind: "fleet" | "project" | "type"; name: string };
 
 /** A row of Settings › Skippers › Instructions. */
 export interface InstructionFile {
   scope: InstructionScope;
   /** Its path in the Skiff agent's folder. */
   file: string;
-  path: string;
   status: "none" | "template" | "edited" | "edited-template-changed";
   /** Unix ms. Null with no file. */
   modified: number | null;
@@ -91,9 +93,9 @@ export function skiffAgentFolder(): string | null {
   return S.skiffAgent?.folder ?? null;
 }
 
-/** Reads `[skiff_agent]` again. loadProjects calls it, so an edit from Settings or the CLI shows at once. */
+/** Reads `[skiff_agent]` again from the selected Host. loadProjects calls it, so an edit from Settings or the CLI shows at once. */
 export async function loadSkiffAgent() {
-  const a = await invoke<SkiffAgentSettings>("get_skiff_agent").catch(() => null);
+  const a = await hostInvoke<SkiffAgentSettings>("skipper", "get_skiff_agent").catch(() => null);
   S.skiffAgent = a;
   setSkiffAgentName(skiffAgentName());
 }
@@ -176,11 +178,31 @@ export function coordinatorOf(id: string | null | undefined): string | null {
   return s ? skipperProject(s) : null;
 }
 
-/** Project menu › Start project Skipper. `skiff skipper --project` starts it in the project's folder and sends SKIPPER.md as its first message. */
+/** What `start_project_skipper` answers on this computer. */
+type ProjectStart = { kind: "started"; id: string } | { kind: "daemon_older"; version: string };
+
+/** Project menu › Start project Skipper. `skiff skipper --project` starts it in the project's folder and sends SKIPPER.md as its first message.
+ *  This computer's skiffd must be new enough to mark one: an older one starts nothing, and the bar offers Update skiffd, which moves
+ *  it onto this Skiff's with its sessions, then starts the project Skipper. */
 export function startProjectSkipper(project: string) {
   const s = projectSkipperOf(project);
   if (s) return show(s.id);
-  void starting(project, () => invoke<string>("start_project_skipper", { project })).catch(showError);
+  // A remote Host starts it there, through its skiff-host (skipper_run@1).
+  const start = (): Promise<ProjectStart> => isRemote()
+    ? hostInvoke<string>("skipper_run", "start_project_skipper", { project }).then((id) => ({ kind: "started", id }))
+    : invoke<ProjectStart>("start_project_skipper", { project });
+  void starting(project, async () => {
+    const r = await start();
+    if (r.kind !== "daemon_older") return r.id;
+    showError(t("skiffAgent.daemonOlder", { version: r.version }), {
+      label: t("skiffAgent.updateDaemon"),
+      run: async () => {
+        await updateDaemon();
+        startProjectSkipper(project);
+      },
+    });
+    return "";
+  }).catch(showError);
 }
 
 /** The scope of a Skipper the app is starting: its session shows as soon as skiffd has it. */
@@ -261,15 +283,26 @@ function confirmTakeover(title: string, action: string, taken: Taken[]): Promise
   });
 }
 
+/** The shown Host runs fleet Skippers: this computer, or a Host whose
+ *  skiff-host offers `skipper_run@2`. */
+export const fleetSkippersHere = () => !isRemote() || hostCan("skipper_fleets");
+
+/** Rename fleet…: with fleet Skippers, the Host moves the fleet's Skipper
+ *  folder, rows and session too; else the projects take the new name. */
+export function renameFleetOn(old: string, name: string, members: string[]): Promise<void> {
+  if (fleetSkippersHere()) return hostInvoke<void>("skipper_fleets", "rename_fleet", { old, new: name });
+  return hostInvoke<void>("project_config", "reorder_projects", { order: S.projects.map((x) => x.name), fleets: members.map((p) => [p, name]) });
+}
+
 /** Fleet menu › Start fleet Skipper, or Open fleet Skipper while it runs. Project Skippers in the fleet are taken over after one confirm. */
 export async function startFleetSkipper(fleet: string) {
   const s = fleetSkipperOf(fleet);
   if (s) return show(s.id);
   try {
-    const taken = await invoke<Taken[]>("fleet_takeover_preview", { fleet, join: null });
+    const taken = await hostInvoke<Taken[]>("skipper_fleets", "fleet_takeover_preview", { fleet, join: null });
     if (!(await confirmTakeover(t("skiffAgent.startFleetTitle", { fleet }), t("menu.startFleetSkipper"), taken))) return;
     handOver(fleet, taken);
-    await starting(fleetScope(fleet), () => invoke<string>("start_fleet_skipper", { fleet }));
+    await starting(fleetScope(fleet), () => hostInvoke<string>("skipper_fleets", "start_fleet_skipper", { fleet }));
   } catch (e) {
     showError(e);
   }
@@ -282,12 +315,12 @@ export async function startFleetSkipper(fleet: string) {
  * fleet itself. Null: the person cancelled.
  */
 export async function joinFleet(project: string, fleet: string): Promise<boolean | null> {
-  if (!fleet || !fleetSkipperOf(fleet) || !projectSkipperOf(project)) return false;
-  const taken = await invoke<Taken[]>("fleet_takeover_preview", { fleet, join: project });
+  if (!fleet || !fleetSkippersHere() || !fleetSkipperOf(fleet) || !projectSkipperOf(project)) return false;
+  const taken = await hostInvoke<Taken[]>("skipper_fleets", "fleet_takeover_preview", { fleet, join: project });
   if (!taken.length) return false;
   if (!(await confirmTakeover(t("skiffAgent.joinTitle", { project, fleet }), t("skiffAgent.joinAction"), taken))) return null;
   handOver(fleet, taken);
-  await invoke("fleet_takeover", { fleet, join: project });
+  await hostInvoke("skipper_fleets", "fleet_takeover", { fleet, join: project });
   const s = fleetSkipperOf(fleet);
   if (s) show(s.id);
   return true;
@@ -303,9 +336,19 @@ interface Opened {
 }
 
 /**
+ * `open_skiff_agent`: This Mac's skiffd, or a remote Host's `skiff-host`,
+ * which starts Skipper and its watcher there (`skipper_run@1`).
+ */
+function openCall(restore: number | null): Promise<Opened | null> {
+  if (isRemote()) return hostInvoke<Opened | null>("skipper_run", "open_skiff_agent", { restore });
+  return invoke<Opened | null>("open_skiff_agent", { restore });
+}
+
+/**
  * The row and the key: show the Skiff agent's pane, or start it. skiffd finds
  * or starts it in one guarded step, so two quick opens start one. A pane that
- * is a bare shell gets its agent again.
+ * is a bare shell gets its agent again. On a remote Host the row says first
+ * that Skipper does not run there, and Start Skipper starts it on that Host.
  */
 export function openSkiffAgent() {
   if (!skiffAgentFolder()) return;
@@ -313,7 +356,20 @@ export function openSkiffAgent() {
   if (s) show(s.id);
   if (s && agentKind(s) !== "shell") return;
   if (!s && !skiffAgentChoice()) return showError(t("skiffAgent.noAgent"));
-  invoke<Opened | null>("open_skiff_agent", { restore: null })
+  if (isRemote() && !hostCan("skipper_run")) {
+    if (!s) showError(t("skiffAgent.hostTooOld", { host: hostName(), name: skiffAgentName() }), { label: t("skiffAgent.updateSkiff"), run: async () => checkShownHost() });
+    return;
+  }
+  if (isRemote() && !s) {
+    showError(t("skiffAgent.notOnHost", { name: skiffAgentName(), host: hostName() }), { label: t("cmd.startSkiffAgent", { name: skiffAgentName() }), run: async () => start(null) });
+    return;
+  }
+  start(s);
+}
+
+/** Starts the Skiff agent, or gives its bare shell the agent again, and shows its pane. */
+function start(s: SessionInfo | null) {
+  openCall(null)
     .then((o) => {
       if (!o) return;
       noteAsk(o.session.id, o.watch_error);
@@ -366,9 +422,12 @@ function noteAsk(id: string, error: string | null) {
  * so this asks again now and then. `now` skips the 30 s wait and shows a failure.
  */
 function watch(id: string, now = false) {
+  // A remote Host's skiff-host keeps its own watcher: this app asks there only for Start watcher.
+  if (isRemote() && !now) return;
   if (!now && watchAsked.id === id && Date.now() - watchAsked.at < 30_000) return;
   noteAsk(id, startError);
-  invoke<boolean>("start_skiff_watch", { session: id })
+  const ask = isRemote() ? hostInvoke<boolean>("skipper_run", "start_skiff_watch", { session: id }) : invoke<boolean>("start_skiff_watch", { session: id });
+  ask
     .then(() => {
       if (startError === null) return;
       startError = null;
@@ -419,6 +478,7 @@ export function watchText(state: WatchState, s: SessionInfo, name: string, error
     case "runs":
       return t("skiffAgent.watchRuns", { name, time: clock(s.watch!.since) });
     case "missing":
+      if (isRemote()) return error ? t("skiffAgent.watchMissingRemoteError", { name, host: hostName(), error }) : t("skiffAgent.watchMissingRemote", { name, host: hostName() });
       return error ? t("skiffAgent.watchMissingError", { name, error }) : t("skiffAgent.watchMissing", { name });
     case "failed":
       return f?.kind === "ledger"
@@ -429,11 +489,25 @@ export function watchText(state: WatchState, s: SessionInfo, name: string, error
   }
 }
 
+/** When this app first saw a remote Host's Skiff agent session. Its watcher is that Host's: the grace runs from here. */
+let remoteSeen = { id: "", at: 0 };
+
 /** The Skiff agent's watcher state now, and its tooltip text. */
 export function skiffWatch(s: SessionInfo): { state: WatchState; text: string } {
   const now = Date.now();
-  // A session not asked for yet is asked on this render.
-  const asked = watchAsked.id === s.id ? watchAsked.at : now;
+  let asked: number;
+  if (isRemote()) {
+    // Nothing is asked for there: the grace runs from the first sight of the
+    // session, or the last connect, and the render after it shows missing.
+    if (remoteSeen.id !== s.id) {
+      remoteSeen = { id: s.id, at: now };
+      graceRender();
+    }
+    asked = remoteSeen.at;
+  } else {
+    // A session not asked for yet is asked on this render.
+    asked = watchAsked.id === s.id ? watchAsked.at : now;
+  }
   const state = watchMark(s, daemon.protocol, Math.max(daemon.at, asked), now);
   return { state, text: watchText(state, s, skiffAgentName(), startError) };
 }
@@ -480,11 +554,11 @@ export function syncSkiffAgent() {
   shownWord = word;
   if (!s) return;
   watch(s.id);
-  if (!S.skiffAgent.continue_on_restore || !s.resume || continued.has(s.id) || agentKind(s) !== "shell") return;
+  if ((isRemote() && !hostCan("skipper_run")) || !S.skiffAgent.continue_on_restore || !s.resume || continued.has(s.id) || agentKind(s) !== "shell") return;
   continued.add(s.id);
   // skiffd types the continue line, the same as for `skiff skipper`. Refused
   // when the person typed in the pane first: their line stays theirs.
-  invoke("open_skiff_agent", { restore: s.input_gen ?? 0 }).catch(showError);
+  openCall(s.input_gen ?? 0).catch(showError);
 }
 
 /** The name the last render saw, so a change from Settings shows. */
@@ -492,7 +566,7 @@ let shownName: string | null = null;
 let shownWord: string | null = null;
 
 function rename(id: string, name: string) {
-  invoke<SessionInfo>("rename_session", { session: id, name })
+  hostInvoke<SessionInfo>("session_lifecycle", "rename_session", { session: id, name })
     .then((info) => {
       const s = sessions.get(id);
       if (s) s.name = info.name;

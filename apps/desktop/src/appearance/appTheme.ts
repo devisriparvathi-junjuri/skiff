@@ -45,7 +45,7 @@ const VARS = [
   "--state-done", "--state-idle", "--error", "--project-default", "--accent",
   "--hover", "--press",
   "--error-bg", "--error-bg-hover", "--error-rule", "--error-text",
-  "--danger", "--danger-hover", "--danger-text", "--ok", "--scrim", "--on-working", "--watch",
+  "--danger", "--danger-hover", "--danger-text", "--ok", "--scrim", "--on-working", "--watch", "--rank",
 ];
 
 /**
@@ -121,6 +121,8 @@ function themeVars(t: TerminalTheme): Record<string, string> {
   Object.assign(set, alerts(set, t.palette[2]));
   // The watcher's teal takes the theme's cyan.
   set["--watch"] = legible(t.palette[6], 3);
+  // The Skiff agent's rank stripes: the theme's yellow, toward the text, off the waiting amber.
+  set["--rank"] = legible(mix(t.palette[3], set["--text"], 0.35), 3);
   set["--hover"] = lightScheme ? "rgba(0, 0, 0, 0.05)" : "rgba(255, 255, 255, 0.05)";
   set["--press"] = lightScheme ? "rgba(0, 0, 0, 0.09)" : "rgba(255, 255, 255, 0.09)";
   return set;

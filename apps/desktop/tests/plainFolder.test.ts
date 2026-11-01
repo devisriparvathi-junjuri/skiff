@@ -58,7 +58,9 @@ function menuLabels(p: any) {
   const S: any = { projects: [p], skiffAgent: { folder: "/skipper" }, focused: null, selection: [], groups: [], closedProjects: [] };
   let items: any[] = [];
   const el = () => ({ append() {}, appendChild() {}, setAttribute() {}, addEventListener() {}, classList: { add() {} }, dataset: {} });
-  const m = moduleFromSource(
+  // As the real launch entries: the Skipper first.
+  const entries = (q: any) => [m.skipperStart(q)].filter(Boolean);
+  const m: any = moduleFromSource(
     "../src/workspace/menus.ts",
     withStubs({
       "./model": orStub(model),
@@ -66,7 +68,7 @@ function menuLabels(p: any) {
       "../app/state": { S, sessions: new Map(), removing: new Set(), removeErrors: new Map(), selectedWorktree: new Map() },
       "../app/stateQueries": orStub({ place: () => null }),
       "../ui/dom": { h: el, button: el, $: el },
-      "../app/panels": { launchMenu: { entries: () => [] } },
+      "../app/panels": { launchMenu: { entries } },
       "./tree": orStub({ bareWorktree: (q: any) => q.worktrees[0] }),
       "./changes": orStub({ showsChanges: () => p.kind !== "folder", hasChanges: () => false }),
       "../ui/contextMenu": { ctxMenu: { open: (_x: number, _y: number, _t: string, list: any[]) => (items = list) } },
@@ -89,29 +91,27 @@ test("a plain folder's project menu has no New worktree… and no Changes switch
   assert.deepEqual(git.sidebar, ["Changes", "Files"]);
 });
 
-test("Files shows by default for a plain folder, not for a git project, and a stored choice wins", async () => {
-  let stored: [string, boolean][] = [];
+test("Files follows the Host's row: on by default for a plain folder, and a stored choice wins", async () => {
   const calls: any[] = [];
   const files = moduleFromSource(
     "../src/workspace/files.ts",
     withStubs({
       "./model": model,
-      "@tauri-apps/api/core": { invoke: async (cmd: string, args: any) => (cmd === "files_projects" ? stored : (calls.push([cmd, args]), null)) },
+      "../app/hostCaps": { hostCan: () => true, hostInvoke: async (cap: string, cmd: string, args: any) => (calls.push([cap, cmd, args]), null) },
       "../app/stored": { storedSet: () => new Set() },
     }),
     { console, localStorage: { getItem: () => null, setItem() {} } },
     "",
   );
-  // No `files` key: the kind decides.
-  await files.loadFilesSetting();
+  // No `files` key: the Host sends the kind's default.
+  files.filesFrom([{ ...folder, files: true }, repo]);
   assert.equal(files.showsFiles(folder), true);
   assert.equal(files.showsFiles(repo), false);
-  // Turned off: written as false, and it stays off after a reload.
+  // Turned off: the Host writes false, and its next rows say so.
   await files.setShowFiles(folder, false);
-  assert.deepEqual(calls.map((c) => [c[0], c[1].on]), [["set_project_files", false]]);
+  assert.deepEqual(calls.map((c) => [c[0], c[1], c[2].on]), [["project_config", "set_project_files", false]]);
   assert.equal(files.showsFiles(folder), false);
-  stored = [["docs", false], ["api", true]];
-  await files.loadFilesSetting();
+  files.filesFrom([folder, { ...repo, files: true }]);
   assert.equal(files.showsFiles(folder), false);
   assert.equal(files.showsFiles(repo), true);
 });

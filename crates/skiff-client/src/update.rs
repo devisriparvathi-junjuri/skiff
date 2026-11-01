@@ -91,7 +91,7 @@ mod tests {
     use super::*;
 
     fn info(version: &str, state: Option<u32>) -> DaemonInfo {
-        DaemonInfo { version: version.into(), protocol: skiff_core::PROTOCOL, reload_state: state, pid: Some(7), debug: None }
+        DaemonInfo { version: version.into(), protocol: skiff_core::PROTOCOL, reload_state: state, pid: Some(7), debug: None, identity: None }
     }
 
     /// The case of #182: 0.6.32 read only handover 3, and 0.6.29 writes 2.

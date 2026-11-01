@@ -6,6 +6,7 @@ import { createAddProject } from "../workspace/addProject";
 import { createLaunchMenu } from "../ui/launchMenu";
 import { createSettings } from "../appearance/settings";
 import { invoke } from "@tauri-apps/api/core";
+import { hostInvoke } from "./hostCaps";
 import { loadProjects, newSession } from "./daemon";
 import { host } from "../terminal/terminalHost";
 import { showError } from "../ui/alerts";
@@ -16,6 +17,7 @@ import { launchChoices } from "./stateQueries";
 import { loadThemes, themeOverrides } from "../appearance/themes";
 import { refocusTerminal, selectProject } from "../workspace/view";
 import { includeAdded } from "../workspace/profile";
+import { skipperStart } from "../workspace/menus";
 
 export const settings = createSettings(
   (a) => {
@@ -43,6 +45,7 @@ export const settings = createSettings(
 
 export const launchMenu = createLaunchMenu({
   choices: launchChoices,
+  skipper: (p) => skipperStart(p),
   start: (p, w, agent) => {
     S.selectedProject = p.name;
     selectedWorktree.set(p.name, w.path);
@@ -64,7 +67,7 @@ export const addProject = createAddProject(
       const order = S.projects.map((x) => x.name).filter((n) => n !== p.name);
       const last = S.projects.filter((x) => x.fleet === fleet).pop();
       order.splice(last ? order.indexOf(last.name) + 1 : order.length, 0, p.name);
-      await invoke("reorder_projects", { order, fleets: [[p.name, fleet]] }).catch(showError);
+      await hostInvoke("project_config", "reorder_projects", { order, fleets: [[p.name, fleet]] }).catch(showError);
     }
     await loadProjects();
     const added = S.projects.find((x) => x.name === p.name);

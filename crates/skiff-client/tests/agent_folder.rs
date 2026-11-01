@@ -88,6 +88,9 @@ fn current(home: &Path) -> PathBuf {
         .unwrap();
         db.execute("INSERT INTO uids VALUES (?1)", [uid]).unwrap();
     }
+    // A work folder (ledger version 11) moves as its result does.
+    db.execute_batch("ALTER TABLE tasks ADD COLUMN work_dir TEXT").unwrap();
+    db.execute("UPDATE tasks SET work_dir = ?1 WHERE uid = 'bbbb0002'", [r.join("bbbb0002-x").to_string_lossy()]).unwrap();
     // A result outside the folder stays where it is.
     db.execute("UPDATE tasks SET result_path = '/elsewhere/x.md' WHERE uid = 'aaaa0001'", []).unwrap();
     std::fs::write(r.join("aaaa0001.md"), "kept").unwrap();
@@ -245,6 +248,8 @@ fn a_copy_keeps_every_row_and_moves_the_result_paths() {
     assert_eq!(paths["aaaa0001"], "/elsewhere/x.md");
     assert_eq!(paths["bbbb0002"], to.join("results/bbbb0002.md").display().to_string());
     assert_eq!(paths["cccc0003"], old.join("results/cccc0003.md").display().to_string());
+    let work: String = Connection::open(to.join("ledger.db")).unwrap().query_row("SELECT work_dir FROM tasks WHERE uid = 'bbbb0002'", [], |r| r.get(0)).unwrap();
+    assert_eq!(work, to.join("results/bbbb0002-x").display().to_string());
     let uids: Vec<String> = Connection::open(to.join("ledger.db")).unwrap().prepare("SELECT uid FROM uids ORDER BY uid").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
     assert_eq!(uids, ["aaaa0001", "bbbb0002", "cccc0003"]);
     // The person's files come along; setup makes the links and the marker again.

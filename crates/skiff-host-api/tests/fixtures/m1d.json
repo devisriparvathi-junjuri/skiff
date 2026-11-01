@@ -1,0 +1,400 @@
+{
+ "capability": {
+  "name": "session_updates",
+  "version": 1
+ },
+ "legacy": [
+  {
+   "event": "state",
+   "session": "a",
+   "state": "working"
+  },
+  {
+   "event": "away",
+   "session": "a",
+   "away": [
+    {
+     "path": "/w/λ two",
+     "command": "cargo",
+     "at": 7
+    },
+    {
+     "path": "/w/λ two",
+     "command": "cargo",
+     "at": 7
+    }
+   ]
+  },
+  {
+   "event": "away",
+   "session": "a",
+   "away": []
+  },
+  {
+   "event": "title",
+   "session": "a",
+   "title": "λ build"
+  },
+  {
+   "event": "title",
+   "session": "a",
+   "title": null
+  },
+  {
+   "event": "exit",
+   "session": "a",
+   "code": -1
+  },
+  {
+   "event": "exit",
+   "session": "a",
+   "code": null
+  },
+  {
+   "event": "session_created",
+   "session": {
+    "id": "z",
+    "label": "λ  ",
+    "role": "agent",
+    "cwd": "/work/../λ//.",
+    "command": "agent\u0000command",
+    "args": [
+     "",
+     "a\u0000b",
+     "λ  "
+    ],
+    "state": "waiting",
+    "cols": 65535,
+    "rows": 0,
+    "foreground_program": "λ",
+    "pid": 4294967295,
+    "exit_code": -2147483648,
+    "theme": "",
+    "name": "",
+    "title": "title\n",
+    "started_at": 18446744073709551615,
+    "last_output_at": 18446744073709551614,
+    "output_bytes": 18446744073709551613,
+    "away": [
+     {
+      "path": "/other//../x",
+      "command": "z",
+      "at": 1
+     },
+     {
+      "path": "./local",
+      "command": "a",
+      "at": 0
+     }
+    ],
+    "was": {
+     "agent": "codex",
+     "title": null
+    },
+    "resume": {
+     "agent": "claude",
+     "title": ""
+    },
+    "unread": true,
+    "agent_exit": 2147483647,
+    "peek": true,
+    "interactive": true,
+    "input_gen": 18446744073709551615,
+    "coordinator": true,
+    "watch": {
+     "since": 17,
+     "pids": [
+      2,
+      1,
+      2
+     ],
+     "failure": {
+      "kind": "ledger",
+      "message": "fixture λ",
+      "at": 11
+     },
+     "follows": [
+      "z",
+      "a",
+      "z"
+     ]
+    }
+   }
+  },
+  {
+   "event": "turn_ended",
+   "session": "a"
+  },
+  {
+   "event": "session_updated",
+   "session": {
+    "id": "a",
+    "label": "shell",
+    "role": "shell",
+    "cwd": "",
+    "command": "/bin/sh",
+    "args": [],
+    "state": "idle",
+    "cols": 0,
+    "rows": 65535,
+    "foreground_program": null,
+    "pid": null,
+    "exit_code": null,
+    "theme": null,
+    "name": null,
+    "title": null,
+    "started_at": 0,
+    "last_output_at": 0,
+    "output_bytes": 0,
+    "away": [],
+    "was": null,
+    "resume": null,
+    "unread": false,
+    "agent_exit": null,
+    "peek": false,
+    "interactive": false,
+    "input_gen": 0
+   }
+  },
+  {
+   "event": "session_removed",
+   "session": ""
+  },
+  {
+   "event": "groups_changed"
+  }
+ ],
+ "messages": [
+  {
+   "type": "event",
+   "event": {
+    "event": "session_update",
+    "update": {
+     "kind": "state",
+     "session": "a",
+     "state": "working"
+    }
+   }
+  },
+  {
+   "type": "event",
+   "event": {
+    "event": "session_update",
+    "update": {
+     "kind": "away",
+     "session": "a",
+     "away": [
+      {
+       "path": "/w/λ two",
+       "command": "cargo",
+       "at": 7
+      },
+      {
+       "path": "/w/λ two",
+       "command": "cargo",
+       "at": 7
+      }
+     ]
+    }
+   }
+  },
+  {
+   "type": "event",
+   "event": {
+    "event": "session_update",
+    "update": {
+     "kind": "away",
+     "session": "a",
+     "away": []
+    }
+   }
+  },
+  {
+   "type": "event",
+   "event": {
+    "event": "session_update",
+    "update": {
+     "kind": "title",
+     "session": "a",
+     "title": "λ build"
+    }
+   }
+  },
+  {
+   "type": "event",
+   "event": {
+    "event": "session_update",
+    "update": {
+     "kind": "title",
+     "session": "a",
+     "title": null
+    }
+   }
+  },
+  {
+   "type": "event",
+   "event": {
+    "event": "session_update",
+    "update": {
+     "kind": "exit",
+     "session": "a",
+     "code": -1
+    }
+   }
+  },
+  {
+   "type": "event",
+   "event": {
+    "event": "session_update",
+    "update": {
+     "kind": "exit",
+     "session": "a",
+     "code": null
+    }
+   }
+  },
+  {
+   "type": "event",
+   "event": {
+    "event": "session_update",
+    "update": {
+     "kind": "session_created",
+     "session": {
+      "id": "z",
+      "label": "λ  ",
+      "role": "agent",
+      "cwd": "/work/../λ//.",
+      "command": "agent\u0000command",
+      "args": [
+       "",
+       "a\u0000b",
+       "λ  "
+      ],
+      "state": "waiting",
+      "cols": 65535,
+      "rows": 0,
+      "foreground_program": "λ",
+      "pid": 4294967295,
+      "exit_code": -2147483648,
+      "theme": "",
+      "name": "",
+      "title": "title\n",
+      "started_at": 18446744073709551615,
+      "last_output_at": 18446744073709551614,
+      "output_bytes": 18446744073709551613,
+      "away": [
+       {
+        "path": "/other//../x",
+        "command": "z",
+        "at": 1
+       },
+       {
+        "path": "./local",
+        "command": "a",
+        "at": 0
+       }
+      ],
+      "was": {
+       "agent": "codex",
+       "title": null
+      },
+      "resume": {
+       "agent": "claude",
+       "title": ""
+      },
+      "unread": true,
+      "agent_exit": 2147483647,
+      "peek": true,
+      "interactive": true,
+      "input_gen": 18446744073709551615,
+      "coordinator": true,
+      "watch": {
+       "since": 17,
+       "pids": [
+        2,
+        1,
+        2
+       ],
+       "failure": {
+        "kind": "ledger",
+        "message": "fixture λ",
+        "at": 11
+       },
+       "follows": [
+        "z",
+        "a",
+        "z"
+       ]
+      }
+     }
+    }
+   }
+  },
+  {
+   "type": "event",
+   "event": {
+    "event": "session_update",
+    "update": {
+     "kind": "turn_ended",
+     "session": "a"
+    }
+   }
+  },
+  {
+   "type": "event",
+   "event": {
+    "event": "session_update",
+    "update": {
+     "kind": "session_updated",
+     "session": {
+      "id": "a",
+      "label": "shell",
+      "role": "shell",
+      "cwd": "",
+      "command": "/bin/sh",
+      "args": [],
+      "state": "idle",
+      "cols": 0,
+      "rows": 65535,
+      "foreground_program": null,
+      "pid": null,
+      "exit_code": null,
+      "theme": null,
+      "name": null,
+      "title": null,
+      "started_at": 0,
+      "last_output_at": 0,
+      "output_bytes": 0,
+      "away": [],
+      "was": null,
+      "resume": null,
+      "unread": false,
+      "agent_exit": null,
+      "peek": false,
+      "interactive": false,
+      "input_gen": 0
+     }
+    }
+   }
+  },
+  {
+   "type": "event",
+   "event": {
+    "event": "session_update",
+    "update": {
+     "kind": "session_removed",
+     "session": ""
+    }
+   }
+  },
+  {
+   "type": "event",
+   "event": {
+    "event": "session_update",
+    "update": {
+     "kind": "groups_changed"
+    }
+   }
+  }
+ ]
+}

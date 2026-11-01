@@ -1,4 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
+import { hostCan, hostInvoke } from "../app/hostCaps";
+import { hostName } from "../app/hosts";
 import { isMac } from "../app/keys";
 import { confirmAction } from "../ui/confirm";
 import { h } from "../ui/dom";
@@ -30,10 +31,10 @@ const age = (at: number, zero = false) => {
 export async function refreshActivity(s: ActivityState, redraw: () => void) {
   try {
     const [list, metrics, status] = await Promise.all([
-      invoke<SessionInfo[]>("list_sessions"),
+      hostInvoke<SessionInfo[]>("session_inventory", "list_sessions"),
       // An older skiffd has no metrics request: the table still lists its sessions.
-      invoke<DaemonMetrics>("daemon_metrics").catch(() => null),
-      invoke<DaemonStatus>("daemon_status").catch(() => null),
+      hostCan("daemon_metrics") ? hostInvoke<DaemonMetrics>("daemon_metrics", "daemon_metrics").catch(() => null) : Promise.resolve(null),
+      hostInvoke<DaemonStatus>("session_inventory", "daemon_status").catch(() => null),
     ]);
     s.list = list.filter((x) => !x.peek); s.metrics = metrics; s.version = status?.version ?? null; s.error = null;
     keepLive(s.pick, s.list.map((x) => x.id));
@@ -94,7 +95,8 @@ function compare(a: SessionInfo, b: SessionInfo): number {
 
 export function daemonActivitySection(s: ActivityState, redraw: () => void, reveal: (id: string, closed: boolean) => void): HTMLElement[] {
   const head = h("div", "set-head"), title = h("div", "set-h", t("settings.tab.activity")); title.id = "set-h-activity";
-  head.append(title, h("div", "set-sub mono", t("activity.thisComputer")));
+  // The page shows the selected Host: "This computer (name)" or the remote Host's name.
+  head.append(title, h("div", "set-sub mono", hostName()));
   const band = h("div", "set-band set-daemon-band");
   const m = s.metrics;
   const version = m?.version ?? s.version;
@@ -105,7 +107,13 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
   // Sink kills the selected sessions. It asks first.
   const sink = h("button", "set-rm set-sink"); sink.type = "button"; sink.dataset.key = "sink";
   sink.addEventListener("click", () => void sinkPicked());
-  band.append(h("span", "", version ? `skiffd ${version}` : "skiffd"), h("span", "", t("activity.up", { time: up })), h("span", "", tn("palette.sessions", s.list.length)), h("span", "", t("activity.memory", { size: m?.memory_bytes ? bytes(m.memory_bytes) : "—" })), count, sink);
+  // A Host without daemon metrics, such as a remote Host, has no Up and no Memory.
+  const metrics = hostCan("daemon_metrics");
+  band.append(h("span", "", version ? `skiffd ${version}` : "skiffd"));
+  if (metrics) band.append(h("span", "", t("activity.up", { time: up })));
+  band.append(h("span", "", tn("palette.sessions", s.list.length)));
+  if (metrics) band.append(h("span", "", t("activity.memory", { size: m?.memory_bytes ? bytes(m.memory_bytes) : "—" })));
+  band.append(count, sink);
   const table = h("div", "set-daemon");
   // A grid of rows to select: click, Shift+click, Ctrl+click (⌘ on macOS), and the keys in onKey below.
   table.setAttribute("role", "grid");
@@ -162,7 +170,8 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
     const n = picked(p, order).length;
     count.textContent = pickedText(n);
     sink.textContent = sinkLabel(n);
-    sink.disabled = !n;
+    // A Host without session lifecycle lists its sessions and sinks none.
+    sink.disabled = !n || !hostCan("session_lifecycle");
   }
   paint();
 
@@ -199,7 +208,7 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
     // A refresh can rebuild the list while the dialog is open: the keys go to the new copy.
     const back = (sel: string) => document.querySelector<HTMLElement>(sel)?.focus();
     if (!ok) return back(".set-daemon-band .set-sink");
-    const results = await Promise.allSettled(ids.map((id) => invoke("kill_session", { session: id })));
+    const results = await Promise.allSettled(ids.map((id) => hostInvoke("session_lifecycle", "kill_session", { session: id })));
     const failed = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
     p.sel.clear();
     await refreshActivity(s, redraw);
