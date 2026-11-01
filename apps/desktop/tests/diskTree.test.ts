@@ -135,7 +135,7 @@ test("the page draws the tree, and Flush asks with REMOVE and KEEP, then sends w
   const plan = rows.find((r) => r.dataset.path === "results/p1-ship")!;
   assert.match(plan.text(), /Mixed · 2 files stay/);
   const flush = plan.all().find((e) => e.tag === "button" && e.className === "set-rm")!;
-  assert.equal(flush.textContent, "Flush 1000 B…");
+  assert.equal(flush.textContent, "Flush…");
   // A row with nothing to flush says why, and has no button.
   const held = rows.find((r) => r.dataset.path === "results/new.md")!;
   assert.ok(held.text().includes("Changed 3 h ago") && !held.all().some((e) => e.className === "set-rm"));

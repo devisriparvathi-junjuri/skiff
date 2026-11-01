@@ -163,7 +163,8 @@ const CHEVRON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="tr
 
 /**
  * Settings › Disk use: the Skiff agent's folder as a tree. SIZE, CAN FLUSH,
- * STATE and Flush on each row; the rule is in `skiff_client::disk`.
+ * STATE and Flush… on each row; CAN FLUSH shows the size, so the button has
+ * none. The rule is in `skiff_client::disk`.
  * A click on a file row opens the file. A folder row has Show in file
  * manager. `setDays` saves `[skiff_agent] cache_days`.
  */
@@ -228,7 +229,7 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
       const flush = canFlush(n);
       const acts = h("span", "c-acts");
       if (flush > 0) {
-        const b = h("button", "set-rm", `Flush ${size(flush)}…`);
+        const b = h("button", "set-rm", "Flush…");
         b.type = "button";
         b.dataset.key = `flush:${n.path}`;
         b.disabled = s.counting;
