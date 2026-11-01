@@ -17,6 +17,18 @@ fn is_socket(p: &Path) -> bool {
     std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_socket())
 }
 
+/// Waits until no listener answers at `p`. A dropped listener is not closed
+/// at once on Linux: a sibling test that spawns a process forks this one,
+/// and the child holds a copy of every descriptor until it execs. Until then
+/// the socket still answers (issue #173).
+fn wait_closed(p: &Path) {
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::os::unix::net::UnixStream::connect(p).is_ok() {
+        assert!(std::time::Instant::now() < until, "{} still answers", p.display());
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
 #[tokio::test]
 async fn only_a_stale_socket_of_this_account_is_replaced_and_only_its_own_is_removed() {
     let dir = PathBuf::from("/tmp").join(format!("hs-{}", std::process::id()));
@@ -52,6 +64,7 @@ async fn only_a_stale_socket_of_this_account_is_replaced_and_only_its_own_is_rem
     let e = skiff_host::bind(&path).await.err().unwrap();
     assert!(e.to_string().contains("already running"), "{e:#}");
     drop(live);
+    wait_closed(&path);
 
     // The same socket now stale (its listener gone): replaced.
     assert!(is_socket(&path));
@@ -71,6 +84,7 @@ async fn only_a_stale_socket_of_this_account_is_replaced_and_only_its_own_is_rem
     // Release of its own socket removes it.
     let (listener, socket) = skiff_host::bind(&path).await.unwrap();
     drop(listener);
+    wait_closed(&path);
     socket.release();
     assert!(std::fs::symlink_metadata(&path).is_err());
 }
