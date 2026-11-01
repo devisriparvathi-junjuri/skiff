@@ -9,7 +9,10 @@
 //! send` command for it. A task whose pane
 //! restarted since the send (a restore runs a new shell under the old id)
 //! wakes the agent once as interrupted. Plans have no pane and are not
-//! followed. At its start, a run counts the done tasks not yet reported and,
+//! followed, but a plan holds the idle lines of its tasks' panes: a pane
+//! whose open tasks are all `sent` in one plan wakes the agent only when
+//! every task in that plan ended, in one line for the plan (see [`ended`]).
+//! Its other lines (exited, restarted, gone, pending) go at once. At its start, a run counts the done tasks not yet reported and,
 //! if there are any, tells the agent once, in a line of its own. Each step
 //! sets done the open tasks whose panes are gone (see
 //! [`ledger::close_gone`]), and a task closed that way after the start wakes
@@ -291,6 +294,11 @@ struct Watcher {
     /// Lines of the watcher's own, such as a fleet change, until the agent
     /// takes them.
     lines: Vec<String>,
+    /// The plan of each pane whose open tasks are all `sent` and in one plan,
+    /// by pane key, as last read. Its idle line waits for the plan.
+    plan_of: HashMap<String, String>,
+    /// Each plan in `plan_of`: how many of its tasks ended, of how many.
+    plans: HashMap<String, (usize, usize)>,
 }
 
 impl Watcher {
@@ -319,6 +327,49 @@ fn fleet_line(fleet: &str, old: &[String], now: &[String]) -> String {
         parts.push(format!("{} left", left.join(", ")));
     }
     format!("{fleet} changed: {}. Read SKIPPER.md again.", parts.join(", "))
+}
+
+/// A task in a plan ended: it is `done` or `blocked`, or it is `sent` and
+/// its pane ended its turn, exited, restarted or is gone. A pending task, a
+/// pane that works or waits, a hand-off not done and a task on another
+/// daemon still run. `r.elsewhere` marks a task on another daemon.
+fn ended(r: &ledger::Row, all: &[SessionInfo]) -> bool {
+    match r.state.as_str() {
+        "done" | "blocked" => true,
+        "sent" if !r.is_handoff() && !r.elsewhere => {
+            let s = r.pane_id.as_deref().and_then(|p| resolve::session(all, p).ok());
+            r.interrupted_in(s) || !matches!(Now::of(s, false), Now::Working | Now::Waiting)
+        }
+        _ => false,
+    }
+}
+
+/// The plan of the pane `g`: the one plan that holds all its open tasks,
+/// when each is `sent`. A pending or blocked task, or a task with no plan,
+/// keeps the pane's lines its own.
+fn plan_of(g: &Group, tasks: &[ledger::Row], plans: &HashSet<&str>) -> Option<String> {
+    let mut rows = tasks.iter().filter(|t| g.open.contains(&t.uid));
+    let first = rows.next()?;
+    let plan = first.parent.as_deref().filter(|p| plans.contains(p))?;
+    (first.state == "sent" && rows.all(|t| t.state == "sent" && t.parent.as_deref() == Some(plan))).then(|| plan.to_string())
+}
+
+/// The line for a plan whose tasks all ended, with the panes whose idle
+/// lines waited for it.
+fn plan_line(plan: &str, (ended, total): (usize, usize), wakes: &[&Wake]) -> String {
+    let tasks = if total == 1 { "task" } else { "tasks" };
+    let panes: Vec<String> = wakes
+        .iter()
+        .map(|w| {
+            let who = if w.name.is_empty() { String::new() } else { format!("{} ", w.name) };
+            format!("pane {who}{}", print::short_id(&w.id))
+        })
+        .collect();
+    let seen = if panes.len() == 1 { "mark its pane seen" } else { "mark each pane seen" };
+    format!(
+        "plan {plan}: {ended} of {total} {tasks} ended: {}. Read the results, {seen} and set each task done, then run skiff ledger report {plan}.",
+        panes.join(", ")
+    )
 }
 
 /// The open tasks whose panes are on `here`, and a log line for the others.
@@ -596,6 +647,55 @@ impl Watcher {
         wakes
     }
 
+    /// Notes the plan of each pane in `groups`, and how far each such plan
+    /// is, from `plan_rows`: the owner's tasks of the plans not closed.
+    fn plans_are(&mut self, groups: &[Group], tasks: &[ledger::Row], plan_rows: &[ledger::Row], all: &[SessionInfo]) {
+        let ids: HashSet<&str> = plan_rows.iter().filter_map(|r| r.parent.as_deref()).collect();
+        self.plan_of = groups.iter().filter_map(|g| plan_of(g, tasks, &ids).map(|p| (g.key.clone(), p))).collect();
+        self.plans = self
+            .plan_of
+            .values()
+            .map(|p| {
+                let rows: Vec<&ledger::Row> = plan_rows.iter().filter(|r| r.parent.as_deref() == Some(p.as_str())).collect();
+                (p.clone(), (rows.iter().filter(|r| ended(r, all)).count(), rows.len()))
+            })
+            .collect();
+    }
+
+    /// The plan a held line waits for: an idle line of a pane in a plan
+    /// whose tasks have not all ended. `None`: the line can go.
+    fn waits_for(&self, h: &Wake) -> Option<&str> {
+        let p = self.plan_held(h)?;
+        self.plans.get(p).is_none_or(|(n, total)| n < total).then_some(p)
+    }
+
+    /// The plan whose line carries the held line `h`: an idle line, not a
+    /// pending one, of a pane in a plan.
+    fn plan_held(&self, h: &Wake) -> Option<&str> {
+        (h.fact == Fact::Idle).then(|| self.plan_of.get(&h.pane).map(String::as_str)).flatten()
+    }
+
+    /// The one line for the held lines that can go now. A plan whose tasks
+    /// all ended gives one part for its panes. `None`: every held line waits.
+    fn ready_line(&self) -> Option<String> {
+        let mut plans: Vec<(&str, Vec<&Wake>)> = Vec::new();
+        let mut rest: Vec<Wake> = Vec::new();
+        for h in self.held.iter().filter(|h| self.waits_for(h).is_none()) {
+            match self.plan_held(h) {
+                Some(p) => match plans.iter_mut().find(|(k, _)| *k == p) {
+                    Some((_, ws)) => ws.push(h),
+                    None => plans.push((p, vec![h])),
+                },
+                None => rest.push(h.clone()),
+            }
+        }
+        if plans.is_empty() && rest.is_empty() {
+            return None;
+        }
+        let parts: Vec<String> = plans.iter().map(|(p, ws)| plan_line(p, self.plans[*p], ws)).collect();
+        Some(if rest.is_empty() { format!("[watch] {}", parts.join(" ")) } else if parts.is_empty() { wake_line(&rest) } else { format!("{} {}", wake_line(&rest), parts.join(" ")) })
+    }
+
     /// Drops a held pending line whose task is no longer pending on its pane
     /// in this ledger read.
     fn drop_stale(&mut self, groups: &[Group]) {
@@ -620,7 +720,9 @@ impl Watcher {
     /// again, as it could submit twice.
     fn delivered(&mut self, d: Delivery, line: &str) -> String {
         if d != Delivery::Refused {
-            self.held.clear();
+            let waits: Vec<bool> = self.held.iter().map(|h| self.waits_for(h).is_some()).collect();
+            let mut waits = waits.into_iter();
+            self.held.retain(|_| waits.next().unwrap_or(false));
         }
         report(d, line)
     }
@@ -964,10 +1066,26 @@ async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<Option<i32>>
             Err(e) => log(format!("cannot count the done tasks not reported: {e:#}")),
         }
     }
-    let told = route(ws, &targets, &tasks, &gone, &handed, &all);
+    let plan_rows = match ledger::plan_tasks() {
+        Ok(mut rows) => {
+            for r in &mut rows {
+                r.elsewhere = r.socket_other_than(&here).is_some();
+            }
+            rows
+        }
+        Err(e) => {
+            log(format!("cannot read the plans: {e:#}"));
+            Vec::new()
+        }
+    };
+    let told = route(ws, &targets, &tasks, &gone, &handed, &plan_rows, &all);
     for (owner, wake) in told {
         let to = if owner == ledger::GRAND { String::new() } else { format!(" (to the {owner} Skipper)") };
-        log(format!("{} {} {}{}{to}", wake.fact.phrase(), print::short_id(&wake.id), wake.name, wake.tail()));
+        let plan = match ws.get(&owner).and_then(|w| w.waits_for(&wake)) {
+            Some(p) => format!(" (held for plan {p})"),
+            None => String::new(),
+        };
+        log(format!("{} {} {}{}{to}{plan}", wake.fact.phrase(), print::short_id(&wake.id), wake.name, wake.tail()));
         if wake.fact == Fact::Waiting && o.notify {
             let title = format!("{} ({}) is waiting", wake.name, print::short_id(&wake.id));
             desktop_notify(&title, "It needs you. Answer it in its pane.");
@@ -993,6 +1111,7 @@ fn route(
     tasks: &[ledger::Row],
     gone: &[ledger::Row],
     handed: &[ledger::Row],
+    plan_rows: &[ledger::Row],
     all: &[SessionInfo],
 ) -> Vec<(String, Wake)> {
     let coordinators: Vec<&str> = targets.iter().map(|(_, s)| s.id.as_str()).collect();
@@ -1009,6 +1128,7 @@ fn route(
         let (groups, interrupted) = group(&mine, all, &coordinators);
         w.follows = Some(follows(&groups));
         wakes.extend(w.take(&groups, &interrupted));
+        w.plans_are(&groups, &mine, &owned(plan_rows, owner), all);
         told.extend(wakes.into_iter().map(|wk| (owner.clone(), wk)));
     }
     told
@@ -1052,7 +1172,7 @@ async fn deliver(c: &Client, w: &mut Watcher, owner: &str, skipper: &SessionInfo
         w.after_delivery(d, &msg);
         return Ok(());
     }
-    if !w.held.is_empty() && ready(c, skipper).await {
+    if w.ready_line().is_some() && ready(c, skipper).await {
         // The check above took time. Read the rows again, so a task sent
         // meanwhile is not named.
         match ledger::open_tasks() {
@@ -1065,10 +1185,7 @@ async fn deliver(c: &Client, w: &mut Watcher, owner: &str, skipper: &SessionInfo
                 return Ok(());
             }
         }
-        if w.held.is_empty() {
-            return Ok(());
-        }
-        let line = wake_line(&w.held);
+        let Some(line) = w.ready_line() else { return Ok(()) };
         let d = submit(c, skipper, &line).await?;
         let msg = w.delivered(d, &line);
         log(&msg);
@@ -1353,7 +1470,7 @@ mod tests {
         let sub = ledger::Row { owner: "gesher".into(), ..row(2, "u2", "dddd4444", "sent", None) };
         let hand = ledger::Row { kind: "handoff".into(), project: "gesher".into(), ..row(3, "u3", "bbbb2222", "sent", None) };
         let mut ws = Watchers::default();
-        let told = route(&mut ws, &targets, &[mine, sub, hand.clone()], &[], &[], &all);
+        let told = route(&mut ws, &targets, &[mine, sub, hand.clone()], &[], &[], &[], &all);
         let told: Vec<(&str, &str)> = told.iter().map(|(o, w)| (o.as_str(), w.id.as_str())).collect();
         assert_eq!(told, [("grand", "cccc3333"), ("gesher", "dddd4444")]);
         // Each watcher follows its own coordinator's task panes, and registers
@@ -1365,14 +1482,49 @@ mod tests {
         // gesher reports the hand-off: the grand Skipper alone hears it, once.
         let done = ledger::Row { state: "done".into(), ..hand };
         assert!(ws.get_mut("grand").unwrap().handed(&[], &[]).is_empty());
-        let told = route(&mut ws, &targets, &[], &[], std::slice::from_ref(&done), &all);
+        let told = route(&mut ws, &targets, &[], &[], std::slice::from_ref(&done), &[], &all);
         assert_eq!(told.iter().map(|(o, w)| (o.as_str(), w.fact)).collect::<Vec<_>>(), [("grand", Fact::Reported)]);
         let grand_held: Vec<Wake> = ws["grand"].held.iter().filter(|h| h.fact == Fact::Reported).cloned().collect();
         assert_eq!(
             wake_line(&grand_held),
             "[watch] the gesher Skipper reported hand-off u3. Read its result. Tell the person, then run skiff ledger report u3."
         );
-        assert!(route(&mut ws, &targets, &[], &[], std::slice::from_ref(&done), &all).is_empty());
+        assert!(route(&mut ws, &targets, &[], &[], std::slice::from_ref(&done), &[], &all).is_empty());
+    }
+
+    #[test]
+    fn a_plan_gives_one_line_when_every_task_ended() {
+        let mut grand = info("aaaa1111", "idle", false);
+        grand.coordinator = true;
+        let in_plan = |id, uid: &str, pane: &str| ledger::Row { parent: Some("p1".into()), ..row(id, uid, pane, "sent", None) };
+        let tasks = [in_plan(1, "t1", "cccc3333"), in_plan(2, "t2", "dddd4444"), in_plan(3, "t3", "eeee5555")];
+        let alone = row(4, "t4", "ffff6666", "sent", None);
+        let open: Vec<ledger::Row> = tasks.iter().cloned().chain([alone]).collect();
+        let mut ws = Watchers::default();
+        // Two plan panes end their turns and the third works: their lines wait.
+        // A task with no plan, and a waiting plan pane, are told at once.
+        let all = [grand.clone(), info("cccc3333", "idle", true), info("dddd4444", "idle", true), info("eeee5555", "working", false), info("ffff6666", "idle", true)];
+        route(&mut ws, &targets(&all), &open, &[], &[], &tasks, &all);
+        assert_eq!(ws["grand"].ready_line().as_deref(), Some("[watch] pane ffff6666 ffff6666 is idle. Read it, then mark it seen."));
+        ws.get_mut("grand").unwrap().delivered(Delivery::Taken, "");
+        assert_eq!(ws["grand"].held.len(), 2);
+        assert_eq!(ws["grand"].ready_line(), None);
+        let all = [grand.clone(), info("cccc3333", "idle", true), info("dddd4444", "idle", true), info("eeee5555", "waiting", false)];
+        let told = route(&mut ws, &targets(&all), &tasks, &[], &[], &tasks, &all);
+        assert_eq!(told.iter().map(|(_, w)| w.fact).collect::<Vec<_>>(), [Fact::Waiting]);
+        assert_eq!(ws["grand"].ready_line(), None);
+        // The last one ends its turn: one line for the plan.
+        let all = [grand, info("cccc3333", "idle", true), info("dddd4444", "idle", true), info("eeee5555", "idle", true)];
+        route(&mut ws, &targets(&all), &tasks, &[], &[], &tasks, &all);
+        assert_eq!(
+            ws["grand"].ready_line().as_deref(),
+            Some(
+                "[watch] plan p1: 3 of 3 tasks ended: pane cccc3333 cccc3333, pane dddd4444 dddd4444, pane eeee5555 eeee5555. \
+                 Read the results, mark each pane seen and set each task done, then run skiff ledger report p1."
+            )
+        );
+        ws.get_mut("grand").unwrap().delivered(Delivery::Taken, "");
+        assert!(ws["grand"].held.is_empty());
     }
 
     #[test]
@@ -1385,14 +1537,14 @@ mod tests {
         let sub = ledger::Row { owner: "gesher".into(), ..row(357, "9e0caa67", "7902ac72405d", "sent", None) };
         let all = [grand.clone(), gesher, info("7902ac72405d", "idle", true)];
         let mut ws = Watchers::default();
-        let told = route(&mut ws, &targets(&all), std::slice::from_ref(&sub), &[], &[], &all);
+        let told = route(&mut ws, &targets(&all), std::slice::from_ref(&sub), &[], &[], &[], &all);
         assert_eq!(told.iter().map(|(o, w)| (o.as_str(), w.id.as_str())).collect::<Vec<_>>(), [("gesher", "7902ac72405d")]);
         assert!(ws["grand"].held.is_empty());
         assert_eq!(ws["grand"].follows.as_deref(), Some(&[][..]));
         // With no gesher Skipper running, the row goes to no one.
         let all = [grand, info("7902ac72405d", "idle", true)];
         let mut ws = Watchers::default();
-        assert!(route(&mut ws, &targets(&all), &[sub], &[], &[], &all).is_empty());
+        assert!(route(&mut ws, &targets(&all), &[sub], &[], &[], &[], &all).is_empty());
         assert!(ws["grand"].held.is_empty());
     }
 

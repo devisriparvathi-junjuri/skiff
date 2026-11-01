@@ -108,6 +108,12 @@ the commands:
   a task is interrupted means the same.
 - A task whose LIVE shows `elsewhere` went out on another daemon. Its SOCKET
   column names it. It is not gone. Do not reassign or close it.
+- The tasks of a plan give no `[watch]` line one by one when they end their
+  turns. When every task in the plan has ended, you get one line:
+  `[watch] plan UID: N of M tasks ended`. Read each pane it names and mark it
+  seen, set each task `done`, give the user one report, then run
+  `skiff ledger report UID`. A pane that exits, restarts, is gone or waits on
+  a pending task still gets its own line at once.
 - A `[watch]` line that says a pane is gone names the tasks skiff set `done`
   with it. A gone pane cannot be marked seen. Tell the user, then run
   `skiff ledger report UID...`. To run a task again, reassign it with

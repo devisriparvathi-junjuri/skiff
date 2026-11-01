@@ -390,6 +390,21 @@ pub fn gone_unreported() -> Result<Vec<Row>> {
     rows(&open_at(&file)?, "WHERE kind IN ('task', 'handoff') AND state = 'done' AND gone_at IS NOT NULL AND reported_at IS NULL", None)
 }
 
+/// The tasks of each plan that is not closed, in any state, oldest first.
+/// `skiff watch` holds a plan task's idle line until every one of them
+/// ended. No `ledger.db` yet gives none, and makes no file.
+pub fn plan_tasks() -> Result<Vec<Row>> {
+    let file = path()?;
+    if !file.exists() {
+        return Ok(Vec::new());
+    }
+    rows(
+        &open_at(&file)?,
+        "WHERE kind IN ('task', 'handoff') AND parent IN (SELECT uid FROM tasks WHERE kind = 'plan' AND closed_at IS NULL)",
+        None,
+    )
+}
+
 /// The hand-offs a project Skipper set done, not yet reported: the grand
 /// Skipper's watcher tells it each once. No `ledger.db` yet gives none.
 pub fn handed_back() -> Result<Vec<Row>> {
