@@ -4,7 +4,7 @@
     "reasons": [
       "dependency surface"
     ],
-    "sha256": "189ddd65d28ca5d20e7367d660fc684289fabd031b62514e0c03426787de8278"
+    "sha256": "2845c10bfcaec6e0417fb7d8509007a436ec931bfc68fbb0030e93a26ba9caaf"
   },
   "apps/desktop/src-tauri/Cargo.toml": {
     "ownership": "dependency surface: review new I/O providers and package aliases",
