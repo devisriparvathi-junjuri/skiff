@@ -36,7 +36,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "00a8b04162f2a82c2d25cedeb47cabc338faf070d4bfa79a2d763c15a2a1f181"
+    "sha256": "3fdd94fc3b509cd626ad0a22c64e90bedbc95822fad40e0c29145a06547e1085"
   },
   "apps/desktop/src-tauri/src/config.rs": {
     "ownership": "agent settings (#166 R8): a remote Host's through HostConnection (agent_config@1); This Mac's [agents] stays the legacy local adapter, read back from the config it writes (installed state from skiffd): migrate in M1\u2013M6; Skipper avatars (skipper_avatars, set_skipper_avatar) read and write avatar.toml in This Mac's Skipper folders: LOCAL_ONLY",
@@ -123,13 +123,14 @@
       "is_dir",
       "is_file",
       "ledger",
+      "metadata",
       "process",
       "skiff_agent",
       "skiff_client",
       "skiff_core",
       "skipper"
     ],
-    "sha256": "502016d54d63b2930ec33e214a579eda7af0d6f3bc34d02470d8b675838e2360"
+    "sha256": "fd4002e214d26804536215f13b592a1793ac13291418e5e0194b20ddfadbc337"
   },
   "apps/desktop/src-tauri/src/drops.rs": {
     "ownership": "client policy: reads dropped files and this computer's clipboard and cache; a remote Host gets each file through drops@1",
