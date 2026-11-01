@@ -210,5 +210,16 @@ class BoundaryTests(unittest.TestCase):
             (crate / 'src/lib.rs').write_text('std::fs::read(path);')
             self.assertTrue(check.api_errors(root))
 
+    def test_refresh_updates_only_the_named_existing_entry(self):
+        old = lambda h: {'sha256': h, 'reasons': ['dependency surface'], 'ownership': 'reviewed'}
+        baseline = {'apps/desktop/package.json': old('a'), 'src/x.ts': old('b')}
+        actual = {'apps/desktop/package.json': {'sha256': 'A', 'reasons': ['dependency surface']},
+                  'src/x.ts': {'sha256': 'B', 'reasons': ['invoke']}, 'src/new.ts': {'sha256': 'N', 'reasons': ['fetch']}}
+        updated = check.refresh(baseline, actual, ['apps/desktop/package.json'])
+        self.assertEqual(updated['apps/desktop/package.json'], {**old('A')})
+        self.assertEqual(updated['src/x.ts'], old('b'))
+        self.assertEqual(len(check.compare(actual, updated)), 2)
+        with self.assertRaises(SystemExit): check.refresh(baseline, actual, ['src/new.ts'])
+
 
 if __name__ == '__main__': unittest.main()
