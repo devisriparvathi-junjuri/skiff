@@ -14,7 +14,7 @@ test("project digits use Command+Option on Mac and Ctrl+Shift elsewhere, after o
     const sheet = moduleFromSource("../src/ui/infoDialogs.ts", {
       "../app/keys": keys,
     }, globals, "\nexports.fixed = FIXED_SHORTCUTS;");
-    assert.equal(sheet.fixed.find(([section]: string[]) => section === "Projects")[2], mac ? "⌘+Option+1…9" : "Ctrl+Shift+1…9");
+    assert.equal(sheet.fixed.find(([section]: string[]) => section === "section.projects")[2], mac ? "⌘+Option+1…9" : "Ctrl+Shift+1…9");
     for (let digit = 1; digit <= 9; digit++) {
       const event = { code: `Digit${digit}`, key: String(digit), metaKey: mac, ctrlKey: !mac, altKey: mac, shiftKey: !mac };
       assert.equal(keys.actionFor(event), null, "no default action takes the project key");

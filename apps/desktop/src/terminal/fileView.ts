@@ -7,6 +7,7 @@
  */
 import { h } from "../ui/dom";
 import type { HostFile } from "../platform/types";
+import { t } from "../i18n";
 
 /** The Host's limits, for the notes. */
 const TEXT_KIB = 512;
@@ -23,11 +24,11 @@ function sizeLabel(bytes: number): string {
 /** What the viewer says above the content. */
 export function fileNotes(f: HostFile): string[] {
   const notes: string[] = [];
-  if (f.content === "link") notes.push(`Link to ${f.target ?? "?"}. Skiff does not follow it.`);
-  if (f.content === "binary") notes.push(`Binary file, ${sizeLabel(f.size)}. There is no text to show.`);
-  if (f.content === "text" && !f.text) notes.push("Empty file.");
-  if (f.content === "text" && f.truncated) notes.push(`The file is longer than ${TEXT_KIB} KiB. Only its start shows.`);
-  if (f.content === "image" && f.truncated) notes.push(`Image, ${sizeLabel(f.size)}. Skiff shows images up to ${IMAGE_MIB} MiB.`);
+  if (f.content === "link") notes.push(t("view.link", { target: f.target ?? "?" }));
+  if (f.content === "binary") notes.push(t("view.binaryFile", { size: sizeLabel(f.size) }));
+  if (f.content === "text" && !f.text) notes.push(t("view.emptyFile"));
+  if (f.content === "text" && f.truncated) notes.push(t("view.fileLong", { kib: TEXT_KIB }));
+  if (f.content === "image" && f.truncated) notes.push(t("view.imageLarge", { size: sizeLabel(f.size), mib: IMAGE_MIB }));
   return notes;
 }
 

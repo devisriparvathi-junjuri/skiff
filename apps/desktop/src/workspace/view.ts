@@ -14,13 +14,14 @@ import { showError } from "../ui/alerts";
 import { autoName, deleteGroup, moveGroup, saveGroup } from "../app/groups";
 import { render } from "../app/render";
 import { clearSelection } from "./selection";
-import { FULL_HINT, MAX_PANES, OTHER, S, selectedWorktree, sessions } from "../app/state";
+import { fullHint, MAX_PANES, OTHER, S, selectedWorktree, sessions } from "../app/state";
 import { activeGroupObj, currentLayout, groupOf, inShownGroup, place, shownIds, splitFull, worktreeSessions } from "../app/stateQueries";
 import { panes } from "../terminal/terminalState";
 import { previewOnScreen } from "../terminal/peek";
 import { currentRow, listItems } from "../app/keyboard";
 import { worktreeRowKey } from "./tree";
 import { view } from "../terminal/terminal";
+import { t, tn } from "../i18n";
 
 let background = 0;
 let held = 0;
@@ -345,7 +346,7 @@ function addToGroup(groupId: string, dragged: string[]) {
   if (!g) return;
   const ids = dragged.filter((id) => !sessionsOf(g.layout).includes(id));
   if (!ids.length) return;
-  if (ids.length > room(g)) return showError(`The group is full (${MAX_PANES} panes).`);
+  if (ids.length > room(g)) return showError(t("view.groupFull", { max: MAX_PANES }));
   releaseFromOtherGroups(g, ids);
   let layout = g.layout;
   for (const id of ids) {
@@ -431,14 +432,14 @@ function sessionRows(ids: string[]): RowTarget[] {
 }
 
 /** What a drop on a sidebar row does, for the ghost. */
-function says(t: DropTarget): string | null {
-  if (t.group) {
-    const g = S.groups.find((x) => x.id === t.group);
-    return g ? `Add to ${g.name}` : null;
+function says(target: DropTarget): string | null {
+  if (target.group) {
+    const g = S.groups.find((x) => x.id === target.group);
+    return g ? t("select.addTo", { name: g.name }) : null;
   }
-  if (t.swap) return "Swap";
-  if (t.pair) return "New group";
-  if (t.out) return "Take out of group";
+  if (target.swap) return t("view.swap");
+  if (target.pair) return t("select.newGroup");
+  if (target.out) return t("view.takeOut");
   return null;
 }
 
@@ -459,14 +460,14 @@ const home = (id: string) => {
  * started, so a pane or group never shows a session from another worktree.
  * Undefined: the target has no worktree yet, so any session fits.
  */
-function mixesWorktrees(t: DropTarget, ids: string[]): string | null {
+function mixesWorktrees(drop: DropTarget, ids: string[]): string | null {
   let target: string | null | undefined;
-  if (t.out) return null;
-  if (t.group) {
-    const g = S.groups.find((x) => x.id === t.group);
+  if (drop.out) return null;
+  if (drop.group) {
+    const g = S.groups.find((x) => x.id === drop.group);
     target = g ? groupHome(g)?.path ?? (filledOf(g.layout).length ? null : undefined) : undefined;
   } else {
-    const other = t.pair ?? t.swap ?? t.session ?? shownIds().find((id) => !ids.includes(id));
+    const other = drop.pair ?? drop.swap ?? drop.session ?? shownIds().find((id) => !ids.includes(id));
     target = other ? home(other) : undefined;
   }
   if (target === undefined) return null;
@@ -474,16 +475,16 @@ function mixesWorktrees(t: DropTarget, ids: string[]): string | null {
   if (!off) return null;
   const s = sessions.get(off);
   const at = s ? place(s) : null;
-  return `Runs in ${at ? branchName(at.worktree) : "another folder"}`;
+  return at ? t("view.runsIn", { name: branchName(at.worktree) }) : t("view.runsElsewhere");
 }
 
 /** Why a group or a new group has no room for the sessions, or null. */
-function groupFull(t: DropTarget, ids: string[]): string | null {
-  if (t.pair) return ids.length + 1 > MAX_PANES ? "Group is full" : null;
-  const g = t.group ? S.groups.find((x) => x.id === t.group) : undefined;
+function groupFull(drop: DropTarget, ids: string[]): string | null {
+  if (drop.pair) return ids.length + 1 > MAX_PANES ? t("view.full") : null;
+  const g = drop.group ? S.groups.find((x) => x.id === drop.group) : undefined;
   if (!g) return null;
   const fresh = ids.filter((id) => !sessionsOf(g.layout).includes(id));
-  return fresh.length && fresh.length > room(g) ? "Group is full" : null;
+  return fresh.length && fresh.length > room(g) ? t("view.full") : null;
 }
 
 /**
@@ -528,7 +529,7 @@ export function dragGroup(e: MouseEvent, g: Group) {
 /** Start a drag of these sessions; a press that does not move stays a click. */
 export function dragSessions(e: MouseEvent, ids: string[]) {
   const first = sessions.get(ids[0]);
-  const label = ids.length > 1 ? `${ids.length} sessions` : first ? taskTitle(first) : "session";
+  const label = ids.length > 1 ? tn("palette.sessions", ids.length) : first ? taskTitle(first) : t("view.session");
   // A full split takes no more panes; moving a pane inside it still works.
   const blocked = splitFull() && ids.some((id) => !shownIds().includes(id));
   // A dragged pane is no target for itself. When it is the whole view, the rim
@@ -541,14 +542,14 @@ export function dragSessions(e: MouseEvent, ids: string[]) {
     return m;
   };
   beginDrag(e, {
-    label: blocked ? `${label}: ${FULL_HINT}` : label,
+    label: blocked ? `${label}: ${fullHint()}` : label,
     cells,
     area: blocked || alone ? null : host,
     rows: () => sessionRows(ids),
     says,
-    refuses: (t) => mixesWorktrees(t, ids) ?? groupFull(t, ids),
-    accepts: (t) => (t.group ? groupGains(t.group, ids) : t.swap || t.pair || t.out ? true : !!dropLayout(t, ids)),
-    drop: (t) => dropOn(t, ids),
+    refuses: (drop) => mixesWorktrees(drop, ids) ?? groupFull(drop, ids),
+    accepts: (drop) => (drop.group ? groupGains(drop.group, ids) : drop.swap || drop.pair || drop.out ? true : !!dropLayout(drop, ids)),
+    drop: (drop) => dropOn(drop, ids),
   });
 }
 

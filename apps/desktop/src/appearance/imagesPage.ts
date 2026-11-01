@@ -12,6 +12,7 @@ import {
   imagesError, pinImages, queryWords, searchField, section, shownName, when, whoLine,
 } from "../terminal/images";
 import { size } from "./skiffFolderDialog";
+import { t, tn, upper } from "../i18n";
 
 /** The page's state. It survives every redraw of Settings. */
 export interface ImagesState {
@@ -35,7 +36,6 @@ export interface ImagesState {
 
 export const imagesState = (): ImagesState => ({ query: "", sel: new Set(), anchor: null, now: null, keys: null, scroll: 0, copied: false, copiedTimer: 0, moving: null });
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** The cache folder with `~` for home, from an image's path. */
 function folder(): string {
@@ -53,7 +53,7 @@ function folder(): string {
 export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
   const main = h("div", "set-main img-page");
   const head = h("div", "set-head");
-  head.append(h("div", "set-h", "Images"), h("div", "set-sub mono", folder()));
+  head.append(h("div", "set-h", t("images.title")), h("div", "set-sub mono", folder()));
 
   const tools = h("div", "img-tools");
   const field = searchField();
@@ -68,19 +68,19 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
     return b;
   };
   const openB = btn("", () => openAll());
-  openB.textContent = "Open";
+  openB.textContent = t("menu.open");
   const insB = btn(" ins", () => void insert());
   const pinB = btn("", () => void pin());
   const copyB = btn("", () => void copy());
   const delB = btn(" del", () => void remove());
-  delB.textContent = "Delete";
+  delB.textContent = t("images.delete");
   tools.append(find, openB, insB, pinB, copyB, delB);
 
   const scroll = h("div", "img-scroll");
   scroll.tabIndex = 0;
   scroll.setAttribute("role", "listbox");
   scroll.setAttribute("aria-multiselectable", "true");
-  scroll.setAttribute("aria-label", "Images");
+  scroll.setAttribute("aria-label", t("images.title"));
   main.append(head, tools, scroll);
 
   const seen = new IntersectionObserver((es) => {
@@ -113,8 +113,8 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
       const el = h("div", "set-error", error);
       el.setAttribute("role", "alert");
       kids.push(el);
-    } else if (!allImages().length) kids.push(h("div", "lib-none", "No images"));
-    else if (!shown.length) kids.push(h("div", "lib-none", "No images match"));
+    } else if (!allImages().length) kids.push(h("div", "lib-none", t("images.none")));
+    else if (!shown.length) kids.push(h("div", "lib-none", t("images.noMatch")));
     const pins = shown.filter((i) => i.pinned);
     const rest = shown.filter((i) => !i.pinned);
     const grid = (part: Image[]) => {
@@ -122,9 +122,9 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
       for (const i of part) g.append(tile(i, words));
       return g;
     };
-    if (pins.length) kids.push(section("PINNED", pins.length), grid(pins));
+    if (pins.length) kids.push(section(upper(t("images.pinned")), pins.length), grid(pins));
     if (rest.length) {
-      if (pins.length) kids.push(section("RECENT", rest.length));
+      if (pins.length) kids.push(section(upper(t("images.recent")), rest.length));
       kids.push(grid(rest));
     }
     scroll.replaceChildren(...kids);
@@ -157,39 +157,39 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
 
   /** Selection, the current tile and the tool row; no rebuild, so the thumbnails stay. */
   function paint() {
-    for (const [p, t] of tiles) {
+    for (const [p, tile] of tiles) {
       const on = st.sel.has(p);
-      t.classList.toggle("sel", on);
-      t.classList.toggle("now", p === st.now);
-      t.setAttribute("aria-selected", String(on));
+      tile.classList.toggle("sel", on);
+      tile.classList.toggle("now", p === st.now);
+      tile.setAttribute("aria-selected", String(on));
     }
     const sel = picked();
     const words = queryWords(st.query);
-    count.textContent = st.copied ? "Copied" : countText(shown.length, words) + (sel.length ? ` · ${sel.length} selected` : "");
+    count.textContent = st.copied ? t("images.copied") : countText(shown.length, words) + (sel.length ? ` · ${t("images.selected", { n: sel.length })}` : "");
     const none = !sel.length;
     openB.disabled = none;
     pinB.disabled = none;
     copyB.disabled = none;
     delB.disabled = none;
-    pinB.textContent = sel.length && sel.every((i) => i.pinned) ? "Unpin" : "Pin";
-    copyB.textContent = sel.length > 1 ? "Copy paths" : "Copy path";
+    pinB.textContent = t(sel.length && sel.every((i) => i.pinned) ? "images.unpin" : "images.pin");
+    copyB.textContent = t(sel.length > 1 ? "images.copyPaths" : "menu.copyPath");
     // The label names the target: the project letters in their color, then the session title.
     const id = insertTarget();
     const s = id ? sessions.get(id) : undefined;
     insB.replaceChildren();
     insB.disabled = none || !id;
-    if (!s) insB.textContent = "Insert";
+    if (!s) insB.textContent = t("images.insert");
     else {
       const p = place(s)?.project;
-      const t = h("span", "t");
-      t.append("Insert into ");
+      const label = h("span", "t");
+      label.append(t("images.insertInto"));
       if (p) {
         const mark = h("span", "lib-proj", p.short);
         mark.style.color = accent(p);
-        t.append(mark);
+        label.append(mark);
       }
-      t.append(taskTitle(s));
-      insB.append(t);
+      label.append(taskTitle(s));
+      insB.append(label);
     }
   }
 
@@ -296,9 +296,9 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
     if (sel.length > 1) {
       const pinned = sel.filter((i) => i.pinned).length;
       const bytes = sel.reduce((n, i) => n + i.size, 0);
-      const lines = [`Delete ${plural(sel.length, "image")} (${size(bytes)}) from cache/.`];
-      if (pinned) lines.push(`${pinned} of them ${pinned === 1 ? "is" : "are"} pinned.`);
-      const ok = await confirmAction({ title: `Delete ${sel.length} images?`, body: lines.join("\n"), action: "Delete" });
+      const lines = [t("images.deleteBody", { images: tn("disk.images", sel.length), size: size(bytes) })];
+      if (pinned) lines.push(tn("images.pinnedOf", pinned));
+      const ok = await confirmAction({ title: tn("images.deleteTitle", sel.length), body: lines.join("\n"), action: t("images.delete") });
       if (!ok) return;
     }
     // The tile after the last selected one becomes current.

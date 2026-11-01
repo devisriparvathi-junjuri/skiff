@@ -15,7 +15,7 @@ Read the `skiff-design` skill first. Its interaction rules apply: Ctrl+Shift for
 | --- | --- | --- |
 | Action names and default keys | `keys.ts`: `Action`, `DEFAULTS` | — |
 | User overrides | `[keys]` in `projects.toml` → `setKeymap()` | `DEFAULTS` |
-| What each action does | `keys.ts`: `DESCRIBE` | — |
+| What each action does | `keys.ts`: `DESCRIBE` (section); `i18n/en.ts`: `key.<action>` (words) | — |
 | What an action runs | `app/actions.ts`: `runAction()` | — |
 | F1 sheet | `ui/infoDialogs.ts`: `showShortcuts()` | `DESCRIBE` + `FIXED_SHORTCUTS` |
 | Menu bar and palette | `app/commands.ts` | `keyLabel()`, `menuAccel()` |
@@ -32,14 +32,14 @@ Screens that hold the keys reuse action keys with a local meaning. Settings (`ap
 
 ## Rules
 
-- Never hardcode a key label in UI text. Use `keyLabel(action)`. A key in a note, such as "Ctrl+Shift+Up/Down" in a `DESCRIBE` line, is the only exception. Check those notes when a default changes.
+- Never hardcode a key label in UI text. Use `keyLabel(action)`. A key in a note, such as "Ctrl+Shift+Up/Down" in a `key.*` line, is the only exception. Check those notes when a default changes.
 - A local handler matches action keys with `actionFor(e)`, not raw `e.key` checks. Then `[keys]` overrides work there too.
 - An action with a menu bar item (`commands.ts`) has a native accelerator. The menu takes that key before the page sees a keydown, and calls `runAction()`. A screen that gives such a key a local meaning must also catch it in `runAction()`, as Settings does with `settings.runKey()`.
-- A new action needs all of these: an `Action` member, a `DEFAULTS` key, a `DESCRIBE` line, a `runAction()` case, and a `commands.ts` entry where a menu item fits.
-- A new fixed key needs a `FIXED_SHORTCUTS` row in the right section.
-- A local meaning for an action key goes at the end of its `DESCRIBE` line: "In Settings, the next section".
+- A new action needs all of these: an `Action` member, a `DEFAULTS` key, a `DESCRIBE` row, a `key.<action>` line in `i18n/en.ts`, a `runAction()` case, and a `commands.ts` entry where a menu item fits. The typecheck fails while the `key.<action>` line is missing.
+- A new fixed key needs a `FIXED_SHORTCUTS` row in the right section, and its `fixed.*` line in `i18n/en.ts`.
+- A local meaning for an action key goes at the end of its `key.<action>` line: "In Settings, the next section".
 - Before you take a key, check `DEFAULTS` for a clash. Check that the terminal does not need it (bare Ctrl), and that GNOME, KDE or macOS do not take it.
-- `DESCRIBE` and `FIXED_SHORTCUTS` text is user copy. Follow the Words rules in `skiff-design`.
+- The `key.*` and `fixed.*` lines are user copy. Follow the Words rules in `skiff-design`.
 
 ## Wiki
 

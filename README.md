@@ -73,6 +73,7 @@ apps/desktop         Tauri v2 app, vanilla TypeScript + xterm.js
   src/workspace      session tree, fleets, layouts, files, project actions
   src/terminal       xterm runtime, panes, search, clipboard, font size
   src/appearance     themes, colors, icons, settings
+  src/i18n           UI words: t() and tn(), catalogs en.ts (source), es.ts and zh.ts
   src/platform       wire types, IPC bytes, file actions
   src/diagnostics    latency traces and memory counts
   src/styles         styles by owner, imported in cascade order

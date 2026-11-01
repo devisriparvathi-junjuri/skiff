@@ -12,6 +12,7 @@ import { S } from "../app/state";
 import { renameHidden } from "./tree";
 import { keepInView, renameWorkspaceFleet } from "./profile";
 import { fleetSkipperOf, joinFleet, projectSkipperOf, renameFleetOn } from "../app/skiffAgent";
+import { t } from "../i18n";
 
 export interface Fleet {
   name: string;
@@ -118,13 +119,13 @@ export function nameFleet(name: string) {
   const tile = head();
   if (!tile) return;
   const box = h("div", "fleet-name");
-  const label = h("label", "fleet-name-label", "Fleet name");
+  const label = h("label", "fleet-name-label", t("fleet.nameLabel"));
   const input = h("input");
   input.type = "text";
   input.value = name;
   input.spellcheck = false;
   input.id = label.htmlFor = "fleet-name-input";
-  const hint = h("div", "fleet-name-hint", "Enter or a click away keeps it.");
+  const hint = h("div", "fleet-name-hint", t("fleet.nameHint"));
   box.append(label, input, hint);
   const r = tile.getBoundingClientRect();
   box.style.left = `${r.left + 16}px`;
@@ -137,7 +138,7 @@ export function nameFleet(name: string) {
     const next = input.value.trim();
     const taken = next !== name && S.projects.some((p) => p.fleet === next);
     if (keep && taken && !blur) {
-      hint.textContent = `A fleet named ${next} exists. Use another name.`;
+      hint.textContent = t("fleet.nameTaken", { name: next });
       return;
     }
     done = true;

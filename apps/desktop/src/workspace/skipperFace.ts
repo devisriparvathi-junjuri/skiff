@@ -20,6 +20,7 @@ import { DEFAULT_THEME } from "../appearance/colors";
 import { render } from "../app/renderRequest";
 import { dialogFrame, dialogHeader } from "../ui/dialogParts";
 import { button, h } from "../ui/dom";
+import { t } from "../i18n";
 
 let chosen = new Map<string, number>();
 
@@ -116,14 +117,14 @@ export function setAvatarDialog(scope: string | null, title: string, done: () =>
             error.textContent = String(e);
           }
         });
-        b.setAttribute("aria-label", `Avatar ${seed}`);
+        b.setAttribute("aria-label", t("avatar.seed", { seed }));
         b.setAttribute("aria-pressed", String(seed === now));
         b.appendChild(skipperFace(scope, 32, seed));
         return b;
       }),
     );
   };
-  const shuffle = button("av-act", "Shuffle", () => {
+  const shuffle = button("av-act", t("avatar.shuffle"), () => {
     base += 12;
     draw();
     grid.querySelector<HTMLButtonElement>(".av-opt")?.focus();

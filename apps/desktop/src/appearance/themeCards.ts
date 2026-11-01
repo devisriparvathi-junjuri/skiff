@@ -1,11 +1,15 @@
 import { isLight, mix, readable } from "./colors";
-import { COLOR_FAMILIES, themeProfile } from "./themeProfile";
+import { COLOR_FAMILIES, type ColorFamily, themeProfile } from "./themeProfile";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { dialogFrame, dialogHeader } from "../ui/dialogParts";
 import { h } from "../ui/dom";
 import { icon } from "../ui/icons";
 import type { TerminalTheme } from "../platform/types";
+import { t, tn } from "../i18n";
+
+/** A color family in the current language. */
+const familyName = (f: ColorFamily) => t(`family.${f}`);
 
 /** A small Skiff window in the theme's colors: a sidebar and a few terminal lines. */
 function preview(t: TerminalTheme): HTMLElement {
@@ -80,18 +84,18 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
   const tools = h("div", "tc-tools");
   const search = h("input", "tc-search");
   search.type = "search";
-  search.placeholder = "Find by name or color";
-  search.setAttribute("aria-label", "Find theme by name or color");
+  search.placeholder = t("theme.search");
+  search.setAttribute("aria-label", t("theme.searchAria"));
   search.value = filters.query;
   // One swatch per color family. "All" clears the filter.
   const swatches = h("div", "tc-swatches");
   swatches.setAttribute("role", "group");
-  swatches.setAttribute("aria-label", "Theme color");
-  const swatch = (value: string | null) => {
-    const b = h("button", "tc-swatch" + (value ? "" : " all"), value ? "" : "All");
+  swatches.setAttribute("aria-label", t("theme.color"));
+  const swatch = (value: ColorFamily | null) => {
+    const b = h("button", "tc-swatch" + (value ? "" : " all"), value ? "" : t("theme.all"));
     b.type = "button";
-    b.title = value ?? "All colors";
-    b.setAttribute("aria-label", value ?? "All colors");
+    b.title = value ? familyName(value) : t("theme.allColors");
+    b.setAttribute("aria-label", b.title);
     b.setAttribute("aria-pressed", String(value === filters.family));
     if (value) b.style.setProperty("--sw", SWATCH[value]);
     b.addEventListener("click", () => {
@@ -106,20 +110,20 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
   const status = h("div", "tc-status");
   status.setAttribute("role", "status");
   const grid = h("div", "tc-grid");
-  const card = (t: TerminalTheme, id: string | null, label: string, badge: string) => {
+  const card = (theme: TerminalTheme, id: string | null, label: string, badge: string) => {
     const on = o.active === id;
     const b = h("button", "tc-card" + (on ? " active" : ""));
     b.type = "button";
     b.dataset.theme = id ?? "";
     b.setAttribute("aria-pressed", String(on));
-    b.appendChild(preview(t));
+    b.appendChild(preview(theme));
     const foot = h("span", "tc-foot");
     const signature = h("span", "tc-signature");
-    signature.style.background = themeProfile(t).color;
+    signature.style.background = themeProfile(theme).color;
     signature.setAttribute("aria-hidden", "true");
     foot.appendChild(signature);
     foot.append(h("span", "tc-name", label), h("span", "tc-badge", badge));
-    if (on) foot.appendChild(h("span", "tc-state", "✓ Active"));
+    if (on) foot.appendChild(h("span", "tc-state", t("theme.active")));
     for (const s of o.scopes ?? []) if (s.id === id) foot.appendChild(h("span", "tc-in-scope", s.label));
     b.appendChild(foot);
     b.addEventListener("click", () => {
@@ -138,19 +142,20 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
   };
   const draw = () => {
     grid.replaceChildren();
-    if (o.none?.theme) grid.appendChild(card(o.none.theme, null, o.none.label, "default"));
+    if (o.none?.theme) grid.appendChild(card(o.none.theme, null, o.none.label, t("theme.default")));
     const words = filters.query.toLowerCase().trim().split(/\s+/);
     const shown = themes.filter((t) => {
       const p = themeProfile(t);
-      const text = `${t.name} ${p.family}`.toLowerCase();
+      // A color matches by its English id and by its name in the current language.
+      const text = `${t.name} ${p.family} ${familyName(p.family)}`.toLowerCase();
       return words.every((word) => text.includes(word))
         && (!filters.family || filters.family === p.family);
     });
     for (const t of shown) {
       const p = themeProfile(t);
-      grid.appendChild(card(t, t.id, t.name, p.family));
+      grid.appendChild(card(t, t.id, t.name, familyName(p.family)));
     }
-    status.textContent = `${shown.length} of ${themes.length} themes`;
+    status.textContent = tn("theme.count", themes.length, { n: shown.length });
   };
   search.addEventListener("input", () => {
     filters.query = search.value;
@@ -168,12 +173,12 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
       b.appendChild(svg);
       return b;
     };
-    const add = tool("Import themes…", '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path>');
-    const folder = tool("Open theme folder", '<path d="M3 6h6l2 2h10v11H3z"></path>');
+    const add = tool(t("theme.import"), '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path>');
+    const folder = tool(t("theme.openFolder"), '<path d="M3 6h6l2 2h10v11H3z"></path>');
     const reload = async () => { themes = await o.reload!(); draw(); };
     add.addEventListener("click", async () => {
       try {
-        const paths = await open({ multiple: true, title: "Import theme files" });
+        const paths = await open({ multiple: true, title: t("theme.importTitle") });
         if (!paths) return;
         add.disabled = true;
         const errors = await invoke<string[]>("import_themes", { paths: Array.isArray(paths) ? paths : [paths] });

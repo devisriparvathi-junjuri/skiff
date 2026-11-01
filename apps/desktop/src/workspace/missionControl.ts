@@ -58,6 +58,7 @@ import { closeMission, goToSession } from "./missionMotion";
 import * as G from "./missionLayout";
 import { worktreeLines } from "./sidebarLines";
 import { projectBadge, treeSections } from "./tree";
+import { type PluralKey, t, tn, upper } from "../i18n";
 
 /** Rows of text in the panel's screen. */
 const ROWS = 12;
@@ -71,7 +72,7 @@ root.id = "mission-control";
 root.hidden = true;
 root.tabIndex = -1;
 root.setAttribute("role", "dialog");
-root.setAttribute("aria-label", "Mission control");
+root.setAttribute("aria-label", t("cmd.missionControl"));
 document.body.appendChild(root);
 
 const fault = h("div", "mission-fault");
@@ -178,8 +179,8 @@ const search = h("input", "mission-search");
 search.type = "text";
 search.autocomplete = "off";
 search.spellcheck = false;
-search.placeholder = "Search sessions";
-search.setAttribute("aria-label", "Search sessions");
+search.placeholder = t("mission.search");
+search.setAttribute("aria-label", t("mission.search"));
 const find = h("label", "tb-cell mission-find");
 find.appendChild(search);
 document.getElementById("open-switcher")?.after(find);
@@ -188,13 +189,13 @@ document.getElementById("open-switcher")?.after(find);
 let running = true;
 const scope = h("div", "mission-scope");
 scope.setAttribute("role", "group");
-scope.setAttribute("aria-label", "Sessions to show");
+scope.setAttribute("aria-label", t("mission.scopeAria"));
 const allCount = h("span", "mission-scope-n");
 const runningCount = h("span", "mission-scope-n");
 const scopeAll = h("button", "mission-scope-btn");
-scopeAll.append("All", allCount);
+scopeAll.append(t("mission.all"), allCount);
 const scopeRunning = h("button", "mission-scope-btn");
-scopeRunning.append(h("span", "mission-scope-dot"), "Running", runningCount);
+scopeRunning.append(h("span", "mission-scope-dot"), t("mission.running"), runningCount);
 for (const [b, on] of [[scopeRunning, true], [scopeAll, false]] as const) {
   b.type = "button";
   b.tabIndex = -1;
@@ -320,7 +321,7 @@ function model(): Model {
       const cards = list.filter((t) => rows.get(t.id)?.parent === plan.uid);
       plans.push({ uid: plan.uid, title: ledgerTitle(plan), cards: cards.map((t) => t.id), done: cards.filter((t) => rows.get(t.id)!.state === "done").length });
     }
-    return { key, name: p?.name ?? "Other", skipper: skipper?.id ?? null, cards: list.map((s) => s.id), plans, folded: fold };
+    return { key, name: p?.name ?? t("sidebar.other"), skipper: skipper?.id ?? null, cards: list.map((s) => s.id), plans, folded: fold };
   };
 
   const g: G.Graph = { admiral: admiral?.id ?? null, fleets: [], projects: [] };
@@ -359,7 +360,14 @@ function noteSince(s: SessionInfo, now: number) {
   if (!was) since.set(s.id, { state: s.state, at: s.state === "working" ? now : s.last_output_at || now });
   else if (was.state !== s.state) since.set(s.id, { state: s.state, at: now });
 }
-const sinceText = (s: SessionInfo, now: number) => G.ago(since.get(s.id)?.at ?? now, now);
+const sinceText = (s: SessionInfo, now: number) => {
+  // G.ago's steps, in the catalog's words: "now", "4m", "2h", "3d".
+  const m = Math.floor(Math.max(0, now - (since.get(s.id)?.at ?? now)) / 60000);
+  if (m < 1) return t("activity.now");
+  if (m < 60) return t("activity.minutes", { n: m });
+  if (m < 1440) return t("activity.hours", { n: Math.round(m / 60) });
+  return t("activity.days", { n: Math.round(m / 1440) });
+};
 
 // ---- Cards and clusters ----
 
@@ -372,7 +380,7 @@ function chevron(): HTMLElement {
 /** A card's name: Admiral's, "Skipper · gesher" for a Skipper, else the session's title. */
 const cardName = (s: SessionInfo) => (s.coordinator ? skiffAgentName() : taskTitle(s));
 const dimmed = (s: SessionInfo) => (running && !isRunning(s)) || (!!m.found && !m.found.has(s.id));
-const stateWord = (s: SessionInfo) => (s.state === "working" ? "working" : s.state === "waiting" ? "waiting" : s.state === "done" ? "done" : "idle");
+const stateWord = (s: SessionInfo) => t(s.state === "working" ? "state.working" : s.state === "waiting" ? "state.waiting" : s.state === "done" ? "state.done" : "state.idle");
 
 /** A Skipper's counts over the rows it owns: its panes that work, that wait, and the rest that are open. */
 function skipperCounts(s: SessionInfo): { working: number; waiting: number; open: number; handoffs: number } {
@@ -389,20 +397,17 @@ function metaOf(s: SessionInfo): HTMLElement {
   const el = h("span", "m");
   if (s.coordinator || !!s.skipper) {
     if (!hostCan("ledger")) {
-      el.textContent = "no ledger on this Host";
+      el.textContent = t("mission.noLedgerMeta");
       return el;
     }
     const c = skipperCounts(s);
-    const part = (n: number, word: string, cls: string) => {
-      const sp = h("span", n ? cls : "", `${n} ${word}`);
-      return sp;
-    };
+    const part = (n: number, key: PluralKey, cls: string) => h("span", n ? cls : "", tn(key, n));
     if (s.coordinator) {
-      el.append(part(c.handoffs, c.handoffs === 1 ? "hand-off" : "hand-offs", ""), " · ", part(c.working + c.waiting + c.open, c.working + c.waiting + c.open === 1 ? "task" : "tasks", ""));
+      el.append(part(c.handoffs, "mission.handoffs", ""), " · ", part(c.working + c.waiting + c.open, "mission.tasks", ""));
       return el;
     }
-    el.append(part(c.working, "working", "g"), " · ", part(c.waiting, c.waiting === 1 ? "waits" : "waiting", "w"), " · ", part(c.open, "open", ""));
-    if (c.handoffs) el.append(" · ", `${c.handoffs} hand-off${c.handoffs === 1 ? "" : "s"}`);
+    el.append(part(c.working, "mission.working", "g"), " · ", part(c.waiting, "mission.waiting", "w"), " · ", part(c.open, "mission.open", ""));
+    if (c.handoffs) el.append(" · ", tn("mission.handoffs", c.handoffs));
     return el;
   }
   const r = m.rows.get(s.id);
@@ -411,9 +416,9 @@ function metaOf(s: SessionInfo): HTMLElement {
     return el;
   }
   if (s.role === "shell" && s.foreground_program && s.state === "working") el.textContent = s.foreground_program;
-  else if (s.state === "done") el.textContent = s.exit_code ? `exited with ${s.exit_code}` : "exited";
-  else if (s.state === "idle" && s.unread) el.textContent = "turn ended, unread";
-  else if (s.state === "idle" && s.role === "shell") el.textContent = "at the prompt";
+  else if (s.state === "done") el.textContent = s.exit_code ? t("mission.exitedWith", { code: s.exit_code }) : t("mission.exited");
+  else if (s.state === "idle" && s.unread) el.textContent = t("mission.turnEnded");
+  else if (s.state === "idle" && s.role === "shell") el.textContent = t("mission.atPrompt");
   else el.textContent = stateWord(s);
   return el;
 }
@@ -441,14 +446,14 @@ function folderParts(key: string, now: number): HTMLElement[] {
   const works = list.filter((s) => s.state === "working").length;
   const pin = h("span", `mission-pin ${waits ? "waiting" : works ? "working" : ""}`);
   const head = h("span", "head");
-  head.append(p ? projectBadge(p) : h("span", "name", "…"), h("span", "name", p?.name ?? "Other"), h("span", "at", String(list.length)));
+  head.append(p ? projectBadge(p) : h("span", "name", "…"), h("span", "name", p?.name ?? t("sidebar.other")), h("span", "at", String(list.length)));
   const body = h("span", "body");
   const tx = h("span", "tx");
   const meta = h("span", "m");
-  if (waits) meta.append(h("span", "w", `${waits} wait`), " · ");
-  if (works) meta.append(h("span", "g", `${works} working`), " · ");
-  meta.append(`${list.length - waits - works} idle`);
-  tx.append(h("span", "t", p?.name ?? "Other"), meta);
+  if (waits) meta.append(h("span", "w", tn("mission.wait", waits)), " · ");
+  if (works) meta.append(h("span", "g", tn("mission.working", works)), " · ");
+  meta.append(tn("mission.idle", list.length - waits - works));
+  tx.append(h("span", "t", p?.name ?? t("sidebar.other")), meta);
   body.append(chevron(), tx);
   void now;
   return [pin, head, body];
@@ -460,12 +465,12 @@ function clusterHeadParts(key: string, fleet: boolean): HTMLElement[] {
   const waits = list.filter((s) => s.state === "waiting").length;
   const works = list.filter((s) => s.state === "working").length;
   const roll = h("span", "mission-roll");
-  if (waits) roll.appendChild(h("span", "w", `${waits} wait`));
-  if (works) roll.appendChild(h("span", "g", `${works} working`));
-  roll.appendChild(h("span", "", fleet ? `${list.length} sessions` : String(list.length)));
+  if (waits) roll.appendChild(h("span", "w", tn("mission.wait", waits)));
+  if (works) roll.appendChild(h("span", "g", tn("mission.working", works)));
+  roll.appendChild(h("span", "", fleet ? tn("palette.sessions", list.length) : String(list.length)));
   if (fleet) return [h("span", "name", key.slice("fleet:".length)), roll];
   const p = m.projects.get(key) ?? null;
-  return [chevron(), p ? projectBadge(p) : h("span", "name", "…"), h("span", "name", p?.name ?? "Other"), roll];
+  return [chevron(), p ? projectBadge(p) : h("span", "name", "…"), h("span", "name", p?.name ?? t("sidebar.other")), roll];
 }
 
 /** Markup to compare, less the busy icon's phase, which is new on each call. */
@@ -532,7 +537,7 @@ function draw() {
     const pc = inCluster ? accent(p) : "var(--accent)";
     const label = inCluster ? null : cardName(s);
     putCard(id, r, cardParts(s, label, now, numbered.indexOf(id) + 1), cls, pc, dimmed(s));
-    const label2 = `${cardName(s)}, ${s.state}`;
+    const label2 = t("mission.tileLabel", { title: cardName(s), state: t(`state.${s.state}`) });
     if (cards.get(id)!.getAttribute("aria-label") !== label2) cards.get(id)!.setAttribute("aria-label", label2);
   }
   for (const [key, c] of placed.clusters) {
@@ -586,7 +591,7 @@ function draw() {
       plans.set(pl.key, el);
       items.appendChild(el);
     }
-    const text = `Plan · ${pl.plan.title} · ${pl.plan.done}/${pl.plan.cards.length} done`;
+    const text = t("mission.plan", { title: pl.plan.title, done: pl.plan.done, total: pl.plan.cards.length });
     if (el.textContent !== text) el.textContent = text;
     setClass(el, "dim", running && !pl.plan.cards.some((id) => isRunning(m.sess.get(id)!)));
     Object.assign(el.style, { left: `${pl.x}px`, top: `${pl.y}px`, width: `${pl.w}px` });
@@ -601,7 +606,7 @@ function draw() {
   counts();
   find.style.setProperty("--pc", cards.get(lit ?? "")?.style.getPropertyValue("--pc") ?? clusters.get(lit ?? "")?.style.getPropertyValue("--pc") ?? "");
   fault.hidden = hostCan("ledger");
-  if (!fault.hidden) fault.textContent = `${hostName()} has no ledger: the strings between Skippers and panes do not show.`;
+  if (!fault.hidden) fault.textContent = t("mission.noLedgerFault", { host: hostName() });
   drawTicks();
   drawPanel();
 }
@@ -705,14 +710,14 @@ function drawTicks() {
     if (!r) continue;
     const at = G.edgeTick(view, r, vw, vh, size);
     if (!at) continue;
-    const t = h("button", "mission-tick");
-    t.type = "button";
-    t.tabIndex = -1;
-    t.dataset.id = id;
-    t.title = `${el.querySelector(".t")?.textContent ?? ""} waits`;
-    t.style.left = `${at.x}px`;
-    t.style.top = `${at.y}px`;
-    ticks.appendChild(t);
+    const tick = h("button", "mission-tick");
+    tick.type = "button";
+    tick.tabIndex = -1;
+    tick.dataset.id = id;
+    tick.title = t("mission.waits", { name: el.querySelector(".t")?.textContent ?? "" });
+    tick.style.left = `${at.x}px`;
+    tick.style.top = `${at.y}px`;
+    ticks.appendChild(tick);
   }
 }
 
@@ -770,7 +775,7 @@ function panTo(id: string | null) {
   applyView();
 }
 
-zoomBar.append(zoomBtn("−", "Zoom out: -", () => zoomBy(1 / 1.2)), zoomBtn("+", "Zoom in: =", () => zoomBy(1.2)), zoomBtn("⌂", "Fit: Home", fit), zoomLevel);
+zoomBar.append(zoomBtn("−", t("mission.zoomOut", { key: "-" }), () => zoomBy(1 / 1.2)), zoomBtn("+", t("mission.zoomIn", { key: "=" }), () => zoomBy(1.2)), zoomBtn("⌂", t("mission.fitTip", { key: "Home" }), fit), zoomLevel);
 
 // ---- The light, and the moves ----
 
@@ -835,13 +840,13 @@ function openMenu() {
   ctxMenu.open(
     r.left,
     at ? r.bottom : r.top,
-    "MISSION CONTROL",
+    upper(t("cmd.missionControl")),
     [
-      { label: "Arrange", run: () => (offs = {}, order = {}, saveKept(), draw(), fit(), back()) },
-      { label: "Fit", hint: "Home", run: () => (fit(), back()) },
+      { label: t("mission.arrange"), run: () => (offs = {}, order = {}, saveKept(), draw(), fit(), back()) },
+      { label: t("mission.fit"), hint: "Home", run: () => (fit(), back()) },
       { sep: true },
-      { label: "Fold all", run: () => (foldAll(true), back()) },
-      { label: "Open all", run: () => (foldAll(false), back()) },
+      { label: t("mission.foldAll"), run: () => (foldAll(true), back()) },
+      { label: t("mission.openAll"), run: () => (foldAll(false), back()) },
     ],
     back,
   );
@@ -888,7 +893,7 @@ function drawPanel() {
   const fold = h("button", "fold");
   fold.type = "button";
   fold.tabIndex = -1;
-  fold.title = `Fold the panel: ${keyLabel("ledger")}`;
+  fold.title = t("mission.foldPanel", { key: keyLabel("ledger") });
   fold.innerHTML = FOLD_SVG;
   fold.addEventListener("click", togglePanel);
   const body = h("div", "mission-panel-body");
@@ -906,13 +911,13 @@ function drawPanel() {
   const s = lit ? m.sess.get(lit) : null;
   if (!s) {
     const list = lit ? (m.g.fleets.find((f) => f.key === lit)?.projects ?? []).flatMap((p) => m.members.get(p.key) ?? []).concat(m.members.get(lit) ?? []) : [];
-    const name = lit?.startsWith("fleet:") ? lit.slice("fleet:".length) : (m.projects.get(lit ?? "")?.name ?? (lit === OTHER ? "Other" : ""));
-    head.append(h("span", "title", name), h("span", "state", `${list.filter((x) => x.state === "waiting").length} waiting · ${list.filter((x) => x.state === "working").length} working · ${list.length} sessions`), fold);
+    const name = lit?.startsWith("fleet:") ? lit.slice("fleet:".length) : (m.projects.get(lit ?? "")?.name ?? (lit === OTHER ? t("sidebar.other") : ""));
+    head.append(h("span", "title", name), h("span", "state", `${tn("mission.waiting", list.filter((x) => x.state === "waiting").length)} · ${tn("mission.working", list.filter((x) => x.state === "working").length)} · ${tn("palette.sessions", list.length)}`), fold);
     screen.textContent = "";
     screen.classList.add("note");
     screen.removeAttribute("style");
     screenFor = null;
-    side.appendChild(h("div", "mission-task none", "A cluster has no pane. Enter shows its first session."));
+    side.appendChild(h("div", "mission-task none", t("mission.clusterNoPane")));
   } else {
     const p = place(s)?.project ?? null;
     const title = s.coordinator || !!s.skipper ? cardName(s) : p ? `${p.name} · ${cardName(s)}` : cardName(s);
@@ -926,22 +931,22 @@ function drawPanel() {
     const r = m.rows.get(s.id);
     if (s.coordinator || !!s.skipper) {
       const hos = ledgerRows().filter((x) => x.bucket !== "finished" && x.kind === "handoff" && (s.coordinator ? x.state !== "done" : x.pane_id === s.id));
-      side.appendChild(sideHead("Hand-offs", String(hos.length)));
-      if (!hostCan("ledger")) side.appendChild(h("div", "mission-task none", "No ledger on this Host."));
-      else if (!hos.length) side.appendChild(h("div", "mission-task none", "None."));
-      else side.appendChild(kv(hos.map((x) => [x.uid, `${ledgerTitle(x)} · ${s.coordinator ? (x.pane_id && sessions.get(x.pane_id) ? cardName(sessions.get(x.pane_id)!) : x.project) : `from ${skiffAgentName()}`}`])));
+      side.appendChild(sideHead(t("mission.handoffsHead"), String(hos.length)));
+      if (!hostCan("ledger")) side.appendChild(h("div", "mission-task none", t("mission.noLedger")));
+      else if (!hos.length) side.appendChild(h("div", "mission-task none", t("mission.noneDot")));
+      else side.appendChild(kv(hos.map((x) => [x.uid, `${ledgerTitle(x)} · ${s.coordinator ? (x.pane_id && sessions.get(x.pane_id) ? cardName(sessions.get(x.pane_id)!) : x.project) : t("mission.from", { name: skiffAgentName() })}`])));
     } else {
-      side.appendChild(sideHead("Task", r ? r.uid : ""));
-      if (!hostCan("ledger")) side.appendChild(h("div", "mission-task none", "No ledger on this Host."));
-      else if (!r) side.appendChild(h("div", "mission-task none", "No ledger task. A plain session."));
+      side.appendChild(sideHead(t("mission.taskHead"), r ? r.uid : ""));
+      if (!hostCan("ledger")) side.appendChild(h("div", "mission-task none", t("mission.noLedger")));
+      else if (!r) side.appendChild(h("div", "mission-task none", t("mission.noTask")));
       else {
         side.appendChild(h("div", "mission-task", r.task));
         const st = taskState(r);
         const owner = ownerOf(r.owner, skiffAgentSession());
         side.appendChild(kv([
-          ["Owner", owner ? cardName(owner) : r.owner === "grand" ? skiffAgentName() : r.owner],
-          ["State", needWord(st) ?? st, needWord(st) ? "w" : ""],
-          ["Result", r.state === "done" ? (r.result_exists ? "ready" : r.flushed_at ? "flushed" : "none") : "not yet", "mono"],
+          [t("mission.owner"), owner ? cardName(owner) : r.owner === "grand" ? skiffAgentName() : r.owner],
+          [t("mission.state"), needWord(st) ?? st, needWord(st) ? "w" : ""],
+          [t("mission.result"), t(r.state === "done" ? (r.result_exists ? "mission.resultReady" : r.flushed_at ? "mission.resultFlushed" : "mission.resultNone") : "mission.resultNotYet"), "mono"],
         ]));
       }
     }
@@ -964,7 +969,7 @@ async function read() {
   } catch (e) {
     if (paused || screenFor !== id) return;
     // An older skiffd does not know the request.
-    screen.textContent = /unknown variant|bad request/.test(String(e)) ? "Update skiffd to see screens." : String(e);
+    screen.textContent = /unknown variant|bad request/.test(String(e)) ? t("mission.updateDaemon") : String(e);
     screen.classList.add("note");
   } finally {
     reading = false;
@@ -1240,8 +1245,8 @@ export const board = {
   async prepare(focus: string | null) {
     paused = false;
     loadKept();
-    search.title = `Search sessions: ${keyLabel("palette")}`;
-    scope.title = `Only the running sessions stand out, or all: ${keyLabel("focus-mode")}`;
+    search.title = t("mission.searchTip", { key: keyLabel("palette") });
+    scope.title = t("mission.scopeTip", { key: keyLabel("focus-mode") });
     lit = focus;
     draw();
     await read();

@@ -80,6 +80,7 @@ Themes are location cues. One look tells you which project or session you are in
 - Use sentence case. An item that opens a dialog or more choices ends in "…".
 - Name the scope: "Session theme", "Project theme", "Close the pane. The session keeps running."
 - Keep the tone plain and dry. Leave out hype.
+- Words come from the catalog: `t("key")` from `i18n`. Add each new line to `i18n/en.ts` and to the other catalogs (`es.ts`, `zh.ts`); a catalog without the line shows English. Fill names with `{name}` placeholders and counts with `tn()` plural lines, not string joins. Match code on ids, never on the words.
 
 ## Before you ship a UI change
 

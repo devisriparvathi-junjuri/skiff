@@ -39,9 +39,7 @@ function table(rows: { id: string; used_by: string | null }[]) {
   const t: El = m.rowTable(
     {
       grid: "g-agents",
-      noun: "agent",
-      article: "An agent",
-      dupHint: "",
+      words: m.tableWords("agent"),
       labelledBy: "x",
       rows,
       id: (a: any) => a.id,

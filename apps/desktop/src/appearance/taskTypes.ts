@@ -1,4 +1,5 @@
 import type { AgentInfo } from "../platform/types";
+import { t } from "../i18n";
 
 /**
  * Each known agent's model flag, from its `--help` (2026-10-15). Keep in step
@@ -10,8 +11,8 @@ const MODEL_FLAGS: Record<string, string> = { claude: "--model", codex: "-m", gr
 /** The rule `check_name` in skiff-core keeps too. */
 export const TASK_TYPE_NAME = /^[a-z0-9][a-z0-9-]*$/;
 
-export const BAD_TASK_TYPE_NAME = "Use lowercase letters, digits and -, as in code-review.";
-export const BAD_MODEL = "A model is one word, as in opus.";
+/** Why a task type name cannot be saved. */
+export const badTaskTypeName = () => t("tasks.badName");
 
 /** The agent's model flag. Null: it takes its model in its command, as a custom agent does. */
 export function modelFlag(agent: AgentInfo | undefined): string | null {
@@ -29,7 +30,7 @@ export function taskCommand(agent: AgentInfo | undefined, model: string): string
 
 /** Why a model cannot be saved, or null. */
 export function modelError(model: string): string | null {
-  return /\s/.test(model.trim()) ? BAD_MODEL : null;
+  return /\s/.test(model.trim()) ? t("tasks.badModel") : null;
 }
 
 /** "640 B", "3.4 KB". */

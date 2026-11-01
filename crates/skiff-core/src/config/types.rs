@@ -30,6 +30,10 @@ pub struct Appearance {
     /// Mission control's filter: `running` shows only the sessions that work
     /// or wait, `all` shows every session. Absent: `running`.
     pub mission_filter: Option<String>,
+    /// The app's language, as a code such as `es`. A language Skiff has no
+    /// words for shows English. Absent: the system language. The app reads
+    /// it when the window opens.
+    pub language: Option<String>,
 }
 
 /// Which apps Skiff hands things to.

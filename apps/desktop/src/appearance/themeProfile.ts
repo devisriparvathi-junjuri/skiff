@@ -1,7 +1,7 @@
 import type { TerminalTheme, ThemeColorFamily } from "../platform/types";
 import { isLight } from "./colors";
 
-type ColorFamily = ThemeColorFamily | "Unclassified";
+export type ColorFamily = ThemeColorFamily | "Unclassified";
 export const COLOR_FAMILIES: readonly ColorFamily[] = ["Neutral", "Beige", "Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Purple", "Pink", "Unclassified"];
 
 /** A theme's declared main color. Shared ANSI colors do not set its category. */

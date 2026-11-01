@@ -7,6 +7,7 @@ import { selectProject } from "./view";
 import { hostInvoke } from "../app/hostCaps";
 import { hostName, isRemote } from "../app/hosts";
 import type { FolderInfo, Project } from "../platform/types";
+import { t } from "../i18n";
 
 /**
  * Pick a folder, check it with the Host, and add it with the defaults: the
@@ -21,7 +22,7 @@ export function createAddProject(onAdded: (p: Project, fleet: string | null) => 
   let busy = false;
   let fleet: string | null = null;
   async function add(folder: FolderInfo) {
-    if (!folder.root || folder.error) throw new Error(folder.error ?? "Pick a folder.");
+    if (!folder.root || folder.error) throw new Error(folder.error ?? t("project.pickFolder"));
     const p = await hostInvoke<Project>("project_config", "add_project", {
       path: folder.root,
       name: folder.name,
@@ -36,22 +37,22 @@ export function createAddProject(onAdded: (p: Project, fleet: string | null) => 
     const host = hostName();
     const inspect = (path: string) => hostInvoke<FolderInfo>("project_config", "inspect_folder", { path });
     openFolderPicker({
-      action: "Add project",
+      action: t("project.add"),
       start: "repos",
       check: async (path, name) => {
         const folder = await inspect(path);
         if (!folder.root) {
           return {
-            label: "Initialize repository…",
-            note: `${name} is not a git repository.`,
+            label: t("project.initRepo"),
+            note: t("project.notRepo", { name }),
             run: () => initRemote(path, name, host),
           };
         }
         const known = S.projects.find((p) => p.path === folder.root);
         if (known) {
           return {
-            label: "Show it",
-            note: `${name} is a project already.`,
+            label: t("project.showIt"),
+            note: t("project.already", { name }),
             run: async () => {
               selectProject(known.name);
               return true;
@@ -71,9 +72,9 @@ export function createAddProject(onAdded: (p: Project, fleet: string | null) => 
     return new Promise((resolve) => {
       let done = false;
       actionDialog({
-        title: `Initialize a git repository in ${name}?`,
-        body: `Git makes a .git folder in ${path} on ${host}. Nothing else changes.`,
-        action: "Initialize",
+        title: t("project.initTitle", { name }),
+        body: t("project.initBody", { path, host }),
+        action: t("project.initAction"),
         tone: "go",
         submit: async () => {
           await add(await hostInvoke<FolderInfo>("project_config", "init_host_repository", { path }));
@@ -90,7 +91,7 @@ export function createAddProject(onAdded: (p: Project, fleet: string | null) => 
       if (isRemote()) return addRemote();
       busy = true;
       try {
-        const dir = await openFolder({ directory: true, title: "Pick a project folder" });
+        const dir = await openFolder({ directory: true, title: t("project.pickFolderTitle") });
         if (typeof dir !== "string") return onClose();
         const folder = await hostInvoke<FolderInfo>("project_config", "inspect_folder", { path: dir });
         await add(folder);

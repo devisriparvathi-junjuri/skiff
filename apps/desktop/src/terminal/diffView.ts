@@ -6,6 +6,7 @@
  */
 import { h } from "../ui/dom";
 import type { HostDiff } from "../platform/types";
+import { t } from "../i18n";
 
 /** The Host's limit on diff text, for the cut note. */
 const LIMIT_KIB = 512;
@@ -38,11 +39,11 @@ export function diffLines(text: string): DiffLine[] {
 /** What the viewer says above the text, for `file`, or the whole worktree without one. `base`: the branch the diff counts from, else HEAD. */
 export function diffNotes(d: HostDiff, file?: string, base?: string): string[] {
   const notes: string[] = [];
-  if (d.untracked) notes.push("Untracked file. It is compared with an empty file.");
-  if (d.binary) notes.push("Binary file. There is no text to show.");
-  if (!d.text && !d.binary) notes.push(`No change against ${base ?? "HEAD"}.`);
-  if (d.truncated) notes.push(`The diff is longer than ${LIMIT_KIB} KiB. Only its start shows.`);
-  if (!file) notes.push("Untracked files are not in this view. Select one to see it.");
+  if (d.untracked) notes.push(t("view.untracked"));
+  if (d.binary) notes.push(t("view.binaryDiff"));
+  if (!d.text && !d.binary) notes.push(t("view.noChange", { base: base ?? "HEAD" }));
+  if (d.truncated) notes.push(t("view.diffLong", { kib: LIMIT_KIB }));
+  if (!file) notes.push(t("view.untrackedOut"));
   return notes;
 }
 

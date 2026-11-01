@@ -3,6 +3,7 @@
  *  every surface asks `hostCan` before it offers an action. The Host
  *  connection checks each request again; nothing falls back to local data. */
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
+import { type MessageKey, t } from "../i18n";
 
 type HostCap =
   | "session_inventory"
@@ -60,30 +61,30 @@ const MAJOR: Record<HostCap, number> = {
 const WIRE: Partial<Record<HostCap, string>> = { skipper_fleets: "skipper_run" };
 
 /** What each capability offers, for the refusal. */
-const OFFERS: Record<HostCap, string> = {
-  session_inventory: "a session list",
-  session_screen: "session screens",
-  session_updates: "session updates",
-  session_terminal: "terminals",
-  session_lifecycle: "new, ended or renamed sessions",
-  session_groups: "groups",
-  session_agents: "an agent list",
-  daemon_metrics: "daemon metrics",
-  projects: "projects",
-  git_status: "Git changes",
-  git_diff: "diffs",
-  project_config: "changes to its projects",
-  worktrees: "new or removed worktrees",
-  files: "its files",
-  folders: "its folders",
-  project_assets: "project images",
-  ledger: "the ledger",
-  skipper: "Skiff agent settings",
-  skipper_config: "changes to its Skiff agent",
-  skipper_file: "its Skipper instruction files",
-  skipper_run: "a Skiff agent it starts",
-  skipper_fleets: "fleet Skippers",
-  agent_config: "changes to its agents",
+const OFFERS: Record<HostCap, MessageKey> = {
+  session_inventory: "hostCaps.session_inventory",
+  session_screen: "hostCaps.session_screen",
+  session_updates: "hostCaps.session_updates",
+  session_terminal: "hostCaps.session_terminal",
+  session_lifecycle: "hostCaps.session_lifecycle",
+  session_groups: "hostCaps.session_groups",
+  session_agents: "hostCaps.session_agents",
+  daemon_metrics: "hostCaps.daemon_metrics",
+  projects: "hostCaps.projects",
+  git_status: "hostCaps.git_status",
+  git_diff: "hostCaps.git_diff",
+  project_config: "hostCaps.project_config",
+  worktrees: "hostCaps.worktrees",
+  files: "hostCaps.files",
+  folders: "hostCaps.folders",
+  project_assets: "hostCaps.project_assets",
+  ledger: "hostCaps.ledger",
+  skipper: "hostCaps.skipper",
+  skipper_config: "hostCaps.skipper_config",
+  skipper_file: "hostCaps.skipper_file",
+  skipper_run: "hostCaps.skipper_run",
+  skipper_fleets: "hostCaps.skipper_fleets",
+  agent_config: "hostCaps.agent_config",
 };
 
 /** `name@major` of the selected Host. `null` until the first answer. */
@@ -111,6 +112,6 @@ export function hostCan(cap: HostCap): boolean {
  *  capabilities are known it calls at once, so keystrokes keep their order. */
 export async function hostInvoke<T = void>(cap: HostCap, cmd: string, args?: InvokeArgs): Promise<T> {
   if (!caps) await (loading ?? loadHostCaps());
-  if (!hostCan(cap)) throw new Error(`This Host does not offer ${OFFERS[cap]}. Its Skiff is older than this app, or its skiff-host does not run: use Update Skiff… on that Host in Settings › Hosts.`);
+  if (!hostCan(cap)) throw new Error(t("hostCaps.refusal", { what: t(OFFERS[cap]) }));
   return invoke<T>(cmd, args);
 }

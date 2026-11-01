@@ -10,6 +10,7 @@ import { render } from "../app/render";
 import { S, sessions, upsert } from "../app/state";
 
 import { refocusTerminal } from "./view";
+import { t } from "../i18n";
 import { hostInvoke } from "../app/hostCaps";
 
 /** What the operator has typed so far; a re-render rebuilds the input from it. */
@@ -87,7 +88,7 @@ export function renameRow(s: SessionInfo, color: string): HTMLElement {
   input.spellcheck = false;
   input.dataset.key = "session-rename";
   input.addEventListener("input", () => (renameDraft = input.value));
-  input.setAttribute("aria-label", "Session name. Empty uses the terminal title.");
+  input.setAttribute("aria-label", t("rename.session"));
   let done = false;
   const finish = (name: string | null, byKey = false) => {
     if (done) return;
@@ -151,7 +152,7 @@ export function groupRenameInput(g: Group): HTMLInputElement {
     input.value = r.name;
     input.spellcheck = false;
     input.dataset.key = "group-rename";
-    input.setAttribute("aria-label", "Group name");
+    input.setAttribute("aria-label", t("rename.group"));
     input.addEventListener("input", () => (r.name = input.value));
     input.addEventListener("blur", () => {
       if (S.renaming === r && input.isConnected) void renameGroup(g.id, r.name);

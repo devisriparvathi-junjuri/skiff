@@ -4,6 +4,7 @@ import { host } from "./terminalHost";
 import { S } from "../app/state";
 
 import { panes } from "./terminalState";
+import { t } from "../i18n";
 
 let findBar: HTMLElement | null = null;
 
@@ -13,9 +14,9 @@ export function openFind() {
   findBar?.remove();
   const bar = h("div", "find-bar");
   const input = h("input", "find-input");
-  input.placeholder = "Find";
+  input.placeholder = t("search.find");
   input.spellcheck = false;
-  input.setAttribute("aria-label", "Find in terminal");
+  input.setAttribute("aria-label", t("section.find"));
   const opts = { decorations: { matchOverviewRuler: "#ffb454", activeMatchColorOverviewRuler: "#ffb454", activeMatchBackground: "#ffb45466", matchBackground: "#ffb45433" } };
   const next = () => pane.search.findNext(input.value, opts);
   const prev = () => pane.search.findPrevious(input.value, opts);

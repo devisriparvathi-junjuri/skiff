@@ -28,6 +28,7 @@ import { $, h } from "../ui/dom";
 import { tally } from "../diagnostics/stalls";
 import { render } from "../app/renderRequest";
 import type { Project, SessionInfo } from "../platform/types";
+import { t } from "../i18n";
 
 export type SidebarView = "tree" | "skippers";
 
@@ -84,7 +85,7 @@ function latestLine(e: Entry): string {
   const s = e.s;
   if (!s) {
     const a = skiffAgentChoice();
-    return a ? `start ${a.id}` : "no agent on";
+    return a ? t("sidebar.agentStart", { agent: a.id }) : t("sidebar.noAgentOn");
   }
   const work = e.scope ? ledgerWorkTitle(e.scope) : null;
   return work ?? s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? agentName(s);
@@ -106,6 +107,12 @@ function watchOf(e: Entry): { state: WatchState; text: string } | null {
 }
 
 /** The frame's state: the session state, with done split into exited and failed, and idle into unread. */
+/** frameState in words, for a screen reader. */
+function stateLabel(s: SessionInfo): string {
+  const st = frameState(s);
+  return st === "failed" ? t("skippers.failed") : st === "unread" ? t("skippers.unread") : t(`state.${s.state}`);
+}
+
 function frameState(s: SessionInfo | null): string {
   if (!s) return "off";
   if (agentFailed(s) || (s.state === "done" && s.exit_code && s.exit_code !== 0)) return "failed";
@@ -194,8 +201,9 @@ function skipperRow(e: Entry, watch: { state: WatchState; text: string } | null,
   const face = skipperFace(e.kind === "admiral" ? null : e.scope, 40);
   face.classList.add("sk-face");
   row.append(face, text);
-  const what = e.kind === "admiral" ? `${e.name}, the Skiff agent` : `${scopeName(e.scope!)} ${e.kind === "fleet" ? "fleet " : ""}Skipper`;
-  row.setAttribute("aria-label", `${what}, ${latestLine(e)}, ${s ? frameState(s) : "not running"}${watch?.text ? `. ${watch.text}` : ""}`);
+  const what = e.kind === "admiral" ? t("skippers.admiral", { name: e.name }) : t(e.kind === "fleet" ? "skipper.avatarFleet" : "skipper.avatarProject", { scope: scopeName(e.scope!), skipper: "Skipper" });
+  const vars = { what, line: latestLine(e), state: s ? stateLabel(s) : t("skippers.notRunning"), watch: watch?.text ?? "" };
+  row.setAttribute("aria-label", watch?.text ? t("skippers.rowLabelWatch", vars) : t("skippers.rowLabel", vars));
   if (watch?.text) row.title = watch.text;
   row.addEventListener("mousedown", (ev) => {
     if (ev.button === 0) row.focus();
@@ -227,7 +235,7 @@ export function renderSkippers(side: HTMLElement) {
     rows.push(row);
   }
   kept = next;
-  if (!rows.length) rows.push(h("div", "note-row", "No Skippers run"));
+  if (!rows.length) rows.push(h("div", "note-row", t("skippers.none")));
   if (side.children.length === rows.length && rows.every((r, i) => side.children[i] === r)) return;
   side.replaceChildren(...rows);
 }
@@ -236,7 +244,7 @@ export function renderSkippers(side: HTMLElement) {
 export function renderViewToggle() {
   const bar = $<HTMLElement>("sidebar-view");
   if (!bar.childElementCount) {
-    for (const [v, label] of [["tree", "Tree"], ["skippers", "Skippers"]] as const) {
+    for (const [v, label] of [["tree", t("skippers.tabTree")], ["skippers", t("skippers.tabSkippers")]] as const) {
       const b = h("button", "sv-tab", label);
       b.type = "button";
       b.tabIndex = -1;

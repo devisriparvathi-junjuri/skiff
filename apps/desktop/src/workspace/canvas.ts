@@ -20,6 +20,8 @@ import type { AgentInfo, Group, Project, Worktree } from "../platform/types";
 import { focusPane, showSingle, unfocus } from "./view";
 
 import { filledOf, PRESETS, slotsOf } from "./layoutSlots";
+import { t } from "../i18n";
+
 const holding = (id: string) => S.groups.find((g) => sessionsOf(g.layout).includes(id)) ?? null;
 
 /** Slots whose session is being created, with what is starting. */
@@ -124,7 +126,7 @@ export function slotBody(id: string, body: HTMLElement) {
   box.dataset.slot = id;
   const pending = starting.get(id);
   if (pending) {
-    box.append(h("div", "slot-wait", `Starting ${pending}…`));
+    box.append(h("div", "slot-wait", t("pane.starting", { name: pending })));
     return void body.replaceChildren(box);
   }
   const list = h("div", "slot-list");
@@ -156,10 +158,10 @@ export function slotBody(id: string, body: HTMLElement) {
 export function slotHead(id: string, head: HTMLElement) {
   if (head.dataset.sig === "slot") return;
   head.dataset.sig = "slot";
-  head.replaceChildren(h("span", "title dim", "Start a session"));
+  head.replaceChildren(h("span", "title dim", t("pane.startSession")));
   const x = button("head-btn", "", () => removeSlot(id));
-  x.title = "Remove this pane";
-  x.setAttribute("aria-label", "Remove this pane");
+  x.title = t("pane.remove");
+  x.setAttribute("aria-label", x.title);
   x.appendChild(icon('<path d="M6 6l12 12M18 6L6 18"></path>'));
   head.appendChild(x);
 }

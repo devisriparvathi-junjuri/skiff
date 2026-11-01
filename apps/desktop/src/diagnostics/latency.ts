@@ -34,6 +34,7 @@ import { showError } from "../ui/alerts";
 import { scheduleRender } from "../app/render";
 import { S } from "../app/state";
 import { startStalls, stopStalls, takeTallies, type StepTime } from "./stalls";
+import { t, tn } from "../i18n";
 
 interface Entry {
   sid: string;
@@ -321,8 +322,8 @@ function indicator() {
     stopTrace();
     scheduleRender("trace");
   });
-  indicatorEl.title = "Stop latency trace";
-  indicatorEl.replaceChildren(h("span", "dot"), h("span", "", `Latency trace · ${rows.length} keys`));
+  indicatorEl.title = t("latency.stop");
+  indicatorEl.replaceChildren(h("span", "dot"), h("span", "", tn("latency.indicator", rows.length)));
   if (!indicatorEl.isConnected) document.querySelector("#statusbar .spacer")?.before(indicatorEl);
 }
 
@@ -337,11 +338,11 @@ function hud() {
     hudEl ??= h("div", "latency-hud");
     const mine = rows.filter((r) => r.sid === S.focused && r.total !== null);
     const last = mine.at(-1)?.total ?? null;
-    const t = values(mine, "total");
+    const totals = values(mine, "total");
     hudEl.classList.toggle("slow", last !== null && last > SLOW_MS);
     hudEl.replaceChildren(
-      h("b", "", last === null ? "type to measure" : `${last.toFixed(1)} ms`),
-      h("span", "", t.length ? `p50 ${pct(t, 50).toFixed(1)} · p99 ${pct(t, 99).toFixed(1)} · ${t.length} keys` : "latency trace on"),
+      h("b", "", last === null ? t("latency.typeToMeasure") : `${last.toFixed(1)} ms`),
+      h("span", "", totals.length ? tn("latency.percentiles", totals.length, { p50: pct(totals, 50).toFixed(1), p99: pct(totals, 99).toFixed(1) }) : t("latency.on")),
     );
     if (hudEl.parentElement !== cell) cell.append(hudEl);
   }, 250);

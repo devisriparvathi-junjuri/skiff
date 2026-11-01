@@ -13,6 +13,7 @@ import { S, sessions } from "../app/state";
 import { currentProject, place } from "../app/stateQueries";
 import { panes } from "../terminal/terminalState";
 import { skiffAgentSession } from "../app/skiffAgent";
+import { t } from "../i18n";
 import { hostInvoke } from "../app/hostCaps";
 
 const knownTheme = (id: string | null) => (S.themes.some((t) => t.id === id) ? id! : DEFAULT_THEME);
@@ -85,9 +86,9 @@ export function themeOverrides(): { id: string; label: string }[] {
   const app = knownTheme(S.appTheme);
   const p = currentProject();
   const own = p && projectThemes.get(p.name);
-  if (own && knownTheme(own) !== app) out.push({ id: knownTheme(own), label: `Project: ${p!.name}` });
+  if (own && knownTheme(own) !== app) out.push({ id: knownTheme(own), label: t("theme.scopeProject", { name: p!.name }) });
   const s = S.focused ? sessions.get(S.focused) : undefined;
-  if (s?.theme && knownTheme(s.theme) !== app) out.push({ id: knownTheme(s.theme), label: `Session: ${taskTitle(s)}` });
+  if (s?.theme && knownTheme(s.theme) !== app) out.push({ id: knownTheme(s.theme), label: t("theme.scopeSession", { name: taskTitle(s) }) });
   return out;
 }
 
@@ -128,10 +129,10 @@ export function applyThemes() {
 export async function sessionThemeMenu(s: SessionInfo) {
   await loadThemes();
   const app = S.themes.find((t) => t.id === themeFor(place(s)?.project));
-  pickTheme(`Session theme: ${taskTitle(s)}`, "This session only. It replaces the project theme.", S.themes, {
+  pickTheme(t("theme.sessionTitle", { name: taskTitle(s) }), t("theme.sessionScope"), S.themes, {
     active: s.theme,
     reload: async () => { await loadThemes(); return S.themes; },
-    none: { label: "Same as project", theme: app },
+    none: { label: t("theme.sameAsProject"), theme: app },
     pick: (id) => {
       const live = sessions.get(s.id);
       if (!live) return;
@@ -152,10 +153,10 @@ export async function groupThemeMenu(g: Group) {
   const first = members[0]?.theme ?? null;
   const shared = members.every((s) => s.theme === first) ? first : null;
   const app = S.themes.find((t) => t.id === themeFor(members[0] && place(members[0])?.project));
-  pickTheme(`Group theme: ${g.name}`, "Every session in this group. It replaces the project theme.", S.themes, {
+  pickTheme(t("theme.groupTitle", { name: g.name }), t("theme.groupScope"), S.themes, {
     active: shared,
     reload: async () => { await loadThemes(); return S.themes; },
-    none: { label: "Same as project", theme: app },
+    none: { label: t("theme.sameAsProject"), theme: app },
     pick: (id) => {
       // Look sessions up now: one may have ended while the picker was open.
       for (const sid of ids) {
@@ -186,10 +187,10 @@ export function ownTheme(s: SessionInfo): TerminalTheme | null {
 export async function projectThemeMenu(p: Project) {
   await loadThemes();
   const app = S.themes.find((t) => t.id === (knownTheme(S.appTheme)));
-  pickTheme(`Project theme: ${p.name}`, "This project and its sessions without a theme of their own. It replaces the app theme.", S.themes, {
+  pickTheme(t("theme.projectTitle", { name: p.name }), t("theme.projectScope"), S.themes, {
     active: projectTheme(p),
     reload: async () => { await loadThemes(); return S.themes; },
-    none: { label: "Same as app", theme: app },
+    none: { label: t("theme.sameAsApp"), theme: app },
     pick: (id) => {
       if (id) projectThemes.set(p.name, id);
       else projectThemes.delete(p.name);

@@ -9,6 +9,7 @@ import { MAX_PANES, S, sessions } from "../app/state";
 import { groupOf } from "../app/stateQueries";
 
 import { applyLayout, refocusTerminal, showGroup } from "./view";
+import { t } from "../i18n";
 
 /** Where a Shift+click range starts: the last row toggled, else the open session. */
 let selectAnchor: string | null = null;
@@ -91,7 +92,7 @@ export function selectRange(id: string) {
  * A whole group plus loose sessions: add the loose ones to it.
  * Anything else: a new group. `status` says it in the bar.
  */
-export function selectionPlan(): { label: string; status: string; size: number; run: () => void } | null {
+export function selectionPlan(): { kind: "add" | "new"; label: string; status: string; size: number; run: () => void } | null {
   const ids = S.selection.filter((id) => sessions.has(id));
   const n = ids.length;
   const touched = [...new Set(ids.map((id) => groupOf(id)).filter((g): g is Group => !!g))];
@@ -105,8 +106,9 @@ export function selectionPlan(): { label: string; status: string; size: number; 
     const g = touched[0];
     const all = [...sessionsOf(g.layout), ...loose];
     return {
-      label: `Add to ${g.name}`,
-      status: `${n} selected. Enter to add ${loose.length} to ${g.name}.`,
+      kind: "add",
+      label: t("select.addTo", { name: g.name }),
+      status: t("select.addToStatus", { n, count: loose.length, name: g.name }),
       size: all.length,
       run: () => {
         clearSelection();
@@ -116,8 +118,9 @@ export function selectionPlan(): { label: string; status: string; size: number; 
     };
   }
   return {
-    label: "New group",
-    status: touched.length ? `${n} selected. Enter to make a new group; they leave their groups.` : `${n} selected. Enter to group them.`,
+    kind: "new",
+    label: t("select.newGroup"),
+    status: t(touched.length ? "select.newGroupLeave" : "select.newGroupStatus", { n }),
     size: n,
     run: () => {
       clearSelection();
@@ -146,11 +149,11 @@ export function renderSelectBar() {
   const ready = n >= 2 && !tooMany;
   const split = button("sel-open", plan.label, splitSelection);
   split.disabled = !ready;
-  split.title = ready ? plan.label : tooMany ? `A group holds ${MAX_PANES}. Deselect ${plan.size - MAX_PANES}.` : "Select at least 2 sessions.";
+  split.title = ready ? plan.label : tooMany ? t("select.tooManyTitle", { max: MAX_PANES, count: plan.size - MAX_PANES }) : t("select.tooFew");
   const label = tooMany
-    ? `${n} selected. A group holds ${MAX_PANES}: deselect ${plan.size - MAX_PANES}.`
+    ? t("select.tooMany", { n, max: MAX_PANES, count: plan.size - MAX_PANES })
     : n === 1
-      ? "1 selected. Ctrl+click to add more."
+      ? t("select.one")
       : plan.status;
   // Renders run while agents print. Rebuilding the button between mouse down
   // and mouse up would lose the click, so the bar changes only when its text does.
@@ -160,7 +163,7 @@ export function renderSelectBar() {
   const actions = h("div", "sel-actions");
   actions.append(
     split,
-    button("sel-clear", "Clear", () => {
+    button("sel-clear", t("select.clear"), () => {
       clearSelection();
       render();
       refocusTerminal();

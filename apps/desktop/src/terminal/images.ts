@@ -25,6 +25,7 @@ import { insertShown } from "./insertSignal";
 import { focusPane } from "./paneActions";
 import { type Typed, typeFiles, whoOf } from "./terminalClipboard";
 import { panes } from "./terminalState";
+import { locale, t, upper } from "../i18n";
 
 /** One library image, as `images` answers. */
 export interface Image {
@@ -130,7 +131,7 @@ void listen("skiff:images-changed", () => void load());
 const lib = h("div");
 lib.id = "images-lib";
 lib.setAttribute("role", "menu");
-lib.setAttribute("aria-label", "Images");
+lib.setAttribute("aria-label", t("images.title"));
 lib.tabIndex = -1;
 lib.hidden = true;
 const libCount = h("span", "lib-count");
@@ -146,10 +147,10 @@ document.body.appendChild(lib);
 export function searchField(): HTMLInputElement {
   const f = h("input", "lib-search");
   f.type = "text";
-  f.placeholder = "Search";
+  f.placeholder = t("images.search");
   f.spellcheck = false;
   f.autocomplete = "off";
-  f.setAttribute("aria-label", "Search");
+  f.setAttribute("aria-label", t("images.search"));
   return f;
 }
 
@@ -228,7 +229,7 @@ export function when(at: number): string {
   const d = new Date(at);
   const now = new Date();
   if (d.toDateString() === now.toDateString()) return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return d.toLocaleDateString(locale(), { month: "short", day: "numeric" });
 }
 
 /** Line 2: the project letters in its color and the session title. Dim once that session ended. */
@@ -259,9 +260,9 @@ function act(label: string, run: () => void, cls = ""): HTMLButtonElement {
  *  never its cache hash. */
 export function shownName(i: Image): string {
   if (i.name) return i.name;
-  if (i.session) return "Pasted image";
+  if (i.session) return t("images.pasted");
   const ext = i.file.includes(".") ? i.file.split(".").pop()!.toUpperCase() : "";
-  return ext ? `${ext} image` : "Image";
+  return ext ? t("images.ofType", { ext }) : t("images.image");
 }
 
 function row(i: Image, words: string[]): HTMLElement {
@@ -281,12 +282,12 @@ function row(i: Image, words: string[]): HTMLElement {
   const right = h("span", "lib-right");
   const x = act("", () => void remove(i), " x");
   x.appendChild(icon('<path d="M6 6l12 12M18 6L6 18"></path>'));
-  x.setAttribute("aria-label", "Delete");
+  x.setAttribute("aria-label", t("images.delete"));
   right.append(
     doneCell(word, i.at),
-    act("Insert", () => void insertImage(i)),
-    act(i.pinned ? "Unpin" : "Pin", () => void pin(i)),
-    act("Copy path", () => void copyPath(i)),
+    act(t("images.insert"), () => void insertImage(i)),
+    act(t(i.pinned ? "images.unpin" : "images.pin"), () => void pin(i)),
+    act(t("menu.copyPath"), () => void copyPath(i)),
     x,
   );
   r.append(th, text, right);
@@ -297,7 +298,7 @@ function row(i: Image, words: string[]): HTMLElement {
 
 /** The time; else "Copied", or "Inserted" with a check. */
 function doneCell(word: string | null, at: number): HTMLElement {
-  const cell = h("span", "lib-time" + (word ? " copied" : ""), word ?? when(at));
+  const cell = h("span", "lib-time" + (word ? " copied" : ""), word ? t(word === "Inserted" ? "images.inserted" : "images.copied") : when(at));
   if (word === "Inserted") cell.prepend(icon('<path d="M4 12.5l5 5 11-11"></path>'));
   return cell;
 }
@@ -320,7 +321,7 @@ export function section(name: string, n: number): HTMLElement {
 }
 
 /** "8", or "2 of 8" with a query. */
-export const countText = (n: number, words: string[]) => (words.length ? `${n} of ${list.length}` : String(list.length));
+export const countText = (n: number, words: string[]) => (words.length ? t("images.countOf", { n, total: list.length }) : String(list.length));
 
 function draw() {
   const words = query();
@@ -330,10 +331,10 @@ function draw() {
   lib.classList.toggle("in-list", keysIn === "list");
   const pins = o.filter((i) => i.pinned).length;
   const kids: HTMLElement[] = [];
-  if (!o.length) kids.push(h("div", "lib-none", "No images match"));
+  if (!o.length) kids.push(h("div", "lib-none", t("images.noMatch")));
   o.forEach((i, n) => {
-    if (pins && n === 0) kids.push(section("PINNED", pins));
-    if (pins && n === pins && pins < o.length) kids.push(section("RECENT", o.length - pins));
+    if (pins && n === 0) kids.push(section(upper(t("images.pinned")), pins));
+    if (pins && n === pins && pins < o.length) kids.push(section(upper(t("images.recent")), o.length - pins));
     kids.push(row(i, words));
   });
   seen.disconnect();
@@ -538,7 +539,7 @@ export function imagesButton(id: string): HTMLElement | null {
     if (id !== S.focused) focusPane(id);
     openAt(at);
   });
-  b.setAttribute("aria-label", "Images");
+  b.setAttribute("aria-label", t("images.title"));
   b.setAttribute("aria-haspopup", "menu");
   b.setAttribute("aria-expanded", String(!lib.hidden));
   const mini = h("span", "head-mini");

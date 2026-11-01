@@ -17,6 +17,7 @@ import { collapsed, S, selectedWorktree, sessions } from "../app/state";
 import { worktreeSessions } from "../app/stateQueries";
 
 import { refocusTerminal, selectProject } from "./view";
+import { t, tn } from "../i18n";
 import { hostInvoke } from "../app/hostCaps";
 
 /** The project's sessions, and one line per worktree that has any, for a confirmation. */
@@ -26,18 +27,17 @@ function projectSessions(p: Project) {
   for (const w of p.worktrees) {
     const list = worktreeSessions(w);
     if (!list.length) continue;
-    lines.push(`${branchName(w)}:`);
+    lines.push(t("project.sessionsIn", { branch: branchName(w) }));
     for (const s of list) {
       ids.push(s.id);
-      const mark = s.state === "working" ? " (working)" : s.state === "waiting" ? " (waiting)" : "";
-      lines.push(`  ${agentName(s)} · ${taskTitle(s)}${mark}`);
+      const vars = { agent: agentName(s), title: taskTitle(s) };
+      if (s.state === "working" || s.state === "waiting") lines.push(t("project.sessionLineState", { ...vars, state: t(s.state === "working" ? "state.working" : "state.waiting") }));
+      else lines.push(t("project.sessionLine", vars));
     }
   }
   const running = ids.filter((id) => sessions.get(id)?.state !== "done");
   return { ids, running, list: lines.join("\n") };
 }
-
-const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /** Ends the sessions. False when one would not end: the project stays as it was. */
 async function endAll(ids: string[]): Promise<boolean> {
@@ -75,9 +75,9 @@ export async function closeProject(p: Project) {
   const { ids, running, list } = projectSessions(p);
   if (running.length) {
     const ok = await confirmAction({
-      title: `Close ${p.name}?`,
-      body: `Ends ${plural(running.length, "running session")}. Their unsaved work in the terminal is lost.\n\n${list}\n\nThe project keeps its settings. Open it again from File › Open closed project.`,
-      action: `End ${plural(running.length, "session")} and close`,
+      title: t("project.closeTitle", { name: p.name }),
+      body: tn("project.closeBody", running.length, { list }),
+      action: tn("project.closeAction", running.length),
     });
     if (!ok) return refocusTerminal();
   }
@@ -93,13 +93,10 @@ export async function closeProject(p: Project) {
 /** Removes the project and its settings, open or closed, after a confirmation. */
 export async function removeProject(p: Project) {
   const { ids, running, list } = projectSessions(p);
-  const ends = running.length
-    ? `\n\nEnds ${plural(running.length, "running session")}. Their unsaved work in the terminal is lost.\n\n${list}`
-    : "";
   const ok = await confirmAction({
-    title: `Remove ${p.name}?`,
-    body: `Skiff forgets this project and its settings: color, icon, background and theme. The folder ${p.path} and its worktrees stay on disk.${ends}`,
-    action: running.length ? `End ${plural(running.length, "session")} and remove` : "Remove project",
+    title: t("project.removeTitle", { name: p.name }),
+    body: running.length ? tn("project.removeBodyRunning", running.length, { path: p.path, list }) : t("project.removeBody", { path: p.path }),
+    action: running.length ? tn("project.removeAction", running.length) : t("project.removeProject"),
   });
   if (!ok) return refocusTerminal();
   if (!(await endAll(ids))) return;
@@ -127,9 +124,9 @@ export async function openClosedProject(p: Project) {
 /** The project menu's last entries. */
 export function closeEntries(p: Project): MenuEntry[] {
   return [
-    { icon: "indicators-minus", label: "Close project", run: () => void closeProject(p) },
+    { icon: "indicators-minus", label: t("cmd.closeProject"), run: () => void closeProject(p) },
     { sep: true },
-    { icon: "tools-trash-2", label: "Remove project…", danger: true, run: () => void removeProject(p) },
+    { icon: "tools-trash-2", label: t("cmd.removeProject"), danger: true, run: () => void removeProject(p) },
   ];
 }
 
@@ -139,10 +136,10 @@ export function closedProjectsMenu(x: number, y: number) {
     icon: "documents-folder-open",
     label: p.name,
     sub: [
-      { icon: "documents-folder-open", label: "Open", run: () => void openClosedProject(p) },
-      { icon: "tools-trash-2", label: "Remove…", danger: true, run: () => void removeProject(p) },
+      { icon: "documents-folder-open", label: t("menu.open"), run: () => void openClosedProject(p) },
+      { icon: "tools-trash-2", label: t("menu.removeAsk"), danger: true, run: () => void removeProject(p) },
     ],
   }));
-  if (!entries.length) entries.push({ label: "No closed projects", disabled: true });
-  ctxMenu.open(x, y, "Closed projects", entries);
+  if (!entries.length) entries.push({ label: t("closed.none"), disabled: true });
+  ctxMenu.open(x, y, t("closed.title"), entries);
 }

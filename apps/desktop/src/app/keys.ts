@@ -10,6 +10,7 @@
  * Quit is the exception on macOS: Cmd+Shift+Q is the system's Log Out, so
  * Quit takes Cmd+Q, as every Mac app does.
  */
+import { type MessageKey, t } from "../i18n";
 
 export type Action =
   | "palette" | "new-session" | "new-worktree" | "add-project" | "end-session"
@@ -171,58 +172,63 @@ export function menuAccel(action: Action): string {
 let skiffAgentName = "Admiral";
 export const setSkiffAgentName = (name: string) => void (skiffAgentName = name);
 
-/** A DESCRIBE line with the names Settings sets filled in. */
-export const describeText = (what: string) => what.replaceAll("{skiff-agent}", skiffAgentName);
+/** Words with the names Settings sets filled in. */
+export const describeText = (key: MessageKey) => t(key, { "skiff-agent": skiffAgentName });
 
-/** What each action does, for the shortcut sheet. Grouped as the menu bar is. */
-export const DESCRIBE: [string, Action, string][] = [
-  ["File", "new-session", "New session in the highlighted worktree, as its + does. A project with one worktree has its start choices in its ⋯ menu. On a remote Host, in a folder on that Host"],
-  ["File", "new-worktree", "New worktree"],
-  ["File", "add-project", "Add project"],
-  ["File", "settings", "Settings"],
-  ["File", "quit", "Quit Skiff. Sessions keep running in skiffd"],
-  ["Edit", "copy", "Copy the terminal selection. In Settings, the selected text in the field"],
-  ["Edit", "paste", "Paste into the terminal. An image is saved to Images and its path typed. In Settings, into the field. A one-line field gets one line"],
-  ["Edit", "images", "Show the images on this computer. Insert puts a path into the focused pane"],
-  ["Edit", "images-gallery", "Show Settings › Images"],
-  ["Edit", "find", "Find in the terminal"],
-  ["Edit", "rename", "Rename the session, or the group or session row in the list"],
-  ["Edit", "theme", "Session theme, or the theme of the group or session row in the list. On a project or another row, the project theme"],
-  ["Edit", "end-session", "End the highlighted session, or the focused pane's session. On a group row, kill all its sessions. It asks first"],
-  ["Project", "project-menu", "Menu for the highlighted row: project, worktree, group, session, Changes or Files. In mission control, the board menu: Arrange, Fit, Fold all, Open all"],
-  ["Project", "project-folder", "Show the project in the file manager. On a file or change row, that file"],
-  ["Project", "project-copy-path", "Copy the project path. On a file or change row, that file's path"],
-  ["Project", "project-color", "Project color"],
-  ["Project", "project-changes", "Show or hide Changes"],
-  ["Project", "project-files", "Show or hide Files"],
-  ["View", "palette", "Command palette. In mission control, search the cards on the board"],
-  ["View", "split-right", "Add pane right"],
-  ["View", "split-down", "Add pane below"],
-  ["View", "close-pane", "Take the session out of its group: the focused pane, or the session row in the list. It stays selected. On a group row, ungroup. Sessions keep running. Over a file or diff, close the preview"],
-  ["View", "next-waiting", "Next waiting session. In mission control, light the next waiting card"],
-  ["View", "skiff-agent", "{skiff-agent}, the Skiff agent: show its pane. With none running, start it in its folder. From its pane, switch the side panel between the tree and the Skippers list"],
-  ["View", "ledger", "Show or hide the Ledger beside {skiff-agent}'s pane. Only while its pane is the one pane on screen. Focus mode keeps the Ledger, maximize hides it. In mission control, fold or open the panel under the canvas"],
-  ["View", "sidebar-view", "Switch the side panel between the tree and the Skippers list. The list shows {skiff-agent} and every Skipper"],
-  ["View", "back", "Back to the last session"],
-  ["View", "session-next", "Next row in the list: worktree, group, session, Changes or Files. A change or file shows its preview, which takes the keys. Changes, Files and folders keep the keys: Space opens or closes them. In Settings, the next section. In mission control, the first card under the lit one. In the Ledger, the next row"],
-  ["View", "session-prev", "Previous row in the list. In Settings, the previous section. In mission control, the card above the lit one. In the Ledger, the previous row"],
-  ["View", "list-project", "To the current project's row in the list. The panes stay. In the sidebar, nothing. In Settings, to the section tabs. In mission control, the card to the left. From the Ledger, back to {skiff-agent}'s pane"],
-  ["View", "list-back", "From a project or fleet row back to the session on screen. From {skiff-agent}'s pane, into the Ledger. In Settings, into the section. In mission control, the card to the right"],
-  ["View", "list-main", "To the project's main worktree in the list, from any row"],
-  ["View", "focus-left", "Focus the pane to the left"],
-  ["View", "focus-right", "Focus the pane to the right"],
-  ["View", "focus-up", "Focus the pane above"],
-  ["View", "focus-down", "Focus the pane below"],
-  ["View", "focus-mode", "Focus mode: hide the list and bars. On a session or group row, not a worktree, Changes or Files. From maximize it shows the view's panes again. Ctrl+Shift+Up/Down step through them. Going to another view ends it. With one pane it is maximize, and either key leaves it. On {skiff-agent}'s pane it keeps the Ledger, and maximize from it hides the Ledger. In mission control, Running (the default) dims the sessions that do not work or wait, or All shows every one as it is"],
-  ["View", "maximize", "Maximize the focused pane, and hide the rest. On a session row only. Ctrl+Shift+Up/Down maximize the next pane of the view. Press again to go back, to focus mode if it came from there. In mission control, the lit session; pressed again, back to mission control"],
-  ["View", "mission-control", "Mission control: the agent hierarchy as a graph. {skiff-agent} at the top, the Skippers under it, each project a cluster of session cards, strings from the ledger between them. Arrows or Ctrl+Shift+Arrows move: Up the parent, Down the first child, Left/Right the cards beside. Space folds a cluster. Click or Enter goes to a session. Press again or Esc to close. With text in the search, the first Esc clears it"],
-  ["View", "font-bigger", "Bigger text. On a session, its pane only: a terminal with the keys, or a session row"],
-  ["View", "font-smaller", "Smaller text. On a session, its pane only"],
-  ["View", "font-reset", "Reset text size. On a session, its pane goes back to the app size"],
-  ["View", "app-font-bigger", "Bigger app text: the app and every terminal"],
-  ["View", "app-font-smaller", "Smaller app text"],
-  ["View", "app-font-reset", "Reset app text size"],
-  ["Help", "region-next", "Next region: session list, terminal"],
-  ["Help", "region-prev", "Previous region"],
-  ["Help", "shortcuts", "This sheet"],
+/** What the action does, for the shortcut sheet. Each action has a `key.<action>` line in the catalog. */
+export const describe = (action: Action) => describeText(`key.${action}`);
+
+export type KeySection = "file" | "edit" | "project" | "view" | "help";
+
+/** The shortcut sheet's sections for the actions. Grouped as the menu bar is. */
+export const DESCRIBE: [KeySection, Action][] = [
+  ["file", "new-session"],
+  ["file", "new-worktree"],
+  ["file", "add-project"],
+  ["file", "settings"],
+  ["file", "quit"],
+  ["edit", "copy"],
+  ["edit", "paste"],
+  ["edit", "images"],
+  ["edit", "images-gallery"],
+  ["edit", "find"],
+  ["edit", "rename"],
+  ["edit", "theme"],
+  ["edit", "end-session"],
+  ["project", "project-menu"],
+  ["project", "project-folder"],
+  ["project", "project-copy-path"],
+  ["project", "project-color"],
+  ["project", "project-changes"],
+  ["project", "project-files"],
+  ["view", "palette"],
+  ["view", "split-right"],
+  ["view", "split-down"],
+  ["view", "close-pane"],
+  ["view", "next-waiting"],
+  ["view", "skiff-agent"],
+  ["view", "ledger"],
+  ["view", "sidebar-view"],
+  ["view", "back"],
+  ["view", "session-next"],
+  ["view", "session-prev"],
+  ["view", "list-project"],
+  ["view", "list-back"],
+  ["view", "list-main"],
+  ["view", "focus-left"],
+  ["view", "focus-right"],
+  ["view", "focus-up"],
+  ["view", "focus-down"],
+  ["view", "focus-mode"],
+  ["view", "maximize"],
+  ["view", "mission-control"],
+  ["view", "font-bigger"],
+  ["view", "font-smaller"],
+  ["view", "font-reset"],
+  ["view", "app-font-bigger"],
+  ["view", "app-font-smaller"],
+  ["view", "app-font-reset"],
+  ["help", "region-next"],
+  ["help", "region-prev"],
+  ["help", "shortcuts"],
 ];

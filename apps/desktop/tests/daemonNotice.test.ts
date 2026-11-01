@@ -1,7 +1,10 @@
 // The page's reports for the launch's own daemon steps. Run: pnpm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { opensAtOnce } from "../src/app/daemonNotice.ts";
+import { moduleFromSource } from "./workspaceHarness.ts";
+
+// Loaded through the harness, which supplies the word catalog.
+const { opensAtOnce } = moduleFromSource("../src/app/daemonNotice.ts", {}, {}, "");
 
 const KINDS = ["outdated", "protocol", "newer", "hung", "failed"] as const;
 

@@ -1,5 +1,6 @@
 import { h } from "../ui/dom";
 import { rune } from "../ui/runes";
+import { t } from "../i18n";
 
 /**
  * A Settings table with a draft row last: Settings › Agents and Settings ›
@@ -39,6 +40,8 @@ export interface RowCol<R> {
   head: string;
   /** The word in aria-labels: "name", "command", "model". */
   name: string;
+  /** The field in "Type …, then press Enter": "a command". Absent: the column's name. */
+  field?: string;
   /** lead: a cell the caller draws (the switch). key: the name, required, renames. preview: read-only text. */
   kind: "lead" | "key" | "text" | "select" | "preview";
   mono?: boolean;
@@ -64,18 +67,51 @@ export interface RowCol<R> {
   check?: (value: string) => string | null;
 }
 
+/**
+ * A table's own words. Each is a whole phrase from the catalog, so a language
+ * puts the noun, its article and its gender where it needs them.
+ */
+export interface TableWords {
+  /** "Add agent": the draft's button. */
+  add: string;
+  /** "New agent": the draft row, and the start of its field labels. */
+  newRow: string;
+  /** "New agent name": the draft's name placeholder. */
+  newName: string;
+  /** "The new agent": the draft before it has a name. */
+  theNew: string;
+  /** "An agent needs a name." */
+  needsName: string;
+  /** "An agent named x exists." */
+  exists: (name: string) => string;
+  /** "an agent name": the name field in "Type …". */
+  nameField: string;
+  /** After `exists` on a duplicate add: "Change its command in its row." */
+  dupHint: string;
+}
+
+export type TableKind = "agent" | "file" | "taskType";
+
+/** The words of a table from the catalog: `table.<kind>.*`. */
+export const tableWords = (k: TableKind): TableWords => ({
+  add: t(`table.${k}.add`),
+  newRow: t(`table.${k}.newRow`),
+  newName: t(`table.${k}.newName`),
+  theNew: t(`table.${k}.theNew`),
+  needsName: t(`table.${k}.needsName`),
+  exists: (name) => t(`table.${k}.exists`, { name }),
+  nameField: t(`table.${k}.nameField`),
+  dupHint: t(`table.${k}.dupHint`),
+});
+
 export interface RowTableSpec<R> {
   /** Grid class: "g-agents", "g-tasks". Also names the table in the DOM. */
   grid: string;
-  /** "agent", "task type": in "Add agent" and "New agent name". */
-  noun: string;
-  /** "An agent", "A task type": the start of the error lines. */
-  article: string;
-  /** After "An agent named x exists." on a duplicate add. */
-  dupHint: string;
+  /** What the table holds, in whole phrases: see `tableWords()`. */
+  words: TableWords;
   /** The id of the section's heading. */
   labelledBy: string;
-  /** Header of the end column. Empty: "Remove" for screen readers only. */
+  /** Header of the end column. Empty: Remove, for screen readers only. */
   endHead?: string;
   cols: RowCol<R>[];
   rows: R[];
@@ -115,9 +151,9 @@ export interface RowTableState {
  */
 export function sectionHead(title: string, id?: string, count?: string): HTMLElement {
   const head = h("div", "set-band");
-  const t = h("span", "set-band-title", title);
-  if (id) t.id = id;
-  head.append(t);
+  const band = h("span", "set-band-title", title);
+  if (id) band.id = id;
+  head.append(band);
   if (count !== undefined) head.append(h("span", "set-band-count", count));
   return head;
 }
@@ -138,7 +174,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
 
   const value = (c: RowCol<R>) => draftValue(c, state);
   const current = (): Draft => Object.fromEntries(spec.cols.map((c) => [c.key, value(c)]));
-  const draftLabel = (c: RowCol<R>) => `New ${spec.noun} ${c.name}`;
+  const draftLabel = (c: RowCol<R>) => t("table.draftField", { row: spec.words.newRow, field: c.name });
   const firstField = spec.cols.find((c) => FIELDS.has(c.kind));
 
   /** Focuses a control of this table by its label, after a redraw. */
@@ -169,7 +205,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
   }
   const endHead = h("span", "c-status c-end", spec.endHead ?? "");
   endHead.setAttribute("role", "columnheader");
-  if (!spec.endHead && spec.remove) endHead.setAttribute("aria-label", "Remove");
+  if (!spec.endHead && spec.remove) endHead.setAttribute("aria-label", t("table.remove"));
   head.appendChild(endHead);
   table.appendChild(head);
 
@@ -182,7 +218,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
     for (const c of spec.cols) {
       const cell = h("span", cellClass(c));
       cell.setAttribute("role", "cell");
-      const label = `${id} ${c.name}`;
+      const label = t("table.cell", { id, field: c.name });
       const note = c.note?.(r, {});
       if (c.kind === "lead") cell.appendChild(c.draw!(r));
       else if (c.kind === "preview") fillPreview(cell, c.get?.(r) ?? "", !!c.bad?.(r));
@@ -220,10 +256,10 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
       end.appendChild(why);
     }
     if (spec.remove) {
-      const rm = iconButton("indicators-minus", "Remove", `Remove ${id}`);
+      const rm = iconButton("indicators-minus", t("table.remove"), t("table.removeRow", { id }));
       rm.classList.add("c-remove");
       rm.disabled = kept !== null;
-      if (kept !== null) rm.title = `Used by ${kept}`;
+      if (kept !== null) rm.title = t("table.usedBy", { who: kept });
       rm.addEventListener("click", () => void remove(r, at));
       end.appendChild(rm);
     }
@@ -235,7 +271,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
   // The draft row. It looks unlike the rows above: the panel color, "New …" and a labeled button.
   const draft = h("div", "set-row set-draft");
   draft.setAttribute("role", "row");
-  draft.setAttribute("aria-label", `New ${spec.noun}`);
+  draft.setAttribute("aria-label", spec.words.newRow);
   let preview: HTMLElement | null = null;
   const values = current();
   const inputs: HTMLInputElement[] = [];
@@ -260,7 +296,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
       const el =
         c.kind === "select"
           ? select(c, c.options?.(null) ?? [], value(c), label)
-          : field(c, value(c), c.placeholder?.(null) ?? (c.kind === "key" ? newName(spec, c) : ""), label);
+          : field(c, value(c), c.placeholder?.(null) ?? (c.kind === "key" ? spec.words.newName : ""), label);
       el.setAttribute("aria-describedby", lineId);
       if (state.bad === c.key && state.error) el.setAttribute("aria-invalid", "true");
       if (el instanceof HTMLSelectElement) {
@@ -306,7 +342,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
   const end = h("span", "c-status c-end c-acts");
   end.setAttribute("role", "cell");
   // Never disabled: an add that cannot go says why on the line. While a save runs it is aria-disabled and does nothing.
-  const addText = `Add ${spec.noun}`;
+  const addText = spec.words.add;
   const add = h("button", "set-add");
   add.type = "button";
   add.setAttribute("aria-label", addText);
@@ -337,7 +373,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
     add.classList.toggle("ready", kind === "ready");
     if (adding) add.setAttribute("aria-disabled", "true");
     else add.removeAttribute("aria-disabled");
-    addWord.textContent = adding ? "Adding…" : addText;
+    addWord.textContent = adding ? t("table.adding") : addText;
     // While it saves, the draft keeps what was sent.
     for (const i of inputs) i.readOnly = adding;
     if (!state.error) for (const el of draft.querySelectorAll("[aria-invalid]")) el.removeAttribute("aria-invalid");
@@ -385,9 +421,9 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
     const id = spec.id(r);
     if (c.kind === "key") {
       const why = !v
-        ? `${spec.article} needs a name.`
-        : (c.check?.(v) ?? (spec.rows.some((x) => spec.id(x) === v) ? `${spec.article} named ${v} exists.` : null));
-      if (why) return void settle(`${why} ${id} keeps its name.`);
+        ? spec.words.needsName
+        : (c.check?.(v) ?? (spec.rows.some((x) => spec.id(x) === v) ? spec.words.exists(v) : null));
+      if (why) return void settle(t("table.keepsName", { why, id }));
     } else {
       const why = c.check?.(v) ?? spec.checkEdit?.(r, c.key, v);
       if (why) return void settle(why);
@@ -399,8 +435,8 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
 
   async function remove(r: R, at: number) {
     settle(await spec.remove!(r));
-    const t = document.querySelector(`[data-row-table="${spec.grid}"]`);
-    const rms = t ? [...t.querySelectorAll<HTMLButtonElement>(".c-remove:not(:disabled)")] : [];
+    const table = document.querySelector(`[data-row-table="${spec.grid}"]`);
+    const rms = table ? [...table.querySelectorAll<HTMLButtonElement>(".c-remove:not(:disabled)")] : [];
     const next = rms[Math.min(at, rms.length - 1)];
     if (next) next.focus();
     else focusDraft();
@@ -442,7 +478,7 @@ function invalid<R>(spec: RowTableSpec<R>, d: Draft, shown: (c: RowCol<R>) => bo
   for (const c of spec.cols.filter((c) => FIELDS.has(c.kind) && shown(c) && d[c.key])) {
     const why =
       c.check?.(d[c.key]) ??
-      (c.kind === "key" && spec.rows.some((r) => spec.id(r) === d[c.key]) ? `${spec.article} named ${d[c.key]} exists. ${spec.dupHint}` : null);
+      (c.kind === "key" && spec.rows.some((r) => spec.id(r) === d[c.key]) ? `${spec.words.exists(d[c.key])} ${spec.words.dupHint}`.trim() : null);
     if (why) return { col: c, why };
   }
   return null;
@@ -450,29 +486,23 @@ function invalid<R>(spec: RowTableSpec<R>, d: Draft, shown: (c: RowCol<R>) => bo
 
 /** "a command", "an agent name": the field named in "Type …". */
 function fieldWords<R>(spec: RowTableSpec<R>, c: RowCol<R>): string {
-  if (c.kind === "key") return `${spec.article.toLowerCase()} name`;
-  return `${/^[aeiou]/i.test(c.name) ? "an" : "a"} ${c.name}`;
+  return c.kind === "key" ? spec.words.nameField : (c.field ?? c.name);
 }
 
 /** The kind and the text of the line under the draft. */
 export function draftLine<R>(spec: RowTableSpec<R>, state: RowTableState): { kind: LineKind; text: string } {
-  const add = `Add ${spec.noun}`;
-  if (state.pending !== null) return { kind: "adding", text: `Adding ${state.pending}…` };
+  const add = spec.words.add;
+  if (state.pending !== null) return { kind: "adding", text: t("table.addingName", { name: state.pending }) };
   if (state.error) return { kind: "error", text: state.error };
   const blocked = spec.blocked?.();
   if (blocked) return { kind: "blocked", text: blocked };
-  if (!draftDirty(spec, state)) return state.done !== null ? { kind: "added", text: `Added ${state.done}.` } : { kind: "hidden", text: "" };
+  if (!draftDirty(spec, state)) return state.done !== null ? { kind: "added", text: t("table.added", { name: state.done }) } : { kind: "hidden", text: "" };
   const { d, shown } = draftValues(spec, state);
   const empty = missing(spec, d, shown);
-  if (empty) return { kind: "incomplete", text: `Not added yet. Type ${fieldWords(spec, empty)}, then press Enter.` };
-  const name = d[spec.cols.find((c) => c.kind === "key")?.key ?? ""] || `The new ${spec.noun}`;
-  if (invalid(spec, d, shown)) return { kind: "check", text: `${name} is not added yet. Press Enter or ${add} to see what to change.` };
-  return { kind: "ready", text: `${name} is not added yet. Press Enter or ${add}.` };
-}
-
-/** The draft's name placeholder: "New agent name", "New task type". */
-function newName<R>(spec: RowTableSpec<R>, c: RowCol<R>): string {
-  return spec.noun.endsWith(c.name) ? `New ${spec.noun}` : `New ${spec.noun} ${c.name}`;
+  if (empty) return { kind: "incomplete", text: t("table.typeField", { field: fieldWords(spec, empty) }) };
+  const name = d[spec.cols.find((c) => c.kind === "key")?.key ?? ""] || spec.words.theNew;
+  if (invalid(spec, d, shown)) return { kind: "check", text: t("table.check", { name, add }) };
+  return { kind: "ready", text: t("table.ready", { name, add }) };
 }
 
 function cellClass<R>(c: RowCol<R>): string {

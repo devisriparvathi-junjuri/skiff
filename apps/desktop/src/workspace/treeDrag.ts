@@ -13,6 +13,7 @@ import { treeDrag } from "./tree";
 import { S } from "../app/state";
 import { render } from "../app/render";
 import { h } from "../ui/dom";
+import { t } from "../i18n";
 
 const MARKS = ["drop-before", "drop-after", "drop-into"];
 
@@ -27,7 +28,7 @@ export function dragTree(down: MouseEvent, source: HTMLElement, moving: Project[
   let ghost: HTMLElement | null = null;
   let active = false;
 
-  const into = (name: string | null) => (name ? `Add to ${name}` : p?.fleet ? `Take out of ${p.fleet}` : "");
+  const into = (name: string | null) => (name ? t("fleet.dropAdd", { name }) : p?.fleet ? t("fleet.dropOut", { name: p.fleet }) : "");
   const headOf = (name: string) => document.querySelector<HTMLElement>(`#sidebar-scroll .fleet-pick[data-key="${CSS.escape(`fleet:${name}`)}"]`)?.parentElement ?? null;
   const kidsOf = (name: string) => document.querySelector<HTMLElement>(`#sidebar-scroll [data-kids="${CSS.escape(`fleet:${name}`)}"]`);
 
@@ -60,7 +61,7 @@ export function dragTree(down: MouseEvent, source: HTMLElement, moving: Project[
       if (zone === "into") {
         if (qFleet && qFleet === p.fleet) return null;
         if (qFleet) return { anchor: q, side: "after", fleet: qFleet, el, mark: "drop-into", label: into(qFleet) };
-        return { anchor: q, side: "after", fleet: null, make: q, el, mark: "drop-into", label: "Make fleet" };
+        return { anchor: q, side: "after", fleet: null, make: q, el, mark: "drop-into", label: t("fleet.dropMake") };
       }
       const label = qFleet !== (p.fleet ?? null) ? into(qFleet) : "";
       return { anchor: q, side: zone, fleet: qFleet, el, mark: zone === "before" ? "drop-before" : "drop-after", label };

@@ -9,6 +9,7 @@ import { $, h, setText } from "../ui/dom";
 
 import { S, sessions } from "../app/state";
 import { accent, activeGroupObj, currentProject, place } from "../app/stateQueries";
+import { t, tn } from "../i18n";
 
 /** Banner: which pane gets the next key, and the group it belongs to. */
 export function renderHeader() {
@@ -29,15 +30,15 @@ export function renderHeader() {
     if (g) {
       const n = sessionsOf(g.layout).length;
       const empty = slotsOf(g.layout).length;
-      groupLabel.append(glyph(g.layout), h("span", "", g.name), h("span", "dim", empty ? `${empty} of ${n} empty` : `${n} panes`));
+      groupLabel.append(glyph(g.layout), h("span", "", g.name), h("span", "dim", empty ? t("topbar.emptyOf", { empty, n }) : tn("topbar.panes", n)));
     }
   }
   if (!s) {
-    setText(keysTo, g && slotsOf(g.layout).length ? "pick an agent for each empty pane" : "no session to type into");
+    setText(keysTo, t(g && slotsOf(g.layout).length ? "topbar.pickAgents" : "topbar.noSession"));
     setText(label, "");
     return;
   }
-  setText(keysTo, "keys go to");
+  setText(keysTo, t("topbar.keysGoTo"));
   setText(label, at
     ? `${at.project.name} / ${branchName(at.worktree)} / ${taskTitle(s)}`
     : `${s.cwd} / ${taskTitle(s)}`);

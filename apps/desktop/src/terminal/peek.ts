@@ -40,6 +40,7 @@ import { rowActs } from "../workspace/rowActs";
 import { panes } from "./terminalState";
 import { fitShown } from "./terminal";
 import { FONT, TERM_THEME } from "./terminalRuntime";
+import { t, type MessageKey } from "../i18n";
 import { hostInvoke } from "../app/hostCaps";
 import { dataEpoch } from "../app/dataPlane";
 import { hostName } from "../app/hosts";
@@ -193,28 +194,28 @@ export function syncPreview() {
   if (currentKey() !== active.key) endPreview();
 }
 
-function begin(mine: number, t: Preview, fresh = false) {
-  if (t.kind === "folder") {
-    if (t.local === false) showCard(mine, "folder", t.path);
-    else showCard(mine, "folder", t.path, "Show in file manager", () => openPath(t.path));
-  } else if (t.kind === "host-diff" && t.wait && !fresh) {
+function begin(mine: number, preview: Preview, fresh = false) {
+  if (preview.kind === "folder") {
+    if (preview.local === false) showCard(mine, "folder", preview.path);
+    else showCard(mine, "folder", preview.path, t("menu.showInFileManager"), () => openPath(preview.path));
+  } else if (preview.kind === "host-diff" && preview.wait && !fresh) {
     const key = active!.key;
-    showCard(mine, "diff", `${t.wt}/${t.file ?? allChanges(t.base)}`, "Review all changes", () => startPreview(key, true, true));
-  } else if (t.kind === "host-diff") {
-    showHostDiff(mine, t);
-  } else if (t.kind === "host-file") {
-    showHostFile(mine, t);
-  } else if (t.kind === "diff" && t.wait && !fresh) {
+    showCard(mine, "diff", `${preview.wt}/${preview.file ?? allChanges(preview.base)}`, t("menu.reviewChanges"), () => startPreview(key, true, true));
+  } else if (preview.kind === "host-diff") {
+    showHostDiff(mine, preview);
+  } else if (preview.kind === "host-file") {
+    showHostFile(mine, preview);
+  } else if (preview.kind === "diff" && preview.wait && !fresh) {
     // Landing on the row shows the card. Enter, or Review all changes, runs the diff.
     const key = active!.key;
-    showCard(mine, "diff", `${t.wt}/${t.file ?? allChanges(t.base)}`, "Review all changes", () => startPreview(key, true, true));
-  } else if (t.kind === "diff") {
-    showCard(mine, "diff", `${t.wt}/${t.file ?? allChanges(t.base)}`);
-    void invoke<Opened>("open_diff", { path: t.wt, file: t.file ?? null })
-      .then((o) => { if (live(mine)) handle(o, "diff", t.file ?? allChanges(t.base), t.branch); })
+    showCard(mine, "diff", `${preview.wt}/${preview.file ?? allChanges(preview.base)}`, t("menu.reviewChanges"), () => startPreview(key, true, true));
+  } else if (preview.kind === "diff") {
+    showCard(mine, "diff", `${preview.wt}/${preview.file ?? allChanges(preview.base)}`);
+    void invoke<Opened>("open_diff", { path: preview.wt, file: preview.file ?? null })
+      .then((o) => { if (live(mine)) handle(o, "diff", preview.file ?? allChanges(preview.base), preview.branch); })
       .catch(failed(mine));
   } else {
-    const { path } = t;
+    const { path } = preview;
     const name = path.split("/").pop() ?? path;
     const dir = path.slice(0, path.length - name.length - 1);
     // Cover the panes before the setting is known, without an action yet.
@@ -223,7 +224,7 @@ function begin(mine: number, t: Preview, fresh = false) {
       if (!live(mine)) return;
       if (p.peek && p.script) return void run("file", name, dir, p.script, p.cwd);
       // Selection starts terminal tools only. An app waits for an explicit open.
-      showCard(mine, "file", path, `Open in ${p.app}`, () => openPath(path));
+      showCard(mine, "file", path, t("peek.openIn", { app: p.app }), () => openPath(path));
     }).catch(failed(mine));
   }
 }
@@ -337,10 +338,10 @@ export function closePeek(hold = false) {
     held = { p, key: active?.key ?? "" };
   } else drop(p, p.shown);
   // A diff leaves its card when it closes, so its row still owns the main area. Enter shows it again.
-  const t = active && !active.closed ? rowActs(active.key)?.preview : undefined;
-  if (active && t?.kind === "diff" && !cardAction()) {
+  const preview = active && !active.closed ? rowActs(active.key)?.preview : undefined;
+  if (active && preview?.kind === "diff" && !cardAction()) {
     const key = active.key;
-    showCard(active.gen, "diff", `${t.wt}/${t.file ?? allChanges(t.base)}`, t.file ? "Show diff" : "Review all changes", () => startPreview(key, true, true));
+    showCard(active.gen, "diff", `${preview.wt}/${preview.file ?? allChanges(preview.base)}`, preview.file ? t("menu.showDiff") : t("menu.reviewChanges"), () => startPreview(key, true, true));
   }
   // A card with an action stays: the app opened from it runs on.
   if (card && cardAction()) {
@@ -384,8 +385,8 @@ export function closePreview() {
 /** The Esc keycap at the right of a preview's header. */
 function escButton(): HTMLButtonElement {
   const b = button("peek-esc", "Esc", closePreview);
-  b.title = "Close the preview (Esc)";
-  b.setAttribute("aria-label", "Close the preview");
+  b.title = t("peek.closeKey", { key: "Esc" });
+  b.setAttribute("aria-label", t("peek.close"));
   return b;
 }
 
@@ -399,8 +400,12 @@ function tookTerminal(p: Peek) {
   if (!b) return;
   const key = keyLabel("close-pane");
   b.textContent = key;
-  b.title = `Close the preview (${key})`;
+  b.title = t("peek.closeKey", { key });
 }
+
+/** The word in a preview's header for its kind: file, folder or diff. */
+const KIND_NAMES: Record<string, MessageKey> = { file: "peek.kindFile", folder: "peek.kindFolder", diff: "peek.kindDiff" };
+const kindName = (kind: string) => (KIND_NAMES[kind] ? t(KIND_NAMES[kind]) : kind);
 
 const keysIn = (el: HTMLElement) => el.contains(document.activeElement) || document.activeElement === document.body;
 
@@ -429,7 +434,7 @@ function cardFrame(kind: string, path: string, cls = "peek file-preview"): HTMLE
   el.tabIndex = -1;
   el.setAttribute("aria-label", name);
   const head = h("div", "peek-head");
-  head.append(h("span", "peek-kind", kind), h("span", "peek-title mono", name), h("span", "peek-where mono", dir), escButton());
+  head.append(h("span", "peek-kind", kindName(kind)), h("span", "peek-title mono", name), h("span", "peek-where mono", dir), escButton());
   el.append(head);
   return el;
 }
@@ -441,7 +446,7 @@ function showCard(mine: number, kind: string, path: string, label?: string, act?
   if (label && act) {
     // A keycap you can click, with the action under it: the hint and the button in one.
     const cap = button("file-preview-key", "", act);
-    cap.title = `${label} (Enter)`;
+    cap.title = t("peek.actKey", { label });
     cap.setAttribute("aria-label", label);
     const arrow = icon(`<path d="M19 5v8H6m0 0 4-4m-4 4 4 4"></path>`);
     arrow.classList.add("file-preview-key-arrow");
@@ -477,7 +482,7 @@ function mountCard(el: HTMLElement) {
 }
 
 /** The whole-worktree diff's title: what it counts from, when not HEAD. */
-const allChanges = (base?: string) => (base ? `All changes since ${base}` : "All changes");
+const allChanges = (base?: string) => (base ? t("peek.allChangesSince", { base }) : t("peek.allChanges"));
 
 type HostDiffPreview = Extract<Preview, { kind: "host-diff" }>;
 
@@ -486,15 +491,15 @@ type HostDiffPreview = Extract<Preview, { kind: "host-diff" }>;
  * the Host's text or why there is none. A reply for a row the user left, or
  * from an older data connection, shows nothing; the latter is asked again.
  */
-function showHostDiff(mine: number, t: HostDiffPreview) {
-  const el = cardFrame("diff", `${t.wt}/${t.file ?? allChanges(t.base)}`, "peek diff-view");
+function showHostDiff(mine: number, p: HostDiffPreview) {
+  const el = cardFrame("diff", `${p.wt}/${p.file ?? allChanges(p.base)}`, "peek diff-view");
   showHostView(
     mine,
     el,
-    `Loading the diff from ${hostName()}…`,
-    () => hostInvoke<HostDiff>("git_diff", "git_diff", { path: t.wt, file: t.file ?? null }),
-    (d) => diffBody(d, t.file, t.base),
-    "No diff",
+    t("peek.loadingDiff", { host: hostName() }),
+    () => hostInvoke<HostDiff>("git_diff", "git_diff", { path: p.wt, file: p.file ?? null }),
+    (d) => diffBody(d, p.file, p.base),
+    t("peek.noDiff"),
   );
 }
 
@@ -504,7 +509,7 @@ function showHostDiff(mine: number, t: HostDiffPreview) {
  * row the user left shows nothing; one from an older data connection is
  * asked again.
  */
-function showHostView<T>(mine: number, el: HTMLElement, loading: string, read: () => Promise<T>, render: (t: T) => HTMLElement, none: string) {
+function showHostView<T>(mine: number, el: HTMLElement, loading: string, read: () => Promise<T>, render: (value: T) => HTMLElement, none: string) {
   if (!live(mine)) return;
   el.append(diffState(loading));
   mountCard(el);
@@ -517,15 +522,15 @@ function showHostView<T>(mine: number, el: HTMLElement, loading: string, read: (
   };
   const again = () => showHostView(mine, el, loading, read, render, none);
   read()
-    .then((t) => {
+    .then((value) => {
       if (!shows()) return;
       if (at !== dataEpoch()) return again();
-      fill(render(t));
+      fill(render(value));
     })
     .catch((e) => {
       if (!shows()) return console.error(e);
       if (at !== dataEpoch()) return again();
-      fill(diffState(`${none}: ${String(e)}`, true));
+      fill(diffState(t("peek.noneReason", { none, error: String(e) }), true));
     });
 }
 
@@ -562,9 +567,9 @@ export function openHostCopy(wt: string, file: string) {
  * A reply for a row the user left shows nothing; one from an older data
  * connection is asked again.
  */
-function showHostFile(mine: number, t: HostFilePreview) {
-  const copy = t.copy ? () => openHostCopy(t.wt, t.file) : null;
-  showHostRead(mine, t.path, () => hostInvoke<HostFile>("files", "read_file", { worktree: t.wt, file: t.file }), copy);
+function showHostFile(mine: number, p: HostFilePreview) {
+  const copy = p.copy ? () => openHostCopy(p.wt, p.file) : null;
+  showHostRead(mine, p.path, () => hostInvoke<HostFile>("files", "read_file", { worktree: p.wt, file: p.file }), copy);
 }
 
 /** The Host's bounded read `read` in the page's viewer, under `title`. `copy`: the Open a copy button. */
@@ -572,12 +577,12 @@ function showHostRead(mine: number, title: string, read: () => Promise<HostFile>
   const el = cardFrame("file", title, "peek diff-view file-view");
   if (copy) {
     const open = button("peek-open", "", copy);
-    open.title = "Open a copy on this computer (Enter)";
-    open.setAttribute("aria-label", "Open a copy");
-    open.append(h("span", "peek-open-key", "Enter"), " Open a copy");
+    open.title = t("peek.openCopyTitle");
+    open.setAttribute("aria-label", t("menu.openCopy"));
+    open.append(h("span", "peek-open-key", "Enter"), " " + t("menu.openCopy"));
     el.querySelector(".peek-esc")?.before(open);
   }
-  showHostView(mine, el, `Loading the file from ${hostName()}…`, read, (f) => fileBody(f, (b) => (cardUrl = URL.createObjectURL(b))), "No preview");
+  showHostView(mine, el, t("peek.loadingFile", { host: hostName() }), read, (f) => fileBody(f, (b) => (cardUrl = URL.createObjectURL(b))), t("peek.noPreview"));
 }
 
 /**
@@ -602,7 +607,7 @@ export function openLedgerResult(uid: string, title: string) {
 
 function showLedgerResult(mine: number, r: { uid: string; title: string }) {
   const { uid } = r;
-  showHostRead(mine, `Result: ${r.title}`, () => hostInvoke<HostFile>("ledger", "ledger_result", { uid }), null);
+  showHostRead(mine, t("peek.result", { title: r.title }), () => hostInvoke<HostFile>("ledger", "ledger_result", { uid }), null);
 }
 
 /** The data plane is back: a Host diff, file or ledger result on screen is read again from it. */
@@ -610,9 +615,9 @@ export function refreshHostDiff() {
   if (!active || active.closed || !card?.classList.contains("diff-view")) return;
   // A result keeps its own uid and title: the row's preview does not replace it.
   if (active.result) return showLedgerResult(active.gen, active.result);
-  const t = rowActs(active.key)?.preview;
-  if (t?.kind === "host-diff") showHostDiff(active.gen, t);
-  if (t?.kind === "host-file") showHostFile(active.gen, t);
+  const p = rowActs(active.key)?.preview;
+  if (p?.kind === "host-diff") showHostDiff(active.gen, p);
+  if (p?.kind === "host-file") showHostFile(active.gen, p);
 }
 
 // ── Commands ────────────────────────────────────────────────────────────────
@@ -646,7 +651,7 @@ function frame(mine: number, kind: string, title: string, where: string, program
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", title);
   const head = h("div", "peek-head");
-  head.append(h("span", "peek-kind", kind), h("span", "peek-title mono", title), h("span", "peek-where mono", where), escButton());
+  head.append(h("span", "peek-kind", kindName(kind)), h("span", "peek-title mono", title), h("span", "peek-where mono", where), escButton());
   const box = h("div", "peek-body");
   el.append(head, box);
   // Laid out but not visible, so the terminal has its real size from the start.
@@ -689,7 +694,7 @@ function frame(mine: number, kind: string, title: string, where: string, program
     if (key === "copy" || key === "paste") {
       e.preventDefault();
       if (key === "copy") void copyText(term.getSelection()).catch(showError);
-      else void pasteText().then((t) => t && term.paste(t), showError);
+      else void pasteText().then((text) => text && term.paste(text), showError);
       return false;
     }
     return key === null;
@@ -762,7 +767,7 @@ async function run(kind: string, title: string, where: string, script: string, c
   if (!info.peek) {
     hostInvoke("session_lifecycle", "kill_session", { session: info.id }).catch(console.error);
     closePeek();
-    return showError("This skiffd is older than the app. Restart skiffd to open files and diffs.");
+    return showError(t("peek.oldDaemon"));
   }
   p.session = info.id;
   // Still hidden and still running: an app with its own window. Let it go, but keep watching.
@@ -873,10 +878,10 @@ export function peekExited(id: string, code: number | null): boolean {
     if (code === 127) {
       const name = notFound(p.term) ?? p.program;
       closePeek();
-      return showError(`${name} not found`, { label: "Find a tool", run: () => openUrl(TOOLS_URL) });
+      return showError(t("peek.notFound", { name }), { label: t("peek.findTool"), run: () => openUrl(TOOLS_URL) });
     }
     show(p);
-    if (p.shown) p.term.write(`\r\n\x1b[2m${code ? `${p.program} exited with code ${code}. ` : ""}Press any key to close.\x1b[0m`);
+    if (p.shown) p.term.write(`\r\n\x1b[2m${code ? t("peek.exited", { program: p.program, code }) : t("peek.pressKey")}\x1b[0m`);
   }, 150);
   return true;
 }
@@ -887,6 +892,6 @@ function handle(o: Opened, kind: string, title: string, where: string) {
     return;
   }
   if (o.kind === "no_app") {
-    showError(`No app opens ${title}. Set one in Settings › Open with.`, { label: "Find a tool", run: () => openUrl(TOOLS_URL) });
+    showError(t("peek.noApp", { title }), { label: t("peek.findTool"), run: () => openUrl(TOOLS_URL) });
   }
 }

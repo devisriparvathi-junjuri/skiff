@@ -10,19 +10,20 @@ import { acceptHostIdentity, updateShownHost } from "./hosts";
 import { branchName, taskTitle } from "../workspace/model";
 import { sessions } from "./state";
 import { place } from "./stateQueries";
+import { sentences, t, tn, type MessageKey } from "../i18n";
 
 /** Badge text and panel title per warning. */
-const WARNINGS: Record<DaemonWarning["kind"], [string, string]> = {
+const WARNINGS: Record<DaemonWarning["kind"], [MessageKey, MessageKey]> = {
   // The app hands an older skiffd over on its own. This shows only when a
   // handover cannot work, and the message says why.
-  outdated: ["Update needs a restart", "Finish the skiffd update"],
-  protocol: ["skiffd incompatible", "skiffd does not match this app"],
-  newer: ["skiffd newer", "skiffd is newer than this app"],
-  hung: ["skiffd not responding", "skiffd is not responding"],
-  failed: ["Reload failed", "skiffd did not come back"],
-  remote: ["Host problem", "The remote Host needs attention"],
-  identity: ["Host identity changed", "Another Skiff Host answers"],
-  update: ["Update available", "Skiff on the Host is older"],
+  outdated: ["daemon.badgeOutdated", "daemon.titleOutdated"],
+  protocol: ["daemon.badgeProtocol", "daemon.titleProtocol"],
+  newer: ["daemon.badgeNewer", "daemon.titleNewer"],
+  hung: ["daemon.badgeHung", "daemon.titleHung"],
+  failed: ["daemon.badgeFailed", "daemon.titleFailed"],
+  remote: ["daemon.badgeRemote", "daemon.titleRemote"],
+  identity: ["daemon.badgeIdentity", "daemon.titleIdentity"],
+  update: ["daemon.badgeUpdate", "daemon.titleUpdate"],
 };
 
 let shown: DaemonWarning | null = null;
@@ -34,7 +35,6 @@ let whenIdle = false;
 
 const live = () => [...sessions.values()].filter((s) => s.state !== "done");
 const working = () => live().filter((s) => s.state === "working");
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 async function restartNow() {
   whenIdle = false;
@@ -68,8 +68,8 @@ export function daemonBadge(warning: DaemonWarning | null, requested = false) {
   if (!warning) return;
   const badge = button("tb-cell daemon-badge", "", () => (pop.isConnected ? close() : open()));
   badge.id = "daemon-badge";
-  const [label, title] = WARNINGS[warning.kind];
-  badge.append(h("span", "dot " + (warning.kind === "newer" || warning.kind === "update" ? "idle" : "waiting")), whenIdle ? "Restarts when idle" : label);
+  const [label, title] = WARNINGS[warning.kind].map((key) => t(key));
+  badge.append(h("span", "dot " + (warning.kind === "newer" || warning.kind === "update" ? "idle" : "waiting")), whenIdle ? t("daemon.restartsIdle") : label);
   badge.setAttribute("aria-haspopup", "dialog");
   $("open-settings").before(badge);
 
@@ -77,13 +77,13 @@ export function daemonBadge(warning: DaemonWarning | null, requested = false) {
   pop.id = "daemon-pop";
   pop.setAttribute("role", "dialog");
   pop.setAttribute("aria-label", title);
-  const later = button("confirm-cancel", whenIdle ? "Keep waiting" : "Not now", () => close());
+  const later = button("confirm-cancel", whenIdle ? t("daemon.keepWaiting") : t("daemon.notNow"), () => close());
   const restart = whenIdle
-    ? button("confirm-act", "Cancel restart", () => {
+    ? button("confirm-act", t("daemon.cancelRestart"), () => {
         whenIdle = false;
         daemonBadge(shown);
       })
-    : button("confirm-act", "Restart skiffd…", () => {
+    : button("confirm-act", t("daemon.restartDots"), () => {
         close();
         // A hung or lost daemon lists nothing: there is nothing to choose from.
         if (warning.kind === "hung" || warning.kind === "failed" || !live().length) void restartNow();
@@ -95,7 +95,7 @@ export function daemonBadge(warning: DaemonWarning | null, requested = false) {
   else if (warning.kind === "update")
     foot.append(
       later,
-      button("confirm-act go", "Update Skiff…", () => {
+      button("confirm-act go", t("skiffAgent.updateSkiff"), () => {
         close();
         updateShownHost();
       }),
@@ -103,14 +103,14 @@ export function daemonBadge(warning: DaemonWarning | null, requested = false) {
   else if (warning.kind === "identity")
     foot.append(
       later,
-      button("confirm-act", "Accept new identity…", () => {
+      button("confirm-act", t("daemon.acceptIdentity"), () => {
         close();
         void acceptHostIdentity();
       }),
     );
   else foot.append(later, restart);
   const body = whenIdle
-    ? `skiffd restarts when no agent is working. ${plural(working().length, "agent is", "agents are")} working now.`
+    ? tn("daemon.idleWait", working().length)
     : warning.message;
   pop.append(h("div", "confirm-title", title), h("div", "confirm-body", body), foot);
 
@@ -146,7 +146,7 @@ function sessionList(list: SessionInfo[]): HTMLElement {
   const byPlace = new Map<string, SessionInfo[]>();
   for (const s of list) {
     const at = place(s);
-    const key = at ? `${at.project.name} / ${branchName(at.worktree)}` : "Other";
+    const key = at ? `${at.project.name} / ${branchName(at.worktree)}` : t("daemon.other");
     byPlace.set(key, [...(byPlace.get(key) ?? []), s]);
   }
   const box = h("div", "restart-list");
@@ -154,7 +154,7 @@ function sessionList(list: SessionInfo[]): HTMLElement {
     box.append(h("div", "restart-place", key));
     for (const s of group) {
       const row = h("div", "restart-row");
-      row.append(h("span", "dot " + s.state), h("span", "restart-name", taskTitle(s)), h("span", "restart-state", s.state));
+      row.append(h("span", "dot " + s.state), h("span", "restart-name", taskTitle(s)), h("span", "restart-state", t(`state.${s.state}`)));
       box.append(row);
     }
   }
@@ -167,25 +167,25 @@ function restartDialog() {
   const list = live();
   const busy = working().length;
   const waiting = list.filter((s) => s.state === "waiting").length;
-  const { overlay, panel } = dialogFrame("confirm-panel", "alertdialog", "Restart skiffd");
-  const lines = [`${plural(list.length, "session stops", "sessions stop")}. Each pane comes back as a shell in its folder.`];
-  if (busy) lines.push(`${plural(busy, "agent is", "agents are")} working.`);
-  if (waiting) lines.push(`${plural(waiting, "agent waits", "agents wait")} for input.`);
-  const cancel = button("confirm-cancel", "Cancel", () => done());
-  const idle = button("confirm-cancel", "When idle", () => {
+  const { overlay, panel } = dialogFrame("confirm-panel", "alertdialog", t("daemon.restart"));
+  const lines = [tn("daemon.stops", list.length)];
+  if (busy) lines.push(tn("daemon.working", busy));
+  if (waiting) lines.push(tn("daemon.waiting", waiting));
+  const cancel = button("confirm-cancel", t("daemon.cancel"), () => done());
+  const idle = button("confirm-cancel", t("daemon.whenIdle"), () => {
     whenIdle = true;
     done();
     restartIfIdle();
     daemonBadge(shown);
   });
-  const now = button("confirm-act", "Restart now", () => {
+  const now = button("confirm-act", t("daemon.restartNow"), () => {
     done();
     void restartNow();
   });
-  idle.title = "Restart when no agent is working";
+  idle.title = t("daemon.whenIdleTitle");
   const foot = h("div", "confirm-foot");
   foot.append(cancel, ...(busy ? [idle] : []), now);
-  panel.append(h("div", "confirm-title", "Restart skiffd"), h("div", "confirm-body", lines.join(" ")), sessionList(list), foot);
+  panel.append(h("div", "confirm-title", t("daemon.restart")), h("div", "confirm-body", sentences(lines)), sessionList(list), foot);
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
 

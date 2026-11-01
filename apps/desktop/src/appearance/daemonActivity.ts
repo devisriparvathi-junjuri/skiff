@@ -9,6 +9,7 @@ import { projectSkipperOf, skiffAgentSession } from "../app/skiffAgent";
 import { branchName, locate, scopeFleet, scopeName, taskTitle } from "../workspace/model";
 import type { DaemonMetrics, DaemonStatus, SessionInfo } from "../platform/types";
 import { abandonShip, emptyPick, keepLive, moveTo, type Pick, pickAll, picked, pickedText, pickRow, sinkLabel } from "./sessionPick";
+import { type MessageKey, t, tn, upper } from "../i18n";
 
 export interface ActivityState { list: SessionInfo[]; metrics: DaemonMetrics | null; version: string | null; error: string | null; timer: number | null; pick: Pick; }
 export const activityState = (): ActivityState => ({ list: [], metrics: null, version: null, error: null, timer: null, pick: emptyPick() });
@@ -17,13 +18,14 @@ const folder = (path: string) => {
   const parts = path.split("/").filter(Boolean);
   return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : path;
 };
-const age = (at: number) => {
+/** "now", "5m", "3h", "2d". `zero`: under a minute reads "0m", as an uptime does. */
+const age = (at: number, zero = false) => {
   if (!at) return "—";
   const seconds = Math.max(0, Math.floor((Date.now() - at) / 1000));
-  if (seconds < 60) return "now";
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-  return `${Math.floor(seconds / 86400)}d`;
+  if (seconds < 60) return zero ? t("activity.minutes", { n: 0 }) : t("activity.now");
+  if (seconds < 3600) return t("activity.minutes", { n: Math.floor(seconds / 60) });
+  if (seconds < 86400) return t("activity.hours", { n: Math.floor(seconds / 3600) });
+  return t("activity.days", { n: Math.floor(seconds / 86400) });
 };
 
 export async function refreshActivity(s: ActivityState, redraw: () => void) {
@@ -50,22 +52,22 @@ function workspace(s: SessionInfo) {
   if (open) return { text: `${open.project.name} / ${branchName(open.worktree)}`, out: false };
   const closed = locate(S.closedProjects, s.cwd);
   // Use the sidebar's ownership lookups. A row shown there is in the workspace.
-  if (s.coordinator && skiffAgentSession()?.id === s.id) return { text: "Skiff agent", out: false };
+  if (s.coordinator && skiffAgentSession()?.id === s.id) return { text: t("activity.skiffAgent"), out: false };
   const fleet = scopeFleet(s.skipper);
   const shown = fleet ? S.projects.some((p) => p.fleet === fleet) : S.projects.some((p) => p.name === s.skipper);
   if (s.skipper && shown && projectSkipperOf(s.skipper)?.id === s.id) return { text: scopeName(s.skipper), out: false };
-  if (s.skipper && !s.coordinator) return { text: "owner missing", out: true };
-  return closed ? { text: `closed: ${closed.project.name}`, out: true } : { text: "no project", out: true };
+  if (s.skipper && !s.coordinator) return { text: t("activity.ownerMissing"), out: true };
+  return closed ? { text: t("activity.closed", { name: closed.project.name }), out: true } : { text: t("activity.noProject"), out: true };
 }
 function stateRank(s: SessionInfo) { return { waiting: 0, working: 1, idle: 2, done: 3 }[s.state]; }
 const program = (s: SessionInfo) => s.foreground_program || [s.command, ...s.args].join(" ");
 
 /** The column heads, in table order. `key` is null for a head that does not sort. */
 type SortKey = "state" | "session" | "program" | "workspace" | "folder" | "out" | "age";
-const COLS: { label: string; key: SortKey | null; cls: string }[] = [
-  { label: "STATE", key: "state", cls: "" }, { label: "SESSION", key: "session", cls: "" }, { label: "PROGRAM", key: "program", cls: "" },
-  { label: "WORKSPACE", key: "workspace", cls: "" }, { label: "FOLDER", key: "folder", cls: "" },
-  { label: "OUT", key: "out", cls: "c-num" }, { label: "AGE", key: "age", cls: "c-num" }, { label: "ACTIONS", key: null, cls: "" },
+const COLS: { label: MessageKey; key: SortKey | null; cls: string }[] = [
+  { label: "activity.colState", key: "state", cls: "" }, { label: "activity.colSession", key: "session", cls: "" }, { label: "activity.colProgram", key: "program", cls: "" },
+  { label: "activity.colWorkspace", key: "workspace", cls: "" }, { label: "activity.colFolder", key: "folder", cls: "" },
+  { label: "activity.colOut", key: "out", cls: "c-num" }, { label: "activity.colAge", key: "age", cls: "c-num" }, { label: "activity.colActions", key: null, cls: "" },
 ];
 /** The chosen sort. It holds while the app runs and comes back to the default on restart. */
 let sort: { key: SortKey; dir: 1 | -1 } | null = null;
@@ -92,14 +94,14 @@ function compare(a: SessionInfo, b: SessionInfo): number {
 }
 
 export function daemonActivitySection(s: ActivityState, redraw: () => void, reveal: (id: string, closed: boolean) => void): HTMLElement[] {
-  const head = h("div", "set-head"), title = h("div", "set-h", "skiffd activity"); title.id = "set-h-activity";
+  const head = h("div", "set-head"), title = h("div", "set-h", t("settings.tab.activity")); title.id = "set-h-activity";
   // The page shows the selected Host: "This computer (name)" or the remote Host's name.
   head.append(title, h("div", "set-sub mono", hostName()));
   const band = h("div", "set-band set-daemon-band");
   const m = s.metrics;
   const version = m?.version ?? s.version;
   // A value the daemon did not report shows a dash, never a zero.
-  const up = m?.started_at ? age(m.started_at).replace(/^now$/, "0m") : "—";
+  const up = m?.started_at ? age(m.started_at, true) : "—";
   // The selection count is a live status: a screen reader reads each change.
   const count = h("span", "set-daemon-picked"); count.setAttribute("role", "status");
   // Sink kills the selected sessions. It asks first.
@@ -108,9 +110,9 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
   // A Host without daemon metrics, such as a remote Host, has no Up and no Memory.
   const metrics = hostCan("daemon_metrics");
   band.append(h("span", "", version ? `skiffd ${version}` : "skiffd"));
-  if (metrics) band.append(h("span", "", `Up ${up}`));
-  band.append(h("span", "", `${s.list.length} sessions`));
-  if (metrics) band.append(h("span", "", `Memory ${m?.memory_bytes ? bytes(m.memory_bytes) : "—"}`));
+  if (metrics) band.append(h("span", "", t("activity.up", { time: up })));
+  band.append(h("span", "", tn("palette.sessions", s.list.length)));
+  if (metrics) band.append(h("span", "", t("activity.memory", { size: m?.memory_bytes ? bytes(m.memory_bytes) : "—" })));
   band.append(count, sink);
   const table = h("div", "set-daemon");
   // A grid of rows to select: click, Shift+click, Ctrl+click (⌘ on macOS), and the keys in onKey below.
@@ -121,7 +123,7 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
   cols.setAttribute("role", "row");
   for (const c of COLS) {
     // A head that sorts is a button: a click, Enter or Space sorts by it, and again reverses.
-    const el = h(c.key ? "button" : "span", c.key ? `set-sort ${c.cls}` : c.cls, c.label);
+    const el = h(c.key ? "button" : "span", c.key ? `set-sort ${c.cls}` : c.cls, upper(t(c.label)));
     el.setAttribute("role", "columnheader");
     if (c.key) {
       const key = c.key; (el as HTMLButtonElement).type = "button"; el.dataset.key = key;
@@ -135,7 +137,7 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
   table.append(cols);
   const rows = [...s.list].sort(compare), order = rows.map((x) => x.id), p = s.pick;
   const els = new Map<string, HTMLElement>();
-  if (!rows.length) { const row = h("div", "set-row set-daemon-row"); row.setAttribute("role", "row"); const none = h("span", "c-span", "No sessions"); none.setAttribute("role", "gridcell"); row.append(none); table.append(row); }
+  if (!rows.length) { const row = h("div", "set-row set-daemon-row"); row.setAttribute("role", "row"); const none = h("span", "c-span", t("activity.none")); none.setAttribute("role", "gridcell"); row.append(none); table.append(row); }
   for (const item of rows) {
     const w = workspace(item), row = h("div", `set-row set-daemon-row${w.out ? " out" : ""}`);
     row.setAttribute("role", "row"); row.dataset.id = item.id; els.set(item.id, row);
@@ -148,11 +150,11 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
     });
     const cell = (text: string, cls = "", title = text) => { const el = h("span", cls, text); el.title = title; el.setAttribute("role", "gridcell"); return el; };
     // The sidebar's state mark, in its state color.
-    const state = h("span", "c-state"); state.setAttribute("role", "gridcell"); state.append(h("span", `dot ${item.state}`), h("span", "", item.state));
+    const state = h("span", "c-state"); state.setAttribute("role", "gridcell"); state.append(h("span", `dot ${item.state}`), h("span", "", t(`state.${item.state}`)));
     // The name alone, as the sidebar shows it. Hover shows the session id.
     row.append(state, cell(taskTitle(item), "c-name", `${taskTitle(item)} · ${item.id}`), cell(program(item)), cell(w.text, w.out ? "bad" : ""), cell(folder(item.cwd), "", item.cwd), cell(item.output_bytes ? bytes(item.output_bytes) : "—", "c-num"), cell(age(item.started_at), "c-num", item.started_at ? new Date(item.started_at).toLocaleString() : ""));
     const acts = h("span", "c-acts"); acts.setAttribute("role", "gridcell");
-    const show = h("button", "set-rm", "Reveal"); show.type = "button"; show.disabled = item.skipper != null && !item.coordinator && w.out; show.addEventListener("click", () => reveal(item.id, !!locate(S.closedProjects, item.cwd))); acts.append(show);
+    const show = h("button", "set-rm", t("activity.reveal")); show.type = "button"; show.disabled = item.skipper != null && !item.coordinator && w.out; show.addEventListener("click", () => reveal(item.id, !!locate(S.closedProjects, item.cwd))); acts.append(show);
     row.append(acts); table.append(row);
   }
 

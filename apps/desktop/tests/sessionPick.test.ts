@@ -1,7 +1,10 @@
 // The skiffd activity list's selection and its Abandon Ship dialog text (#184). Run: pnpm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { abandonShip, emptyPick, keepLive, moveTo, NAMES_SHOWN, pickAll, picked, pickedText, pickRow, sinkLabel } from "../src/appearance/sessionPick.ts";
+import { moduleFromSource } from "./workspaceHarness.ts";
+
+// The real sessionPick.ts, with the real catalog for its words.
+const { abandonShip, emptyPick, keepLive, moveTo, NAMES_SHOWN, pickAll, picked, pickedText, pickRow, sinkLabel } = moduleFromSource("../src/appearance/sessionPick.ts", {}, {}, "");
 
 const ORDER = ["a", "b", "c", "d", "e"];
 const sel = (p: ReturnType<typeof emptyPick>) => picked(p, ORDER).join("");

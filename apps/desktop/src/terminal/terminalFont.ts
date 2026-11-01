@@ -8,6 +8,7 @@ import { FONT_DEFAULT, S } from "../app/state";
 import { panes } from "./terminalState";
 
 import { fitShown } from "./terminal";
+import { t } from "../i18n";
 
 let saveFontSize: ReturnType<typeof setTimeout> | undefined;
 
@@ -29,7 +30,7 @@ export function setFontSize(n: number, save = true) {
   applyZoom();
   fitShown();
   if (!save) return;
-  showZoom(host, `App ${percent(S.fontSize)}`);
+  showZoom(host, t("font.app", { percent: percent(S.fontSize) }));
   // A held key steps the size many times; the config file gets the last one.
   clearTimeout(saveFontSize);
   saveFontSize = setTimeout(() => invoke("set_font_size", { size: S.fontSize }).catch(console.error), 300);

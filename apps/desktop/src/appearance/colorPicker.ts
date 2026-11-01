@@ -1,6 +1,7 @@
 import { rgb } from "./colors";
 import { h } from "../ui/dom";
 import { actionDialog } from "../ui/dialogParts";
+import { t } from "../i18n";
 
 /** A color picker drawn in the page: the webview's own color input does not open on Linux. */
 
@@ -54,7 +55,7 @@ export function pickColor(o: { title: string; start: string; action: string; sub
   const code = h("input", "cp-code");
   code.spellcheck = false;
   code.maxLength = 7;
-  code.setAttribute("aria-label", "Hex color");
+  code.setAttribute("aria-label", t("color.hex"));
   readout.append(chip, code);
   const paint = (skipCode = false) => {
     const hex = toHex(hsv);

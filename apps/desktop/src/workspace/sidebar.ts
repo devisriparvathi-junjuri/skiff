@@ -40,6 +40,7 @@ import { ledgerCounts, ledgerNeeds, ledgerWorkTitle } from "./ledger";
 import { fleetScope, fleetSkipperOf, projectSkipperOf, projectWatch, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, skipperWord, syncSkiffAgent } from "../app/skiffAgent";
 import { hostConnected, hostName, isRemote } from "../app/hosts";
 import { step, tally } from "../diagnostics/stalls";
+import { sentences, t, tn } from "../i18n";
 import { renderSkippers, renderViewToggle, skippersOn } from "./skippersView";
 
 /** 20px lines, flush against whatever follows. */
@@ -95,7 +96,7 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
   row.append(agentIcon(s), h("span", "title", taskTitle(s)));
   if (o.branch) {
     const at = place(s);
-    row.appendChild(h("span", "where mono", at ? branchName(at.worktree) : "other"));
+    row.appendChild(h("span", "where mono", at ? branchName(at.worktree) : t("sidebar.otherWhere")));
   }
   if (o.where) row.appendChild(h("span", "where mono", o.where));
   const away = awayPlaces(s);
@@ -125,7 +126,7 @@ function applyLook(row: HTMLElement, s: SessionInfo) {
   // State shows only when it matters: waiting stands out, working pulses, done fades.
   for (const st of STATES) if (st !== s.state) row.classList.remove(`st-${st}`);
   row.classList.add(`st-${s.state}`);
-  row.setAttribute("aria-label", `${agentName(s)}, ${taskTitle(s)}, ${s.state}`);
+  row.setAttribute("aria-label", t("sidebar.rowLabel", { agent: agentName(s), title: taskTitle(s), state: t(`state.${s.state}`) }));
   const mark = stateIcon(s);
   row.classList.toggle("unread-row", s.state === "idle" && mark.classList.contains("unread"));
   // The mark is the row's last child.
@@ -154,7 +155,7 @@ function pointerRow(s: SessionInfo): HTMLElement {
   const at = place(s);
   const from = at ? branchName(at.worktree) : basename(s.cwd);
   const row = h("div", "session-row pointer-row");
-  row.append(agentIcon(s), h("span", "title", taskTitle(s)), h("span", "where mono", `from ${from}`));
+  row.append(agentIcon(s), h("span", "title", taskTitle(s)), h("span", "where mono", t("sidebar.from", { name: from })));
   row.addEventListener("click", () => {
     clearSelection();
     revealSession(s.id);
@@ -170,20 +171,20 @@ function pointerRow(s: SessionInfo): HTMLElement {
  */
 export function projectsNote(): HTMLElement | null {
   const remote = isRemote();
-  const on = remote ? ` on ${hostName()}` : "";
+  const host = remote ? hostName() : "";
   // A remote Host says what it waits for: the connect, then its projects.
   if (S.dataState === "loading" || (remote && !hostConnected())) {
     if (S.projects.length) return null;
-    return h("div", "note-row", remote ? `Waiting for ${hostName()}` : "Loading projects…");
+    return h("div", "note-row", remote ? t("sidebar.waitingFor", { host }) : t("sidebar.loadingProjects"));
   }
   if (S.dataState === "unavailable") {
     // Each cause says what is wrong and what Skiff does about it.
-    const why = S.dataNote ?? `Skiff cannot show the projects${on || " on this computer"}. It checks again on its own.`;
-    const text = S.projects.length ? `${why} The list shows the last read.` : why;
+    const why = S.dataNote ?? (remote ? t("sidebar.cannotShowOn", { host }) : t("sidebar.cannotShow"));
+    const text = S.projects.length ? sentences([why, t("sidebar.lastRead")]) : why;
     // A remote Host without its service is a setup, not a fault: no red.
     return remote ? h("div", "note-row", text) : errorRow(text);
   }
-  return S.projects.length ? null : h("div", "note-row", `No projects${on}`);
+  return S.projects.length ? null : h("div", "note-row", remote ? t("sidebar.noProjectsOn", { host }) : t("sidebar.noProjects"));
 }
 
 function errorRow(text: string): HTMLElement {
@@ -408,7 +409,7 @@ export function renderSidebar() {
   for (const k of [...sectionKids.keys()]) if (!kidsNow.has(k)) sectionKids.delete(k);
   const note = projectsNote();
   if (note) nodes.push(note);
-  else if (S.projects.length && !S.projects.some(shows)) nodes.push(h("div", "note-row", "No projects in this workspace"));
+  else if (S.projects.length && !S.projects.some(shows)) nodes.push(h("div", "note-row", t("sidebar.noProjectsHere")));
   // Sessions whose folder is in no project.
   if (worktreeLines(null).length) {
     nodes.push(keep(`${OTHER_BLOCK}-head`, "", otherHead));
@@ -453,7 +454,7 @@ function keepAnchor(side: HTMLElement, anchor: [key: string, dy: number] | null)
 /** The head over sessions whose folder is in no project. */
 function otherHead(): HTMLElement {
   const head = h("div", "tree-head");
-  head.append(h("span", "tree-head-name", "Other"));
+  head.append(h("span", "tree-head-name", t("sidebar.other")));
   return head;
 }
 
@@ -471,8 +472,8 @@ function skiffAgentRow(): HTMLElement {
   if (!s) {
     const a = skiffAgentChoice();
     row.dataset.key = SKIFF_AGENT_KEY;
-    row.setAttribute("aria-label", `${name}, the Skiff agent, not running`);
-    row.append(skipperFace(null, 24), launchIcon(a), h("span", "skiff-agent-name", name), h("span", "title", a ? `start ${a.id}` : "no agent on"));
+    row.setAttribute("aria-label", t("sidebar.agentOff", { name }));
+    row.append(skipperFace(null, 24), launchIcon(a), h("span", "skiff-agent-name", name), h("span", "title", a ? t("sidebar.agentStart", { agent: a.id }) : t("sidebar.noAgentOn")));
     row.addEventListener("click", () => {
       // The row is current before the start: newSession shows the pane only if
       // the current row has not moved while the agent starts.
@@ -499,14 +500,15 @@ function skiffAgentRow(): HTMLElement {
   }
   if (watch.state === "missing" || watch.state === "failed") row.classList.add("watch-error");
   if (watch.text) row.title = watch.text;
-  row.setAttribute("aria-label", `${name}, the Skiff agent, ${s.title ?? agentName(s)}, ${s.state}${watch.text ? `. ${watch.text}` : ""}`);
+  const vars = { name, title: s.title ?? agentName(s), state: t(`state.${s.state}`), watch: watch.text };
+  row.setAttribute("aria-label", watch.text ? t("sidebar.agentLabelWatch", vars) : t("sidebar.agentLabel", vars));
   // Its face, 24 px and centered on the row, then the agent icon with the watcher, and the skiff under way while it works.
   row.append(skipperFace(null, 24), agentIcon(s), ...underWay(s), h("span", "skiff-agent-name", name), h("span", "title", s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? ""));
   // One amber count, only while ledger tasks need the person.
   const needs = ledgerNeeds();
   if (needs) {
     const c = h("span", "ledger-count", String(needs));
-    c.title = `${needs} ledger ${needs === 1 ? "task needs" : "tasks need"} you`;
+    c.title = tn("ledger.tasksNeedYou", needs);
     row.append(c);
   }
   row.append(unreadMark(row, s));
@@ -574,7 +576,8 @@ function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
   if (watch.text) row.title = watch.text;
   const title = ledgerWorkTitle(scope) ?? s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? "";
   const { need, working } = ledgerCounts(scope);
-  row.setAttribute("aria-label", `${scopeName(scope)} ${name}, ${title || s.state}${watch.text ? `. ${watch.text}` : ""}`);
+  const vars = { scope: scopeName(scope), skipper: name, title: title || t(`state.${s.state}`), watch: watch.text };
+  row.setAttribute("aria-label", watch.text ? t("sidebar.skipperLabelWatch", vars) : t("sidebar.skipperLabel", vars));
   row.append(h("span", "chev-space"), skipperFace(scope, 20), agentIcon(s), ...underWay(s), h("span", "skiff-agent-name", name), h("span", "title", title));
   const roll = rollCounts(need, working);
   if (roll) row.append(roll);
@@ -616,10 +619,10 @@ function shownBlock(shown: SessionInfo[]): HTMLElement {
 function sectionHead(sec: Section, hidden: number | null = null, alone = false): HTMLElement {
   if (!sec.fleet) {
     const head = h("div", "tree-head");
-    head.append(h("span", "tree-head-name", "Projects"));
+    head.append(h("span", "tree-head-name", t("sidebar.projects")));
     // In a workspace, the + puts projects and fleets in it, or adds a project to Skiff.
     const add = button("tree-head-add", "", () => projectsPlus(add, () => void addProject.open()));
-    add.title = workspaceOpen() ? "Add to workspace" : "Add project";
+    add.title = workspaceOpen() ? t("sidebar.addToWorkspace") : t("sidebar.addProject");
     add.setAttribute("aria-label", add.title);
     if (workspaceOpen()) add.setAttribute("aria-haspopup", "menu");
     add.appendChild(plusIcon());
@@ -640,15 +643,15 @@ function sectionHead(sec: Section, hidden: number | null = null, alone = false):
   }
   pick.append(alone ? h("span", "chev-space") : chevron(open), h("span", "tree-head-name", name));
   const add = button("tree-head-add", "", () => void addProject.open(name));
-  add.title = `Add project to ${name}`;
-  add.setAttribute("aria-label", `Add project to ${name}`);
+  add.title = t("sidebar.addProjectTo", { name });
+  add.setAttribute("aria-label", add.title);
   add.appendChild(plusIcon());
   // The ⋯ opens the fleet's menu, as on a project row: the same items as a right-click.
   const more = button("tree-head-add tree-head-more", "", () => {
     const r = more.getBoundingClientRect();
     fleetMenu({ name, projects: sec.projects }, r.right, r.top);
   });
-  more.setAttribute("aria-label", `${name} menu`);
+  more.setAttribute("aria-label", t("sidebar.menu", { name }));
   more.setAttribute("aria-haspopup", "menu");
   more.appendChild(icon('<circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle>'));
   head.append(pick);
@@ -657,7 +660,7 @@ function sectionHead(sec: Section, hidden: number | null = null, alone = false):
       setProjectsHidden(name, false);
       render();
     });
-    count.setAttribute("aria-label", `Show projects, ${hidden} hidden ${hidden === 1 ? "session" : "sessions"}`);
+    count.setAttribute("aria-label", tn("sidebar.showHidden", hidden));
     head.append(count);
   }
   head.append(more, add);
@@ -696,7 +699,7 @@ function projectBlock(p: Project): HTMLElement {
   const fold = h("span", "tree-fold");
   if (!empty) fold.appendChild(chevron(open));
   pick.append(fold, projectBadge(p), h("span", "project-name", p.name));
-  if (p.error) pick.appendChild(h("span", "project-meta", "error"));
+  if (p.error) pick.appendChild(h("span", "project-meta", t("sidebar.error")));
   const roll = open ? null : rollup([p]);
   if (roll) pick.appendChild(roll);
   // A click opens or folds the project, as on a fleet head. Its sessions open from their rows.
@@ -708,7 +711,7 @@ function projectBlock(p: Project): HTMLElement {
     projectMenu(p, r.right, r.top);
   });
   if (bare) more.dataset.wt = bare.path;
-  more.setAttribute("aria-label", `${p.name} menu`);
+  more.setAttribute("aria-label", t("sidebar.menu", { name: p.name }));
   more.setAttribute("aria-haspopup", "menu");
   more.appendChild(icon('<circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle>'));
   head.appendChild(more);
@@ -727,7 +730,7 @@ function projectBlock(p: Project): HTMLElement {
     block.dataset.skipper = JSON.stringify(skipperSig(p.name));
   }
   if (p.error) kids.appendChild(errorRow(p.error));
-  else if (p.worktrees.length === 0) kids.appendChild(h("div", "note-row", "No worktrees"));
+  else if (p.worktrees.length === 0) kids.appendChild(h("div", "note-row", t("sidebar.noWorktrees")));
   else if (bare) {
     const body = h("div", "wt-body tree-bare");
     body.appendChild(sessionBlock(worktreeLines(bare), color));
@@ -860,10 +863,10 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   pick.append(lead, branchIcon(), h("span", "branch", branchName(w)));
   // The main checkout shows its tag only while it is off its usual branch.
   const usual = p.default_branch ? w.branch === p.default_branch : ["main", "master"].includes(w.branch ?? "");
-  if (w.is_main && !usual) pick.appendChild(h("span", "tag", "main folder"));
-  if (w.locked) pick.appendChild(h("span", "tag", "locked"));
-  if (w.prunable) pick.appendChild(h("span", "tag", "prunable"));
-  if (removing.has(w.path)) pick.appendChild(h("span", "tag", "removing…"));
+  if (w.is_main && !usual) pick.appendChild(h("span", "tag", t("sidebar.mainFolder")));
+  if (w.locked) pick.appendChild(h("span", "tag", t("sidebar.locked")));
+  if (w.prunable) pick.appendChild(h("span", "tag", t("sidebar.prunable")));
+  if (removing.has(w.path)) pick.appendChild(h("span", "tag", t("sidebar.removing")));
   // The rows under an open worktree show the detail.
   const diff = showsChanges(p) && !open ? changeCounts(w) : null;
   if (diff) pick.appendChild(diff);
@@ -874,7 +877,7 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   row.appendChild(pick);
   const plus = button("wt-plus", "", () => launchMenu.open(plus, p, w));
   plus.dataset.wt = w.path;
-  plus.setAttribute("aria-label", `Start a session in ${branchName(w)}`);
+  plus.setAttribute("aria-label", t("sidebar.startIn", { name: branchName(w) }));
   plus.setAttribute("aria-haspopup", "menu");
   plus.appendChild(plusIcon());
   row.appendChild(plus);

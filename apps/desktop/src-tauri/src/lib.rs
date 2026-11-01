@@ -263,6 +263,7 @@ pub fn run() {
             config::set_appearance,
             config::set_font_size,
             config::set_mission_filter,
+            config::set_language,
             commands::list_agents,
             commands::list_agent_sessions,
             config::agent_config,

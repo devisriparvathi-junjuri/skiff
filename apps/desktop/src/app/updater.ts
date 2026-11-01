@@ -12,6 +12,7 @@ import { openUrl } from "../platform/os";
 import { $, button, h } from "../ui/dom";
 import { leave } from "../workspace/profile";
 import { failLine, notesLines, progressText, releasePage } from "./updateNotice";
+import { t } from "../i18n";
 
 type State = "idle" | "checking" | "latest" | "off" | "available" | "downloading" | "ready" | "error";
 
@@ -99,7 +100,7 @@ function relaunch() {
   const u = update;
   if (!u) return;
   closePop();
-  void leave("Skiff restarts to finish the update. Sessions keep running.", async () => {
+  void leave(t("update.restartsLeave"), async () => {
     try {
       await u.install();
     } catch (e) {
@@ -151,14 +152,14 @@ function badge() {
   b.classList.toggle("err", state === "error");
   const v = update?.version ?? current;
   const parts: [string, string][] = {
-    idle: [["", "Updates"]],
-    checking: [["", "Checking…"]],
-    latest: [["", "Up to date"]],
-    off: [["", "Updates off"]],
-    available: [["dot", ""], ["", "Update"], ["v", v]],
-    downloading: [["", "Update"], ["v", progressText(got, total).pct]],
-    ready: [["dot", ""], ["", "Relaunch"], ["v", v]],
-    error: [["dot", ""], ["", "Update failed"]],
+    idle: [["", t("update.tagIdle")]],
+    checking: [["", t("update.tagChecking")]],
+    latest: [["", t("update.tagLatest")]],
+    off: [["", t("update.tagOff")]],
+    available: [["dot", ""], ["", t("update.tagUpdate")], ["v", v]],
+    downloading: [["", t("update.tagUpdate")], ["v", progressText(got, total).pct]],
+    ready: [["dot", ""], ["", t("update.relaunch")], ["v", v]],
+    error: [["dot", ""], ["", t("update.failed")]],
   }[state] as [string, string][];
   b.replaceChildren(...parts.map(([cls, text]) => h("span", cls, text)));
   if (state === "downloading") b.append(bar("update-badge-bar"));
@@ -221,12 +222,12 @@ function fill() {
   const v = update?.version ?? "";
   const close = () => closePop(true);
   const title = (text: string, count = "") => {
-    const t = h("div", "confirm-title rp-title update-title");
+    const el = h("div", "confirm-title rp-title update-title");
     const x = button("update-x", "×", close);
-    x.setAttribute("aria-label", "Close");
-    t.append(h("span", "", text), h("span", "rp-count", count), x);
+    x.setAttribute("aria-label", t("update.close"));
+    el.append(h("span", "", text), h("span", "rp-count", count), x);
     pop.setAttribute("aria-label", text);
-    return t;
+    return el;
   };
   const body = (text: string) => h("div", "confirm-body", text);
   const foot = (...bs: HTMLButtonElement[]) => {
@@ -236,44 +237,44 @@ function fill() {
   };
   const go = (label: string, run: () => void) => button("confirm-act go", label, run);
   const plain = (label: string, run: () => void) => button("confirm-cancel", label, run);
-  const restarts = "Skiff restarts. Sessions keep running.";
+  const restarts = t("update.restarts");
   pop.classList.toggle("rp-failed", state === "error");
   let parts: HTMLElement[];
   switch (state) {
     case "idle":
     case "checking":
-      parts = [title("Checking for updates", current), h("div", "rp-bar sweep", ""), body(`Skiff ${current} asks GitHub for the latest release.`), foot(plain("Close", close))];
+      parts = [title(t("update.checkingTitle"), current), h("div", "rp-bar sweep", ""), body(t("update.checkingBody", { version: current })), foot(plain(t("update.close"), close))];
       parts[1].append(h("i"));
       break;
     case "latest":
-      parts = [title("Skiff is up to date", current), body(`Skiff ${current} is the latest version.`), foot(plain("Close", close))];
+      parts = [title(t("update.latestTitle"), current), body(t("update.latest", { version: current })), foot(plain(t("update.close"), close))];
       break;
     case "off":
-      parts = [title("Updates are off", current), body(line), foot(plain("Close", close))];
+      parts = [title(t("update.offTitle"), current), body(line), foot(plain(t("update.close"), close))];
       break;
     case "available": {
       const notes = notesLines(update?.body);
       const list = h("ul", "update-notes");
       for (const n of notes) list.append(h("li", "", n));
-      const page = button("update-page", "Release notes…", () => void openUrl(releasePage(v)));
-      parts = [title(`Update to Skiff ${v}`, `${current} → ${v}`), ...(notes.length ? [list] : []), page, body(restarts), foot(plain("Later", close), go("Install and relaunch", () => void download()))];
+      const page = button("update-page", t("update.releaseNotes"), () => void openUrl(releasePage(v)));
+      parts = [title(t("update.title", { version: v }), `${current} → ${v}`), ...(notes.length ? [list] : []), page, body(restarts), foot(plain(t("update.later"), close), go(t("update.install"), () => void download()))];
       break;
     }
     case "downloading": {
       const p = progressText(got, total);
       const busy = go(p.pct, () => {});
       busy.disabled = true;
-      parts = [title(`Downloading Skiff ${v}`, p.size), bar(""), body("Skiff relaunches when you choose. Sessions keep running."), foot(plain("Hide", close), busy)];
+      parts = [title(t("update.downloadingTitle", { version: v }), p.size), bar(""), body(t("update.downloadingBody")), foot(plain(t("update.hide"), close), busy)];
       break;
     }
     case "ready":
-      parts = [title(`Skiff ${v} is ready`, progressText(got, total).size), body(restarts), foot(plain("Later", close), go("Relaunch", relaunch))];
+      parts = [title(t("update.readyTitle", { version: v }), progressText(got, total).size), body(restarts), foot(plain(t("update.later"), close), go(t("update.relaunch"), relaunch))];
       break;
     case "error": {
-      const bs = [plain("Close", close)];
-      if (v) bs.push(plain("Release page", () => void openUrl(releasePage(v))));
-      bs.push(go("Retry", retry));
-      parts = [title("Update failed", v), h("div", "rp-cause", line), foot(...bs)];
+      const bs = [plain(t("update.close"), close)];
+      if (v) bs.push(plain(t("update.releasePage"), () => void openUrl(releasePage(v))));
+      bs.push(go(t("update.retry"), retry));
+      parts = [title(t("update.failed"), v), h("div", "rp-cause", line), foot(...bs)];
       break;
     }
   }

@@ -218,6 +218,8 @@ export interface Appearance {
   font_size?: number | null;
   /** Mission control's filter: `running` or `all`. Absent: `running`. */
   mission_filter?: string | null;
+  /** The app's language, such as `es`. Absent: the system language. */
+  language?: string | null;
 }
 
 export interface DaemonStatus {

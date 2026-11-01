@@ -1,5 +1,6 @@
 import { h } from "./dom";
 import { actionDialog } from "./dialogParts";
+import { t } from "../i18n";
 
 /**
  * One modal for actions that cannot be undone. Resolves true on the action,
@@ -72,7 +73,7 @@ export function promptAction(o: {
       const v = o.options?.find((n) => n.toLowerCase() === typed.toLowerCase()) ?? typed;
       if (!v && !o.allowEmpty) {
         input.focus();
-        throw `Type ${o.placeholder}.`;
+        throw t("dialog.typeField", { field: o.placeholder });
       }
       await o.submit(v);
     },
@@ -94,7 +95,7 @@ function pickList(input: HTMLInputElement, options: string[], clearLabel: string
   scroll.setAttribute("role", "presentation");
   list.id = `prompt-list-${++lists}`;
   list.setAttribute("role", "listbox");
-  list.setAttribute("aria-label", "Matches");
+  list.setAttribute("aria-label", t("switcher.matches"));
   input.autocomplete = "off";
   input.setAttribute("role", "combobox");
   input.setAttribute("aria-autocomplete", "both");

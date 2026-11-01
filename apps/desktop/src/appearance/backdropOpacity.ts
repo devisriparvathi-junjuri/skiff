@@ -5,6 +5,7 @@ import { actionDialog } from "../ui/dialogParts";
 import { S } from "../app/state";
 import type { Project } from "../platform/types";
 import { OPACITY_DEFAULT, OPACITY_MIN, previewOpacity } from "./backdrop";
+import { t } from "../i18n";
 
 export function pickBackgroundOpacity(p: Project) {
   const slider = h("input", "opacity-slider");
@@ -12,7 +13,7 @@ export function pickBackgroundOpacity(p: Project) {
   slider.min = String(OPACITY_MIN);
   slider.max = "100";
   slider.value = String(p.background_opacity ?? OPACITY_DEFAULT);
-  slider.setAttribute("aria-label", "Terminal opacity");
+  slider.setAttribute("aria-label", t("opacity.slider"));
   const val = h("span", "opacity-value", `${slider.value}%`);
   const row = h("div", "opacity-row");
   row.append(slider, val);
@@ -23,10 +24,10 @@ export function pickBackgroundOpacity(p: Project) {
   previewOpacity(Number(slider.value));
   const back = document.activeElement as HTMLElement | null;
   actionDialog({
-    title: `Background opacity: ${p.name}`,
-    body: "How opaque this project's terminals are over its image. Lower shows more of the image.",
+    title: t("opacity.title", { name: p.name }),
+    body: t("opacity.body"),
     content: [row],
-    action: "Set opacity",
+    action: t("opacity.action"),
     tone: "go",
     focus: slider,
     onClose: () => {

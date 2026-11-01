@@ -1,7 +1,10 @@
 // What the page says when an app update fails. Run: pnpm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { failLine, releasePage } from "../src/app/updateNotice.ts";
+import { moduleFromSource } from "./workspaceHarness.ts";
+
+// Loaded through the harness, which supplies the word catalog. `Error` is this realm's, so `instanceof` holds.
+const { failLine, releasePage } = moduleFromSource("../src/app/updateNotice.ts", {}, { Error }, "");
 
 test("a failed .deb or .rpm install names the updater's reason in one line", () => {
   assert.equal(failLine("install", "Authentication failed or was cancelled"), "The update did not install: Authentication failed or was cancelled.");

@@ -2,7 +2,8 @@ import { DEFAULT_THEME } from "./colors";
 import { escapeButton } from "../ui/dialogParts";
 import { h } from "../ui/dom";
 import { invoke } from "@tauri-apps/api/core";
-import type { AgentInfo, TerminalTheme } from "../platform/types";
+import type { AgentInfo, Appearance, TerminalTheme } from "../platform/types";
+import { catalogFor, language, languageName, languages, type MessageKey, systemLanguage, t, upper } from "../i18n";
 import { agentNameList, setAgentNameList } from "./agentNames";
 import { nextCard, themeGrid, type ThemeFilters } from "./themeCards";
 import { type Action, actionFor, isMac } from "../app/keys";
@@ -13,7 +14,7 @@ import { peekText } from "../terminal/peek";
 import { fileSize } from "./taskTypes";
 import { confirmAction } from "../ui/confirm";
 import { changeSkiffFolder } from "./skiffFolderDialog";
-import { rowTable, sectionHead, tableState } from "./rowTable";
+import { rowTable, sectionHead, tableState, tableWords } from "./rowTable";
 import { type HostsPage, hostName, isRemote } from "../app/hosts";
 import { createHostsTab } from "./hostSettings";
 import { hostCan, hostInvoke } from "../app/hostCaps";
@@ -46,18 +47,24 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   root.id = "settings";
   root.hidden = true;
   root.setAttribute("role", "dialog");
-  root.setAttribute("aria-label", "Settings");
+  root.setAttribute("aria-label", t("cmd.settings"));
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
   const TABS = ["agents", "skippers", "task-types", "appearance", "open", "images", "disk", "activity", "hosts"] as const;
   let tab: (typeof TABS)[number] = "agents";
+  const TAB_NAMES: Record<(typeof TABS)[number], MessageKey> = {
+    agents: "settings.tab.agents", skippers: "settings.tab.skippers", "task-types": "settings.tab.taskTypes", images: "settings.tab.images",
+    disk: "settings.tab.disk", activity: "settings.tab.activity", appearance: "settings.tab.appearance", open: "settings.tab.open", hosts: "settings.tab.hosts",
+  };
   const themeFilters: ThemeFilters = { query: "", family: null };
   type OpenKey = "diff" | "text" | "markdown" | "html" | "image";
   type OpenSettings = Record<OpenKey, string> & { default_diff: string; peek: string[] };
   let openSet: OpenSettings | null = null;
   type MenuLayout = { available: boolean; chosen: string | null; auto: string; current: string };
   let menuSet: MenuLayout | null = null;
+  /** `[appearance] language`: a code, or null for the system language. */
+  let langSet: string | null = null;
   let agentSet: SkiffAgentSettings | null = null;
   // Settings › Skippers › Instructions, and one error line per row.
   let files: InstructionFile[] = [];
@@ -167,14 +174,13 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   function draw() {
     const nav = h("div", "set-nav");
     const head = h("div", "set-nav-head");
-    head.append(h("div", "set-title", "Settings"), h("div", "set-path mono", "~/.config/skiff/projects.toml"));
-    const names = { agents: "Agents", skippers: "Skippers", "task-types": "Task types", appearance: "Appearance", open: "Open with", images: "Images", disk: "Disk use", activity: "skiffd activity", hosts: "Hosts" };
-    const tabs = TABS.map((t) => {
-      const b = h("button", "set-tab" + (tab === t ? " active" : ""), names[t]);
+    head.append(h("div", "set-title", t("cmd.settings")), h("div", "set-path mono", "~/.config/skiff/projects.toml"));
+    const tabs = TABS.map((id) => {
+      const b = h("button", "set-tab" + (tab === id ? " active" : ""), t(TAB_NAMES[id]));
       b.type = "button";
       b.addEventListener("click", () => {
         if (tab === "activity") stopActivity(activity);
-        tab = t;
+        tab = id;
         draw();
         if (tab === "skippers") void loadFiles();
         if (tab === "disk") void countDisk(disk, render);
@@ -201,8 +207,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       // A Host whose Skiff is too old to take changes: its task types, read-only.
       if (isRemote() && !hostCan("skipper_config")) {
         main.append(h("div", "set-head"));
-        main.firstElementChild!.append(h("div", "set-h", "Task types"), h("div", "set-sub mono", hostName()));
-        for (const t of agentSet?.tasks ?? []) main.append(h("div", "set-note mono", `${t.type}: ${t.command ?? t.agent}${t.error ? ` (${t.error})` : ""}`));
+        main.firstElementChild!.append(h("div", "set-h", t("settings.tab.taskTypes")), h("div", "set-sub mono", hostName()));
+        for (const task of agentSet?.tasks ?? []) main.append(h("div", "set-note mono", `${task.type}: ${task.command ?? task.agent}${task.error ? ` (${task.error})` : ""}`));
       } else if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render, { edit: editTypeFile, errors: typeErrors }));
       root.replaceChildren(nav, pinClose(main));
       return;
@@ -246,13 +252,13 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
 
     const main = h("div", "set-main");
     const intro = h("div", "set-head");
-    const title = h("div", "set-h", "Agents");
+    const title = h("div", "set-h", t("settings.tab.agents"));
     title.id = "set-h-agents";
     intro.append(title);
     // A Host whose Skiff is too old to take changes: its agents, read-only.
     if (isRemote() && !hostCan("agent_config")) {
-      const rows = agents.map((a) => h("div", "set-note mono", `${a.id}: ${a.command} (${a.installed ? (a.enabled ? "on" : "off") : "not on PATH"})`));
-      main.append(intro, h("div", "set-note", `Skiff on ${hostName()} is older than this app. Its agents are read-only.`), ...(rows.length ? rows : [h("div", "set-note", "No agents.")]));
+      const rows = agents.map((a) => h("div", "set-note mono", `${a.id}: ${a.command} (${t(a.installed ? (a.enabled ? "settings.remote.on" : "settings.remote.off") : "settings.remote.notOnPath")})`));
+      main.append(intro, h("div", "set-note", t("settings.remote.agentsOld", { host: hostName() })), ...(rows.length ? rows : [h("div", "set-note", t("settings.remote.noAgents"))]));
       if (error) main.appendChild(h("div", "set-error", error));
       root.replaceChildren(nav, pinClose(main));
       return;
@@ -260,7 +266,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     // Only a removed default can come back.
     if (DEFAULT_AGENTS.some((d) => !agents.some((a) => a.id === d))) {
       intro.classList.add("set-head-row");
-      const back = h("button", "set-rm", "Restore defaults");
+      const back = h("button", "set-rm", t("settings.restoreDefaults"));
       back.type = "button";
       back.addEventListener("click", () => void editAgents("restore_agents"));
       intro.appendChild(back);
@@ -283,11 +289,9 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     return rowTable<AgentInfo>(
       {
         grid: "g-agents",
-        noun: "agent",
-        article: "An agent",
-        dupHint: "Change its command in its row.",
+        words: tableWords("agent"),
         labelledBy: "set-h-agents",
-        endHead: "STATUS",
+        endHead: upper(t("settings.colStatus")),
         rows: agents,
         id: (a) => a.id,
         rowClass: (a) => "set-agent" + (a.enabled ? " on" : "") + (a.installed ? "" : " missing"),
@@ -295,7 +299,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
           {
             key: "on",
             head: "",
-            name: "On",
+            name: t("settings.agents.on"),
             kind: "lead",
             draw: (a) => {
               const sw = h("button", "c-on");
@@ -303,40 +307,41 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
               sw.disabled = !a.installed;
               sw.setAttribute("role", "switch");
               sw.setAttribute("aria-checked", String(a.enabled));
-              sw.setAttribute("aria-label", `${a.id} ${a.enabled ? "on" : "off"}`);
-              sw.title = a.installed ? "" : `${a.command.split(/\s+/)[0]} is not on PATH`;
+              sw.setAttribute("aria-label", t(a.enabled ? "settings.agents.isOn" : "settings.agents.isOff", { id: a.id }));
+              sw.title = a.installed ? "" : t("settings.agents.notOnPath", { command: a.command.split(/\s+/)[0] });
               sw.appendChild(h("span", "switch"));
               sw.addEventListener("click", () => void toggle(a.id));
               return sw;
             },
           },
-          { key: "name", head: "AGENT", name: "name", kind: "key", required: true, get: (a) => a.id },
+          { key: "name", head: upper(t("settings.agents.colAgent")), name: t("settings.agents.name"), kind: "key", required: true, get: (a) => a.id },
           {
             key: "command",
-            head: "COMMAND",
-            name: "command",
+            head: upper(t("settings.agents.colCommand")),
+            name: t("settings.agents.command"),
+            field: t("settings.agents.commandField"),
             kind: "text",
             mono: true,
             required: true,
             // A known agent shows its default as the placeholder. A custom one has no default.
-            placeholder: (a) => (a ? a.default_command : "command"),
+            placeholder: (a) => (a ? a.default_command : t("settings.agents.command")),
             get: (a) => (a.custom || a.command !== a.default_command ? a.command : ""),
           },
         ],
         status: (a) => {
           const status = h("span", "c-state");
-          status.append(h("span", "sq"), a.installed ? "installed" : "not on PATH");
+          status.append(h("span", "sq"), t(a.installed ? "settings.agents.installed" : "settings.agents.missing"));
           return status;
         },
         // − takes any agent away that nothing starts: a default goes to `[agents] removed`. An empty command does not remove.
         // "Used by Admiral and 3 more" shows as "Admiral +3" in the STATUS cell.
         kept: (a) => a.used_by?.replace(/^Used by /, "").replace(/ and (\d+) more$/, " +$1") ?? null,
-        checkEdit: (a, key, v) => (key === "command" && a.custom && !v ? `A custom agent needs a command. Press − to remove ${a.id}.` : null),
+        checkEdit: (a, key, v) => (key === "command" && a.custom && !v ? t("settings.agents.needsCommand", { id: a.id }) : null),
         add: async (d) => {
           const err = await agentEdit("set_agent_command", { agent: d.name, command: d.command });
           // A skiffd from before custom agents saves the line but does not list it.
           if (err || agents.some((a) => a.id === d.name)) return err;
-          return `Saved ${d.name} to projects.toml. Restart skiffd to show it.`;
+          return t("settings.agents.savedRestart", { name: d.name });
         },
         edit: (a, key, v) =>
           key === "name" ? agentEdit("rename_agent", { agent: a.id, name: v }) : agentEdit("set_agent_command", { agent: a.id, command: v }),
@@ -349,26 +354,26 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
 
   /** Esc in the top band of the page's head, which stays at the top as the page scrolls. A click closes. */
   function pinClose(main: HTMLElement): HTMLElement {
-    (main.querySelector(":scope > .set-head") ?? main).append(escapeButton("set-x", "Close settings", close));
+    (main.querySelector(":scope > .set-head") ?? main).append(escapeButton("set-x", t("settings.close"), close));
     return main;
   }
 
   /** The words that make up the names of new agent sessions. */
   function callSigns(): HTMLElement {
     const box = h("div", "set-names-box");
-    box.appendChild(sectionHead("Agent names"));
+    box.appendChild(sectionHead(t("settings.agentNames")));
     const cols = h("div", "set-names-cols");
-    for (const [list, label] of [["ranks", "TITLES"], ["nouns", "NAMES"]] as const) {
+    for (const [list, label, aria] of [["ranks", t("settings.agentNames.titles"), t("settings.agentNames.titlesAria")], ["nouns", t("settings.agentNames.names"), t("settings.agentNames.namesAria")]] as const) {
       const col = h("div", "set-names-col");
       const area = h("textarea", "mono");
       area.spellcheck = false;
       area.value = agentNameList(list).join("\n");
-      area.setAttribute("aria-label", `Agent ${label.toLowerCase()}`);
+      area.setAttribute("aria-label", aria);
       area.addEventListener("blur", () => {
         setAgentNameList(list, area.value.split("\n"));
         area.value = agentNameList(list).join("\n");
       });
-      col.append(h("div", "set-names-label", label), area);
+      col.append(h("div", "set-names-label", upper(label)), area);
       cols.appendChild(col);
     }
     box.appendChild(cols);
@@ -380,8 +385,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const main = h("div", "set-main");
     const intro = h("div", "set-head");
     intro.append(
-      h("div", "set-h", "Appearance"),
-      h("div", "set-sub", "App theme"),
+      h("div", "set-h", t("settings.tab.appearance")),
+      h("div", "set-sub", t("settings.appTheme")),
     );
     const cur = look.current() ?? null;
     const cards = h("div", "set-cards");
@@ -397,30 +402,64 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       }),
     );
     main.append(intro);
+    main.appendChild(languagePick());
     if (menuSet?.available) main.appendChild(menuLayout(menuSet));
     main.appendChild(cards);
     return main;
   }
 
-  /** Linux: the GNOME header bar or the menu bar. GTK sets it when the window opens. */
-  function menuLayout(m: MenuLayout): HTMLElement {
+  /**
+   * A row of choices that the window reads when it opens: Menu and Language.
+   * `pending` shows "On restart" until the window opens again.
+   */
+  function segRow<V>(name: string, aria: string, choices: [V, string][], chosen: V, pending: boolean, pick: (v: V) => void): HTMLElement {
     const row = h("div", "set-row set-opacity set-menu");
-    const pick = h("div", "c-cmd set-seg");
-    pick.setAttribute("role", "radiogroup");
-    pick.setAttribute("aria-label", "Menu layout");
-    const auto = m.auto === "header-bar" ? "Auto (header bar)" : "Auto (menu bar)";
-    const choices: [string | null, string][] = [[null, auto], ["header-bar", "Header bar"], ["menu-bar", "Menu bar"]];
+    const seg = h("div", "c-cmd set-seg");
+    seg.setAttribute("role", "radiogroup");
+    seg.setAttribute("aria-label", aria);
     for (const [value, label] of choices) {
-      const b = h("button", "set-seg-item" + (m.chosen === value ? " on" : ""), label);
+      const b = h("button", "set-seg-item" + (chosen === value ? " on" : ""), label);
       b.type = "button";
       b.setAttribute("role", "radio");
-      b.setAttribute("aria-checked", String(m.chosen === value));
-      b.addEventListener("click", () => void setMenuLayout(value));
-      pick.appendChild(b);
+      b.setAttribute("aria-checked", String(chosen === value));
+      b.addEventListener("click", () => pick(value));
+      seg.appendChild(b);
     }
-    const pending = (m.chosen ?? m.auto) !== m.current;
-    row.append(h("span", "c-name", "Menu"), pick, h("span", "c-status", pending ? "On restart" : ""));
+    row.append(h("span", "c-name", name), seg, h("span", "c-status", pending ? t("settings.onRestart") : ""));
     return row;
+  }
+
+  /** Linux: the GNOME header bar or the menu bar. GTK sets it when the window opens. */
+  function menuLayout(m: MenuLayout): HTMLElement {
+    const auto = t(m.auto === "header-bar" ? "settings.menuAutoHeader" : "settings.menuAutoMenu");
+    const choices: [string | null, string][] = [[null, auto], ["header-bar", t("settings.headerBar")], ["menu-bar", t("settings.menuBar")]];
+    const pending = (m.chosen ?? m.auto) !== m.current;
+    return segRow(t("settings.menu"), t("settings.menuLayout"), choices, m.chosen, pending, (v) => void setMenuLayout(v));
+  }
+
+  /**
+   * The app's language. The window reads it when it opens. A set code lights
+   * the catalog it picks: "es-MX" lights Español, "fr" lights English.
+   */
+  function languagePick(): HTMLElement {
+    const choices: [string | null, string][] = [
+      [null, t("settings.languageAuto", { name: languageName(systemLanguage()) })],
+      ...languages().map((code): [string, string] => [code, languageName(code)]),
+    ];
+    const chosen = langSet === null ? null : catalogFor(langSet);
+    const pending = catalogFor(langSet ?? navigator.language) !== language();
+    return segRow(t("settings.language"), t("settings.language"), choices, chosen, pending, (v) => void setLanguageSetting(v));
+  }
+
+  async function setLanguageSetting(code: string | null) {
+    error = null;
+    try {
+      await invoke("set_language", { language: code });
+      langSet = code;
+    } catch (e) {
+      error = String(e);
+    }
+    render();
   }
 
   async function setMenuLayout(layout: string | null) {
@@ -453,12 +492,12 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     render();
   }
 
-  const OPEN_ROWS: { key: OpenKey; label: string }[] = [
-    { key: "diff", label: "Diffs" },
-    { key: "text", label: "Text files" },
-    { key: "markdown", label: "Markdown" },
-    { key: "html", label: "HTML" },
-    { key: "image", label: "Images" },
+  const OPEN_ROWS: { key: OpenKey; label: MessageKey }[] = [
+    { key: "diff", label: "settings.open.diff" },
+    { key: "text", label: "settings.open.text" },
+    { key: "markdown", label: "settings.open.markdown" },
+    { key: "html", label: "settings.open.html" },
+    { key: "image", label: "settings.open.image" },
   ];
 
   /** One Skiff agent setting on the selected Host: This Mac, or a remote Host through its skiff-host. */
@@ -503,7 +542,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       // A save of a remote Host's copy that did not go back: one line under its row.
       const host = hostName();
       for (const f of await invoke<{ file: string; conflict: boolean; message: string }[]>("skipper_file_errors")) {
-        fileErrors.set(f.file, f.conflict ? `Changed on ${host} after you opened it. Your copy was not sent. Edit opens the file on ${host} again.` : f.message);
+        fileErrors.set(f.file, f.conflict ? t("settings.remote.fileConflict", { host }) : f.message);
       }
     } catch (e) {
       files = [];
@@ -531,7 +570,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       close();
       return peekText(o.script, o.cwd, `${o.cwd}/${f.file.split("/").pop()}`, () => void settings.open("skippers"));
     }
-    if (o.kind === "no_app") fileErrors.set(f.file, `No app opens ${f.file}. Set one in Settings › Open with › Text files.`);
+    if (o.kind === "no_app") fileErrors.set(f.file, t("settings.noApp", { file: f.file }));
     void loadFiles();
   }
 
@@ -546,21 +585,21 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
    * its `# <type>` line written first when there is none. In the peek,
    * Settings closes and opens again on this tab when the peek ends.
    */
-  async function editTypeFile(t: TaskType) {
-    typeErrors.delete(t.type);
+  async function editTypeFile(task: TaskType) {
+    typeErrors.delete(task.type);
     type Opened = { kind: "run"; script: string; cwd: string } | { kind: "default" } | { kind: "no_app"; message: string };
     let o: Opened;
     try {
-      o = await invoke<Opened>("edit_task_type_file", { name: t.type });
+      o = await invoke<Opened>("edit_task_type_file", { name: task.type });
     } catch (e) {
-      typeErrors.set(t.type, String(e));
+      typeErrors.set(task.type, String(e));
       return void loadTypes();
     }
     if (o.kind === "run") {
       close();
-      return peekText(o.script, o.cwd, t.file, () => void settings.open("task-types"));
+      return peekText(o.script, o.cwd, task.file, () => void settings.open("task-types"));
     }
-    if (o.kind === "no_app") typeErrors.set(t.type, `No app opens ${t.type}.md. Set one in Settings › Open with › Text files.`);
+    if (o.kind === "no_app") typeErrors.set(task.type, t("settings.noApp", { file: `${task.type}.md` }));
     void loadTypes();
   }
 
@@ -568,11 +607,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   async function resetFile(f: InstructionFile) {
     const base = f.file.split("/").pop()!;
     const date = f.modified ? new Date(f.modified).toISOString().slice(0, 10) : "";
-    const who = f.scope.kind === "skipper" ? "Every Skipper reads" : `The ${f.scope.name} Skipper reads`;
+    const who = f.scope.kind === "skipper" ? t("settings.reset.everySkipper") : t("settings.reset.oneSkipper", { name: f.scope.name });
     const ok = await confirmAction({
-      title: `Reset ${f.file} to the template?`,
-      body: `Edited ${date} · ${fileSize(f.size ?? 0)}. The file goes to ${base}.bak. ${who} it at its next start.`,
-      action: "Reset",
+      title: t("settings.reset.title", { file: f.file }),
+      body: t("settings.reset.body", { date, size: fileSize(f.size ?? 0), base, who }),
+      action: t("settings.reset.action"),
     });
     if (!ok) return;
     fileErrors.delete(f.file);
@@ -600,19 +639,19 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   function skippers(): HTMLElement {
     const main = h("div", "set-main");
     const intro = h("div", "set-head");
-    intro.append(h("div", "set-h", "Skippers"));
+    intro.append(h("div", "set-h", t("settings.tab.skippers")));
     if (isRemote()) intro.append(h("div", "set-sub mono", hostName()));
     main.append(intro);
     // A Host whose Skiff is too old to take changes: its Skiff agent, read-only.
     if (isRemote() && !hostCan("skipper_config")) {
       main.append(h("div", "set-note", agentSet
-        ? `Skiff on ${hostName()} is older than this app. Its Skiff agent is read-only.`
-        : `${hostName()} does not offer Skiff agent settings.`));
+        ? t("settings.remote.skipperOld", { host: hostName() })
+        : t("settings.remote.noSkipper", { host: hostName() })));
       if (agentSet) {
         const a = agentSet;
         main.append(
-          h("div", "set-note mono", `Name: ${mainName(a.name)} · agent: ${a.agent ?? "default"}`),
-          h("div", "set-note mono", `Folder: ${a.folder ?? a.configured}${a.folder_error ? ` (refused: ${a.folder_error})` : ""}`),
+          h("div", "set-note mono", t("settings.remote.skipperName", { name: mainName(a.name), agent: a.agent ?? t("settings.remote.default") })),
+          h("div", "set-note mono", t(a.folder_error ? "settings.remote.folderRefused" : "settings.remote.folder", { folder: a.folder ?? a.configured, error: a.folder_error ?? "" })),
         );
       }
       return main;
@@ -633,18 +672,19 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   function openWith(): HTMLElement {
     const main = h("div", "set-main");
     const intro = h("div", "set-head");
-    intro.append(h("div", "set-h", "Open with"));
+    intro.append(h("div", "set-h", t("settings.tab.open")));
     const cols = h("div", "set-row set-open set-cols");
-    cols.append(h("span", "c-name", "SHOWS"), h("span", "c-cmd", "COMMAND"), h("span", "c-mode", "OPENS IN"));
+    cols.append(h("span", "c-name", upper(t("settings.open.colShows"))), h("span", "c-cmd", upper(t("settings.agents.colCommand"))), h("span", "c-mode", upper(t("settings.open.colOpensIn"))));
     main.append(intro, cols);
     const o = openSet;
-    if (o) for (const { key, label } of OPEN_ROWS) {
+    if (o) for (const { key, label: labelKey } of OPEN_ROWS) {
+      const label = t(labelKey);
       const row = h("div", "set-row set-open set-agent on");
       const cmd = h("input", "c-cmd mono");
       cmd.value = o[key];
-      cmd.placeholder = key === "diff" ? o.default_diff : "default app";
+      cmd.placeholder = key === "diff" ? o.default_diff : t("settings.open.defaultApp");
       cmd.spellcheck = false;
-      cmd.setAttribute("aria-label", `${label} command`);
+      cmd.setAttribute("aria-label", t("settings.open.commandAria", { kind: label }));
       cmd.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
           e.preventDefault();
@@ -658,12 +698,12 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         if (cmd.value.trim() !== o[key].trim()) void setOpen(key, cmd.value);
       });
       row.append(h("span", "c-name", label), cmd);
-      if (key === "diff") row.append(h("span", "c-mode", "Peek"));
-      else if (key === "image") row.append(h("span", "c-mode", "External app"));
+      if (key === "diff") row.append(h("span", "c-mode", t("settings.open.peek")));
+      else if (key === "image") row.append(h("span", "c-mode", t("settings.open.app")));
       else {
         const mode = h("select", "c-mode");
-        mode.setAttribute("aria-label", `${label} open mode`);
-        for (const [value, label] of [["app", "External app"], ["peek", "Peek"]]) {
+        mode.setAttribute("aria-label", t("settings.open.modeAria", { kind: label }));
+        for (const [value, label] of [["app", t("settings.open.app")], ["peek", t("settings.open.peek")]]) {
           const option = h("option", "", label);
           option.value = value;
           mode.append(option);
@@ -825,6 +865,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       await look.load();
       openSet = await invoke<OpenSettings>("open_settings").catch(() => null);
       menuSet = await invoke<MenuLayout>("menu_layout").catch(() => null);
+      langSet = (await invoke<Appearance>("get_appearance").catch(() => null))?.language ?? null;
       agentSet = await hostInvoke<SkiffAgentSettings>("skipper", "get_skiff_agent").catch(() => null);
       agents = await loadAgents().catch((e) => {
         error = String(e);

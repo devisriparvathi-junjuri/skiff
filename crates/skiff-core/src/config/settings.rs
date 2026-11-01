@@ -193,6 +193,23 @@ pub fn set_mission_filter(running: bool) -> Result<()> {
     })
 }
 
+/// Sets `[appearance] language` to a code such as `es`, or removes it for
+/// the system language.
+pub fn set_language(language: Option<&str>) -> Result<()> {
+    if let Some(v) = language.filter(|v| v.is_empty() || !v.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')) {
+        anyhow::bail!("not a language code: {v}");
+    }
+    edit_table("appearance", |t| {
+        match language {
+            Some(v) => t["language"] = toml_edit::value(v),
+            None => {
+                t.remove("language");
+            }
+        }
+        Ok(())
+    })
+}
+
 /// The values `[appearance] menu_layout` takes.
 pub const MENU_LAYOUTS: [&str; 2] = ["header-bar", "menu-bar"];
 

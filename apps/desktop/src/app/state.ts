@@ -2,6 +2,7 @@
 
 import type { AgentInfo, Group, Project, SessionInfo, TerminalTheme } from "../platform/types";
 import type { SkiffAgentSettings } from "./skiffAgent";
+import { t } from "../i18n";
 
 /** Accent for sessions outside every project, and projects without `color`. */
 export const DEFAULT_ACCENT = "var(--project-default)";
@@ -31,7 +32,7 @@ export const OTHER = "\u0000other";
 /** A group holds at most this many panes. */
 export const MAX_PANES = 4;
 
-export const FULL_HINT = `group is full (${MAX_PANES})`;
+export const fullHint = () => t("view.fullHint", { max: MAX_PANES });
 
 /** Sessions the daemon removed. A list taken before the removal must not bring them back. */
 export const gone = new Set<string>();

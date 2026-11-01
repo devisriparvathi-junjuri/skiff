@@ -14,6 +14,7 @@ import { dialogFrame } from "../ui/dialogParts";
 import { button, h } from "../ui/dom";
 import { rune } from "../ui/runes";
 import { copyText } from "../platform/clipboard";
+import { t } from "../i18n";
 
 /** One event of the run, as Rust sends it (`install::Progress`). */
 type Progress =
@@ -94,12 +95,12 @@ export function runDialog<T>(o: RunDialog<T>) {
   function feet() {
     foot.replaceChildren();
     if (state === "ask") {
-      const cancel = button("confirm-cancel", "Cancel", close);
+      const cancel = button("confirm-cancel", t("daemon.cancel"), close);
       const act = button(o.tone === "go" ? "confirm-act go" : "confirm-act", o.action, () => void go());
       foot.append(cancel, act);
       act.focus();
     } else if (state === "run") {
-      const cancel = button("confirm-cancel", "Cancel", () => {
+      const cancel = button("confirm-cancel", t("daemon.cancel"), () => {
         cancelled = true;
         void invoke("cancel_install", { id: o.id });
       });
@@ -110,11 +111,11 @@ export function runDialog<T>(o: RunDialog<T>) {
       act.append(h("span", "sq"), o.working);
       foot.append(cancel, act);
     } else {
-      const shut = button("confirm-cancel", "Close", () => {
+      const shut = button("confirm-cancel", t("update.close"), () => {
         close();
         o.failed?.(cause.textContent ?? "", output());
       });
-      foot.append(shut, button("confirm-cancel", "Copy output", () => void copyText(output())), button("confirm-act go", "Try again", () => void go()));
+      foot.append(shut, button("confirm-cancel", t("connect.copyOutput"), () => void copyText(output())), button("confirm-act go", t("connect.tryAgain"), () => void go()));
       shut.focus();
     }
   }

@@ -383,6 +383,12 @@ pub(crate) async fn set_mission_filter(running: bool) -> Result<(), String> {
     blocking(move || config::set_mission_filter(running)).await
 }
 
+/// Sets the app's language: a code such as `es`, or `null` for the system language.
+#[tauri::command]
+pub(crate) async fn set_language(language: Option<String>) -> Result<(), String> {
+    blocking(move || config::set_language(language.as_deref())).await
+}
+
 /// This Mac's agent list, from the projects.toml this app writes, so a change
 /// reads back whatever skiffd build runs. Whether an agent is installed
 /// depends on the sessions' PATH and aliases, which the app does not have:

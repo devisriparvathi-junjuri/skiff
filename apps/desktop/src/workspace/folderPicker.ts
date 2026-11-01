@@ -17,6 +17,11 @@ import { rune } from "../ui/runes";
 import { showError } from "../ui/alerts";
 import { S } from "../app/state";
 import { crumbs, filterRows, folderName, listRows, newFolderName, parentPath, whenText, type PickRow } from "./folderPickerModel";
+import { t } from "../i18n";
+
+/** A place's words. Its label stays the id the code matches on. */
+const placeLabel = (label: string) =>
+  label === "Home" ? t("picker.home") : label === "Recent" ? t("picker.recent") : label === "Git repos" ? t("picker.repos") : label;
 
 /** What the primary button does for a folder when it is not the plain pick. */
 export interface PickVerdict {
@@ -57,15 +62,15 @@ function message(e: unknown): string {
 export function pickerUnavailable(): boolean {
   const host = hostName();
   if (S.dataState === "unavailable") {
-    showError(`${host} cannot show its folders. Its projects service is not running.`, {
-      label: "Start",
+    showError(t("picker.noService", { host }), {
+      label: t("picker.start"),
       run: async () => checkShownHost(),
     });
     return true;
   }
   if (!hostCan("folders")) {
-    showError(`${host} cannot show its folders. Its Skiff is too old.`, {
-      label: "Update Skiff…",
+    showError(t("picker.tooOld", { host }), {
+      label: t("skiffAgent.updateSkiff"),
       run: async () => reinstallShownHost(),
     });
     return true;
@@ -78,21 +83,21 @@ export function openFolderPicker(use: PickerUse): void {
   if (pickerUnavailable()) return use.onClose?.(false);
   const host = hostName();
   const back = document.activeElement as HTMLElement | null;
-  const title = `Pick a folder on ${host}`;
+  const title = t("picker.title", { host });
   const { overlay, panel } = dialogFrame("confirm-panel fp-panel", "dialog", title);
 
   const crumbBar = h("div", "fp-crumbs");
   const filter = h("input", "fp-filter");
   filter.type = "text";
   filter.spellcheck = false;
-  filter.placeholder = "Filter";
-  filter.setAttribute("aria-label", "Filter");
-  const hiddenToggle = button("fp-hidden", "Hidden", () => {
+  filter.placeholder = t("picker.filter");
+  filter.setAttribute("aria-label", t("picker.filter"));
+  const hiddenToggle = button("fp-hidden", t("picker.hidden"), () => {
     hidden = !hidden;
     hiddenToggle.setAttribute("aria-pressed", String(hidden));
     if (view.kind === "dir") void go(view.listing.real, { keep: true });
   });
-  hiddenToggle.title = "Show hidden folders";
+  hiddenToggle.title = t("picker.hiddenTip");
   hiddenToggle.setAttribute("aria-pressed", "false");
   const bar = h("div", "fp-bar");
   bar.append(crumbBar, hiddenToggle, filter);
@@ -100,7 +105,7 @@ export function openFolderPicker(use: PickerUse): void {
   const placesCol = h("div", "fp-places");
   const list = h("div", "fp-list");
   list.setAttribute("role", "listbox");
-  list.setAttribute("aria-label", "Folders");
+  list.setAttribute("aria-label", t("picker.folders"));
   const main = h("div", "fp-main");
   main.append(placesCol, list);
 
@@ -108,7 +113,7 @@ export function openFolderPicker(use: PickerUse): void {
   note.setAttribute("role", "alert");
   const pathLine = h("div", "fp-path");
   const { foot, cancel, act } = dialogActions(use.action, "confirm-act go");
-  const make = h("button", "confirm-cancel", "New folder…");
+  const make = h("button", "confirm-cancel", t("picker.newFolder"));
   make.type = "button";
   foot.prepend(make);
   panel.append(h("div", "confirm-title", title), bar, main, note, pathLine, foot);
@@ -154,7 +159,7 @@ export function openFolderPicker(use: PickerUse): void {
 
   function renderCrumbs() {
     crumbBar.replaceChildren();
-    const parts = view.kind === "dir" ? crumbs(view.listing.real, host) : [{ label: host, path: "/" }, { label: view.label, path: "" }];
+    const parts = view.kind === "dir" ? crumbs(view.listing.real, host) : [{ label: host, path: "/" }, { label: placeLabel(view.label), path: "" }];
     parts.forEach((c, i) => {
       if (i) crumbBar.append(h("span", "fp-sep", "›"));
       const b = button("fp-crumb", c.label, () => c.path && void go(c.path));
@@ -167,7 +172,7 @@ export function openFolderPicker(use: PickerUse): void {
   function renderPlaces() {
     placesCol.replaceChildren();
     for (const p of places()) {
-      const b = button("fp-place", p.label, () => void p.open());
+      const b = button("fp-place", placeLabel(p.label), () => void p.open());
       b.tabIndex = -1;
       if (p.label === (view.kind === "place" ? view.label : view.listing.real === home ? "Home" : "")) b.classList.add("on");
       placesCol.append(b);
@@ -191,13 +196,13 @@ export function openFolderPicker(use: PickerUse): void {
       row.append(lead, h("span", "fp-name", r.name));
       if (r.sub) row.append(h("span", "fp-sub", r.sub));
       if (r.repo) {
-        row.append(h("span", "fp-branch", r.repo.branch ?? "detached"), h("span", "fp-when", whenText(r.repo.last_commit)));
+        row.append(h("span", "fp-branch", r.repo.branch ?? t("picker.detached")), h("span", "fp-when", whenText(r.repo.last_commit)));
       }
       row.addEventListener("click", () => setLit(i));
       row.addEventListener("dblclick", () => void enter(r));
       list.append(row);
     });
-    if (!rows.length && !(view.kind === "place" && view.label === "Git repos" && !filter.value)) list.append(h("div", "fp-empty", view.kind === "dir" && !filter.value ? "No folders here." : "No folders match."));
+    if (!rows.length && !(view.kind === "place" && view.label === "Git repos" && !filter.value)) list.append(h("div", "fp-empty", t(view.kind === "dir" && !filter.value ? "picker.noFolders" : "picker.noMatch")));
     list.querySelector(".fp-row.lit")?.scrollIntoView({ block: "nearest" });
     make.disabled = view.kind !== "dir";
     refreshTarget();
@@ -238,7 +243,7 @@ export function openFolderPicker(use: PickerUse): void {
 
   const baseNote = () => (view.kind === "dir" ? truncatedNote() : placeNote(view.label));
   const truncatedNote = () =>
-    view.kind === "dir" && view.listing.truncated ? `${host} shows the first 2000 folders here. Type in Filter to find others.` : "";
+    view.kind === "dir" && view.listing.truncated ? t("picker.truncated", { host, count: 2000 }) : "";
 
   /** Shows the folder at `path`. A gone folder goes up one level. */
   async function go(path: string, o: { keep?: boolean; light?: string; query?: string } = {}): Promise<void> {
@@ -262,9 +267,9 @@ export function openFolderPicker(use: PickerUse): void {
       if (c === "not_found") {
         const up = parentPath(path);
         if (up && up !== path) await go(up);
-        note.textContent = `This folder is no longer on ${host}.`;
+        note.textContent = t("picker.gone", { host });
       } else if (c === "permission") {
-        note.textContent = `${host} does not let your account open this folder.`;
+        note.textContent = t("picker.denied", { host });
       } else {
         note.textContent = message(e);
       }
@@ -281,7 +286,7 @@ export function openFolderPicker(use: PickerUse): void {
     await go(view.listing.parent, { light: view.listing.real });
   }
 
-  /** Places: Home, Recent and Git repos. Recent and Git repos come from the Host. */
+    /** Places: Home, Recent and Git repos. Recent and Git repos come from the Host. */
   function places(): { label: string; open: () => Promise<void> }[] {
     return [
       { label: "Home", open: async () => void (home && (await go(home))) },
@@ -302,8 +307,8 @@ export function openFolderPicker(use: PickerUse): void {
   /** The note a place shows when it has no rows, or while the scan runs. */
   function placeNote(label: string): string {
     if (label !== "Git repos") return "";
-    if (known?.scanning) return `Looking for git repositories on ${host}…`;
-    return known && !known.repos.length ? `No git repositories in your home folder on ${host}.` : "";
+    if (known?.scanning) return t("picker.scanning", { host });
+    return known && !known.repos.length ? t("picker.noRepos", { host }) : "";
   }
 
   function showPlace(label: string) {
@@ -372,13 +377,13 @@ export function openFolderPicker(use: PickerUse): void {
     const input = h("input", "prompt-input");
     input.type = "text";
     input.spellcheck = false;
-    input.placeholder = "a folder name";
-    input.setAttribute("aria-label", "a folder name");
+    input.placeholder = t("picker.namePlaceholder");
+    input.setAttribute("aria-label", t("picker.namePlaceholder"));
     let made: string | null = null;
     actionDialog({
-      title: `New folder in ${name}`,
+      title: t("picker.newFolderTitle", { name }),
       content: [input],
-      action: "Create",
+      action: t("picker.create"),
       tone: "go",
       focus: input,
       submit: async () => {
@@ -386,8 +391,8 @@ export function openFolderPicker(use: PickerUse): void {
         try {
           made = await hostInvoke<string>("folders", "folder_create", { parent, name: n });
         } catch (e) {
-          if (code(e) === "conflict") throw `${name} has a folder with this name already.`;
-          if (code(e) === "invalid") throw "Type one folder name, with no /.";
+          if (code(e) === "conflict") throw t("picker.exists", { name });
+          if (code(e) === "invalid") throw t("picker.oneName");
           throw message(e);
         }
       },

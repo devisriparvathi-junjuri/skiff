@@ -21,6 +21,7 @@ import { closePane, dragSessions, focusPane } from "./paneActions";
 import { resumeOffer, resumePane } from "./resume";
 import { imagesButton, newestImage } from "./images";
 import { insertShown } from "./insertSignal";
+import { t } from "../i18n";
 /** One pane header: the agent icon, the title, then the close button. */
 export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   if (isSlot(id)) return slotHead(id, head);
@@ -61,19 +62,19 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   head.classList.toggle("st-done", s.state === "done");
   // The state reads with the name it belongs to, not with the buttons.
   head.append(agentIcon(s), headTitle(s), stateIcon(s));
-  if (away) head.appendChild(h("span", "where mono", `${at ? branchName(at.worktree) : "other"} → working in ${away}`));
+  if (away) head.appendChild(h("span", "where mono", t("pane.workingIn", { from: at ? branchName(at.worktree) : t("sidebar.otherWhere"), away })));
   // After a restart: the agent this pane ran, and a button to get back to it.
   const offer = resumeOffer(s);
-  if (offer) head.appendChild(h("span", "where", `was ${offer.agent}${offer.title ? " · " + offer.title : ""}`));
+  if (offer) head.appendChild(h("span", "where", offer.title ? t("pane.wasTitle", { agent: offer.agent, title: offer.title }) : t("pane.was", { agent: offer.agent })));
   head.appendChild(h("span", "head-gap"));
   if (offer) {
-    const r = button("head-resume", "Resume", () => {
+    const r = button("head-resume", t("pane.resume"), () => {
       // Measure first: focusing redraws the head, and a replaced button measures as 0,0.
       const at = r.getBoundingClientRect();
       if (id !== S.focused) focusPane(id);
       resumePane(id, { x: at.left, y: at.bottom, right: at.right });
     });
-    r.title = `Resume ${offer.agent} in this pane`;
+    r.title = t("pane.resumeTip", { agent: offer.agent });
     head.appendChild(r);
   }
   const images = imagesButton(id);
@@ -91,13 +92,13 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   };
   if (multi) {
     const max = S.maximized === id;
-    viewBtn(max ? "view-restore" : "view-maximize", max ? "Restore pane" : "Maximize pane", "maximize", toggleMaximize);
+    viewBtn(max ? "view-restore" : "view-maximize", max ? t("cmd.restore") : t("cmd.maximize"), "maximize", toggleMaximize);
   }
-  viewBtn("view-focus", S.focusMode ? "Leave focus mode" : "Focus mode", "focus-mode", toggleFocusMode);
+  viewBtn("view-focus", S.focusMode ? t("cmd.leaveFocusMode") : t("cmd.focusMode"), "focus-mode", toggleFocusMode);
   // Only a pane of a group has a × : it takes the session out and keeps it selected.
   if (grouped) {
     const x = button("head-btn", "", () => closePane(id));
-    const label = "Remove from group. The session keeps running.";
+    const label = t("pane.removeFromGroup");
     x.title = `${label} (${keyLabel("close-pane")})`;
     x.setAttribute("aria-label", label);
     x.appendChild(icon('<path d="M6 6l12 12M18 6L6 18"></path>'));

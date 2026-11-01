@@ -3,6 +3,7 @@
  * The rule itself is in `skiff_client::disk`: each file comes with its
  * verdict, and this file only adds them up the tree.
  */
+import { locale, type MessageKey, t, tn } from "../i18n";
 
 /** What the rule says of a file. */
 export type Kind = "use" | "held" | "prot" | "stale";
@@ -92,43 +93,44 @@ export const expected = (n: DiskNode): Expected => ({ path: n.path, bytes: n.byt
 /** "4 min ago", "3 h ago", "2 days ago" from `now`. */
 export function ago(t: number, now: number): string {
   const m = Math.max(1, Math.round((now - t) / 60));
-  if (m < 60) return `${m} min ago`;
-  if (m < 48 * 60) return `${Math.round(m / 60)} h ago`;
-  return `${Math.round(m / 1440)} days ago`;
+  if (m < 60) return tn("disk.agoMin", m);
+  if (m < 48 * 60) return tn("disk.agoHours", Math.round(m / 60));
+  return tn("disk.agoDays", Math.round(m / 1440));
 }
 
-const WORD: Record<Kind, string> = { use: "In use", held: "Held", prot: "Protected", stale: "Stale" };
-const WHY: Record<string, string> = {
-  done: "done",
-  "no-folder": "no work folder",
-  image: "image",
-  "clean-checkout": "clean worktree",
-  working: "working",
-  open: "open task",
-  "plan-open": "plan open",
-  "pane-working": "pane working",
-  pane: "pane",
-  "skiff-file": "Skiff file",
-  pinned: "pinned",
-  unreadable: "unreadable",
-  dirty: "dirty worktree",
-  ahead: "worktree ahead",
-  "no-upstream": "no upstream",
-  checkout: "git checkout unknown",
-  "no-daemon": "skiffd did not answer",
-  "no-ledger": "ledger unreadable",
+const WORD: Record<Kind, MessageKey> = { use: "disk.kind.use", held: "disk.kind.held", prot: "disk.kind.prot", stale: "disk.kind.stale" };
+const WHY: Record<string, MessageKey> = {
+  done: "disk.why.done",
+  "no-folder": "disk.why.noFolder",
+  image: "disk.why.image",
+  "clean-checkout": "disk.why.cleanCheckout",
+  working: "disk.why.working",
+  open: "disk.why.open",
+  "plan-open": "disk.why.planOpen",
+  "pane-working": "disk.why.paneWorking",
+  pane: "disk.why.pane",
+  "skiff-file": "disk.why.skiffFile",
+  pinned: "disk.why.pinned",
+  unreadable: "disk.why.unreadable",
+  dirty: "disk.why.dirty",
+  ahead: "disk.why.ahead",
+  "no-upstream": "disk.why.noUpstream",
+  checkout: "disk.why.checkout",
+  "no-daemon": "disk.why.noDaemon",
+  "no-ledger": "disk.why.noLedger",
 };
+const why = (code: string) => (WHY[code] ? t(WHY[code]) : code);
 
 /** "Stale · done", "In use · changed 4 min ago". */
 export function verdictText(v: Verdict, now: number): string {
-  const why = v.why === "changed" && v.changed !== undefined ? `changed ${ago(v.changed, now)}` : WHY[v.why] ?? v.why;
-  return `${WORD[v.kind]} · ${why}`;
+  const reason = v.why === "changed" && v.changed !== undefined ? t("disk.changedAgo", { ago: ago(v.changed, now) }) : why(v.why);
+  return `${t(WORD[v.kind])} · ${reason}`;
 }
 
 /** A reason group in the dialog: in use, held and protected group by why, stale too. */
 export function groupName(v: Verdict): string {
-  if (v.why === "changed") return v.kind === "use" ? "In use · changed in the last 15 min" : "Held · changed in the last 24 h";
-  return `${WORD[v.kind]} · ${WHY[v.why] ?? v.why}`;
+  if (v.why === "changed") return t(v.kind === "use" ? "disk.group.useChanged" : "disk.group.heldChanged");
+  return `${t(WORD[v.kind])} · ${why(v.why)}`;
 }
 
 /** A row's STATE cell: one verdict, or Mixed with the count of files that stay. */
@@ -136,11 +138,11 @@ export function rowState(n: DiskNode, now: number): { kind: Kind | "mixed"; text
   const label = n.work?.title ?? "";
   if (!kids(n).length) {
     const v = n.state;
-    if (!v) return { kind: "stale", text: "Empty", label };
+    if (!v) return { kind: "stale", text: t("disk.empty"), label };
     return { kind: v.kind, text: verdictText(v, now), label: label || v.label || "" };
   }
   const ls = leaves(n).filter((l) => l.state);
-  if (!ls.length) return { kind: "stale", text: "Empty", label };
+  if (!ls.length) return { kind: "stale", text: t("disk.empty"), label };
   const texts = new Set(ls.map((l) => verdictText(l.state!, now)));
   if (texts.size === 1) {
     const v = ls[0].state!;
@@ -148,19 +150,19 @@ export function rowState(n: DiskNode, now: number): { kind: Kind | "mixed"; text
     return { kind: v.kind, text: verdictText(v, now), label: label || (labels.size === 1 ? v.label ?? "" : "") };
   }
   const stay = ls.filter((l) => !stale(l)).reduce((a, l) => a + l.files, 0);
-  if (!stay) return { kind: "stale", text: "Stale", label };
+  if (!stay) return { kind: "stale", text: t("disk.kind.stale"), label };
   if (stay === ls.reduce((a, l) => a + l.files, 0)) {
     const kinds = new Set(ls.map((l) => l.state!.kind));
     const k: Kind = kinds.size === 1 ? ls[0].state!.kind : kinds.has("use") ? "use" : kinds.has("held") ? "held" : "prot";
-    return { kind: k, text: WORD[k], label };
+    return { kind: k, text: t(WORD[k]), label };
   }
-  return { kind: "mixed", text: `Mixed · ${stay.toLocaleString("en-US")} ${stay === 1 ? "file stays" : "files stay"}`, label };
+  return { kind: "mixed", text: tn("disk.mixed", stay, { count: stay.toLocaleString(locale()) }), label };
 }
 
 /** Why a row with nothing to flush has no Flush: its newest change that holds it, else nothing. */
 export function idleReason(n: DiskNode, now: number): string {
-  const t = Math.max(0, ...leaves(n).map((l) => (l.state?.why === "changed" ? l.state.changed ?? 0 : 0)));
-  return t ? `Changed ${ago(t, now)}` : "Nothing to flush";
+  const at = Math.max(0, ...leaves(n).map((l) => (l.state?.why === "changed" ? l.state.changed ?? 0 : 0)));
+  return at ? t("disk.changedAgoCap", { ago: ago(at, now) }) : t("disk.nothingToFlush");
 }
 
 /** The rows to draw: `open` folders show their children, by CAN FLUSH, then by name. */

@@ -30,6 +30,7 @@ import { panes } from "../terminal/terminalState";
 import { ptySized } from "../terminal/terminal";
 import { reattachPanes } from "../terminal/terminalRuntime";
 import { focusPane, inBackground, paneNear, revealSession, rowNear, showSingle, splitWith, unfocus } from "../workspace/view";
+import { t } from "../i18n";
 import { hostCan, hostInvoke, loadHostCaps } from "./hostCaps";
 import { hostName, isRemote } from "./hosts";
 import { watchDataPlane } from "./dataPlane";
@@ -43,18 +44,21 @@ import { connectAttempt, connectDone, connectFailed, connectWait } from "./conne
 export function setDaemon(status: DaemonStatus) {
   const dot = $("daemon").querySelector(".dot") as HTMLElement;
   dot.className = "dot " + (status.connected ? "connected" : "error");
+  const version = status.version ?? "";
   const where = isRemote() ? `${hostName()} · ` : "";
   $("daemon-label").textContent = where + (status.reload
-    ? "Reloading skiffd…"
+    ? t("daemon.reloading")
     : status.connected
-    ? `skiffd ${status.version ?? ""}${status.replaced ? ` (updated from ${status.replaced})` : status.spawned ? " (started)" : ""}`
+    ? status.replaced
+      ? t("daemon.updatedFrom", { version, old: status.replaced })
+      : t(status.spawned ? "daemon.started" : "daemon.version", { version })
     : status.warning?.kind === "hung"
-      ? "skiffd not responding"
+      ? t("daemon.badgeHung")
       : isRemote()
-        ? "disconnected, input is off"
-        : "skiffd unreachable");
+        ? t("daemon.disconnected")
+        : t("daemon.unreachable"));
   const socket = $("socket");
-  if (status.pid) socket.replaceChildren(`${status.socket} · pid ${status.pid}`, pidCopy(status.pid));
+  if (status.pid) socket.replaceChildren(t("daemon.socketPid", { socket: status.socket, pid: status.pid }), pidCopy(status.pid));
   else socket.textContent = status.socket;
   daemonBadge(status.warning);
   noteDaemon(status);
@@ -94,7 +98,7 @@ export async function updateDaemon(): Promise<DaemonStatus> {
 }
 
 async function runReload(command: "reload_daemon" | "update_daemon"): Promise<DaemonStatus> {
-  $("daemon-label").textContent = "Reloading skiffd…";
+  $("daemon-label").textContent = t("daemon.reloading");
   // Nothing the reconnect redraws counts as seen.
   quietSeen(true);
   try {
@@ -143,7 +147,7 @@ export async function untilConnected(first = 0): Promise<DaemonStatus> {
 
 /** The one plain line a failed connect shows: the cause Rust named. */
 export function failureLine(status: DaemonStatus | null): string {
-  return status?.warning?.message ?? `${hostName()} does not answer. Settings › Hosts checks it.`;
+  return status?.warning?.message ?? t("daemon.hostSilent", { host: hostName() });
 }
 
 /**
@@ -188,17 +192,17 @@ let copiedTimer: number | undefined;
 function pidCopy(pid: number): HTMLButtonElement {
   const b = h("button", "status-copy");
   b.type = "button";
-  b.title = "Copy pid";
-  b.setAttribute("aria-label", `Copy pid ${pid}`);
+  b.title = t("daemon.copyPid");
+  b.setAttribute("aria-label", t("daemon.copyPidN", { pid }));
   b.appendChild(rune("code-copy", 12));
   b.addEventListener("click", () => {
     navigator.clipboard.writeText(String(pid)).then(() => {
       b.classList.add("copied");
-      b.title = "Copied";
+      b.title = t("daemon.copied");
       clearTimeout(copiedTimer);
       copiedTimer = window.setTimeout(() => {
         b.classList.remove("copied");
-        b.title = "Copy pid";
+        b.title = t("daemon.copyPid");
       }, 1200);
     }, showError);
   });

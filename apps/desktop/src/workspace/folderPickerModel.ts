@@ -1,5 +1,6 @@
 /** The folder picker's pure parts: crumbs, names, times and filtering. */
 import type { FolderEntry, FolderRepo } from "../platform/types";
+import { t, tn } from "../i18n";
 
 /** One row of the picker's main list. `path` is the Host's. */
 export interface PickRow {
@@ -51,20 +52,20 @@ export function filterRows(rows: PickRow[], filter: string): PickRow[] {
 
 /** A new folder's name: one name, no `/`. The Host checks it again. */
 export function newFolderName(typed: string): string {
-  const t = typed.trim();
-  if (!t || t === "." || t === ".." || t.includes("/") || t.includes("\0")) throw "Type one folder name, with no /.";
-  return t;
+  const name = typed.trim();
+  if (!name || name === "." || name === ".." || name.includes("/") || name.includes("\0")) throw t("picker.oneName");
+  return name;
 }
 
 /** When a branch last moved, as "2 h ago" or "today". */
 export function whenText(seconds: number | null | undefined, now = Date.now()): string {
   if (!seconds) return "";
   const ago = Math.max(0, now / 1000 - seconds);
-  if (ago < 3600) return `${Math.max(1, Math.round(ago / 60))} min ago`;
-  if (ago < 6 * 3600) return `${Math.round(ago / 3600)} h ago`;
-  const day = (t: number) => new Date(t).toDateString();
-  if (day(seconds * 1000) === day(now)) return "today";
-  if (day(seconds * 1000) === day(now - 86_400_000)) return "yesterday";
-  if (ago < 30 * 86_400) return `${Math.round(ago / 86_400)} days ago`;
+  if (ago < 3600) return tn("disk.agoMin", Math.max(1, Math.round(ago / 60)));
+  if (ago < 6 * 3600) return tn("disk.agoHours", Math.round(ago / 3600));
+  const day = (ms: number) => new Date(ms).toDateString();
+  if (day(seconds * 1000) === day(now)) return t("picker.today");
+  if (day(seconds * 1000) === day(now - 86_400_000)) return t("picker.yesterday");
+  if (ago < 30 * 86_400) return tn("disk.agoDays", Math.round(ago / 86_400));
   return new Date(seconds * 1000).toISOString().slice(0, 10);
 }

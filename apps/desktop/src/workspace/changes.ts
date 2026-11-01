@@ -24,6 +24,7 @@ import { render, scheduleRender } from "../app/render";
 import { collapsed } from "../app/state";
 
 import { storedSet } from "../app/stored";
+import { t } from "../i18n";
 import { isRemote } from "../app/hosts";
 import { hostCan, hostInvoke } from "../app/hostCaps";
 import { dataEpoch } from "../app/dataPlane";
@@ -157,7 +158,7 @@ export function changesBlock(w: Worktree): HTMLElement | null {
   const key = `changes:${w.path}`;
   // A click selects the row on mousedown (keyboard.ts), then opens or closes it.
   // The header names what the files count from. On the default branch, that is HEAD.
-  const head = sectionHeader(key, list.base ? `Changes since ${list.base}` : "Changes", isOpen, glyph, () => toggle(w.path));
+  const head = sectionHeader(key, list.base ? t("changes.since", { base: list.base }) : t("menu.changes"), isOpen, glyph, () => toggle(w.path));
   const preview = diffPreview(w);
   setRowActs(key, {
     preview,
@@ -168,9 +169,9 @@ export function changesBlock(w: Worktree): HTMLElement | null {
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    ctxMenu.open(e.clientX, e.clientY, "Changes", [
-      ...(preview ? [{ icon: "code-git-branch", label: "Review all changes", run: () => reviewChanges(w) }] : []),
-      { icon: "schedule-refresh-cw", label: "Refresh", run: () => load(w.path) },
+    ctxMenu.open(e.clientX, e.clientY, t("menu.changes"), [
+      ...(preview ? [{ icon: "code-git-branch", label: t("menu.reviewChanges"), run: () => reviewChanges(w) }] : []),
+      { icon: "schedule-refresh-cw", label: t("menu.refresh"), run: () => load(w.path) },
     ]);
   });
   block.appendChild(head);
@@ -216,13 +217,13 @@ function row(w: Worktree, c: Change): HTMLElement {
     m.preventDefault();
     m.stopPropagation();
     const items: MenuEntry[] = preview ? [
-      { icon: "code-git-branch", label: "Show diff", hint: "Enter", run: show },
+      { icon: "code-git-branch", label: t("menu.showDiff"), hint: "Enter", run: show },
     ] : [];
     if (!gone && !remote) items.push(
-      { icon: "indicators-square-arrow-out-up-right", label: "Open file", hint: "Shift+Enter", run: () => open(path) },
-      { icon: "documents-folder-open", label: "Show in file manager", hint: keyLabel("project-folder"), run: () => reveal(path) },
+      { icon: "indicators-square-arrow-out-up-right", label: t("menu.openFile"), hint: "Shift+Enter", run: () => open(path) },
+      { icon: "documents-folder-open", label: t("menu.showInFileManager"), hint: keyLabel("project-folder"), run: () => reveal(path) },
     );
-    items.push({ icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: () => copy(path) });
+    items.push({ icon: "code-copy", label: t("menu.copyPath"), hint: keyLabel("project-copy-path"), run: () => copy(path) });
     ctxMenu.open(m.clientX, m.clientY, name, items);
   });
   return r;

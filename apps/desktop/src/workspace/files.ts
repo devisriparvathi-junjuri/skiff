@@ -21,6 +21,7 @@ import { showError } from "../ui/alerts";
 import { ctxMenu } from "../ui/contextMenu";
 import { render } from "../app/render";
 import { storedSet } from "../app/stored";
+import { t, tn } from "../i18n";
 import { hostCan, hostInvoke } from "../app/hostCaps";
 import { isRemote } from "../app/hosts";
 import { dataEpoch } from "../app/dataPlane";
@@ -142,14 +143,14 @@ export function filesBlock(w: Worktree): HTMLElement {
   const glyph = icon('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path>');
   const key = `files:${w.path}`;
   // A click selects the row on mousedown (keyboard.ts), then opens or closes it.
-  const head = sectionHeader(key, "Files", isOpen, glyph, () => toggle(w.path, w.path, shown));
+  const head = sectionHeader(key, t("menu.files"), isOpen, glyph, () => toggle(w.path, w.path, shown));
   setRowActs(key, { preview: folderPreview(w.path), fold: folds(w.path, w.path, shown) });
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    ctxMenu.open(e.clientX, e.clientY, "Files", [
-      { icon: "schedule-refresh-cw", label: "Refresh", run: () => refresh(w.path, w.path) },
-      !isRemote() && { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", run: () => open(w.path) },
+    ctxMenu.open(e.clientX, e.clientY, t("menu.files"), [
+      { icon: "schedule-refresh-cw", label: t("menu.refresh"), run: () => refresh(w.path, w.path) },
+      !isRemote() && { icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), run: () => open(w.path) },
     ].filter((x) => !!x));
   });
   block.appendChild(head);
@@ -170,7 +171,7 @@ function folder(into: HTMLElement, root: string, dir: string, depth: number) {
     into.appendChild(note("…", depth));
   }
   else if ("error" in l) into.appendChild(note(l.error, depth, true));
-  else if (!l.entries.length && !l.truncated) into.appendChild(note("Empty", depth));
+  else if (!l.entries.length && !l.truncated) into.appendChild(note(t("files.empty"), depth));
   else {
     for (const e of l.entries) {
       const path = join(dir, e.name);
@@ -184,7 +185,7 @@ function folder(into: HTMLElement, root: string, dir: string, depth: number) {
       }
     }
     // Cut: never "Empty", and the folder keeps its fold.
-    if (l.truncated) into.appendChild(note(l.entries.length ? `Only the first ${l.entries.length} entries show.` : "No entries show. The folder has too many to list.", depth));
+    if (l.truncated) into.appendChild(note(l.entries.length ? tn("files.truncated", l.entries.length) : t("files.tooMany"), depth));
   }
 }
 
@@ -240,14 +241,14 @@ function row(e: Entry, root: string, path: string, depth: number): HTMLElement {
     m.stopPropagation();
     const items = dir
       ? [
-          { icon: "schedule-refresh-cw", label: "Refresh", run: () => refresh(root, path) },
-          local && { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: () => open(path) },
-          { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: () => copy(path) },
+          { icon: "schedule-refresh-cw", label: t("menu.refresh"), run: () => refresh(root, path) },
+          local && { icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), hint: keyLabel("project-folder"), run: () => open(path) },
+          { icon: "code-copy", label: t("menu.copyPath"), hint: keyLabel("project-copy-path"), run: () => copy(path) },
         ]
       : [
-          acts?.open && { icon: "indicators-square-arrow-out-up-right", label: local ? "Open" : "Open a copy", hint: "Enter", run: acts.open },
-          local && { icon: "documents-folder-open", label: "Show in file manager", hint: keyLabel("project-folder"), run: () => reveal(path) },
-          { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: () => copy(path) },
+          acts?.open && { icon: "indicators-square-arrow-out-up-right", label: t(local ? "menu.open" : "menu.openCopy"), hint: "Enter", run: acts.open },
+          local && { icon: "documents-folder-open", label: t("menu.showInFileManager"), hint: keyLabel("project-folder"), run: () => reveal(path) },
+          { icon: "code-copy", label: t("menu.copyPath"), hint: keyLabel("project-copy-path"), run: () => copy(path) },
         ];
     ctxMenu.open(m.clientX, m.clientY, e.name, items.filter((x) => !!x));
   });

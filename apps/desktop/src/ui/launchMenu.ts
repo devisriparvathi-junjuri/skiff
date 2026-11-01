@@ -4,6 +4,7 @@ import { launchIcon } from "../appearance/agentIcon";
 import { followPointer, menuOpened, type MenuEntry } from "./menu";
 import { launchDigit } from "../app/stateQueries";
 import { branchName } from "../workspace/model";
+import { t, upper } from "../i18n";
 import { rune } from "./runes";
 
 /** The Skipper a start menu offers first. */
@@ -29,7 +30,7 @@ interface Opts {
 
 /** The menu's title: the branch, "detached" with no branch, or a plain folder's name. */
 export function startIn(w: Worktree): string {
-  return "START IN " + (w.branch ?? (w.head ? "detached" : branchName(w))).toUpperCase();
+  return upper(t("launch.startIn", { name: w.branch ?? (w.head ? t("launch.detached") : branchName(w)) }));
 }
 
 function skipperIcon() {
@@ -88,7 +89,7 @@ export function createLaunchMenu(o: Opts) {
     title.textContent = startIn(w);
     const sk = o.skipper(p);
     const rows = o.choices().map((a, i) =>
-      item(launchDigit(i + (sk ? 1 : 0)), a?.id ?? "Shell", "", () => o.start(p, w, a), "", launchIcon(a)),
+      item(launchDigit(i + (sk ? 1 : 0)), a?.id ?? t("menu.shell"), "", () => o.start(p, w, a), "", launchIcon(a)),
     );
     if (sk) {
       const b = item(launchDigit(0), sk.label, "", sk.run, "", skipperIcon());
@@ -97,14 +98,14 @@ export function createLaunchMenu(o: Opts) {
     }
     const head = document.createElement("div");
     head.className = "lm-head";
-    head.textContent = "NEW GROUP, THEN A SESSION PER PANE";
+    head.textContent = upper(t("launch.newGroupHead"));
     const splits = o.splits().map((s, i) => {
       const g = document.createElement("span");
       g.className = "lm-glyph";
       g.append(s.glyph);
       return item("", s.name, "", () => o.split(p, w, i), "", g);
     });
-    const settings = item("", "Agent settings…", "", () => o.openSettings(), "lm-settings");
+    const settings = item("", t("launch.agentSettings"), "", () => o.openSettings(), "lm-settings");
     menu.replaceChildren(title, ...rows, head, ...splits, settings);
 
     menu.hidden = false;
@@ -138,10 +139,10 @@ export function createLaunchMenu(o: Opts) {
     return [
       { head: startIn(w) },
       ...(sk ? [{ icon: "tools-sparkles", label: sk.label, hint: launchDigit(0), disabled: sk.disabled, run: sk.run }] : []),
-      ...o.choices().map((a, i) => ({ glyph: launchIcon(a), label: a?.id ?? "Shell", hint: launchDigit(i + (sk ? 1 : 0)), run: () => o.start(p, w, a) })),
+      ...o.choices().map((a, i) => ({ glyph: launchIcon(a), label: a?.id ?? t("menu.shell"), hint: launchDigit(i + (sk ? 1 : 0)), run: () => o.start(p, w, a) })),
       {
         icon: "code-group",
-        label: "New group",
+        label: t("select.newGroup"),
         sub: o.splits().map((s, i) => {
           const g = document.createElement("span");
           g.className = "lm-glyph";

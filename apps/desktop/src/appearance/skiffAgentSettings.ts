@@ -3,8 +3,9 @@ import type { AgentInfo } from "../platform/types";
 import type { InstructionFile, SkiffAgentSettings, TaskType } from "../app/skiffAgent";
 import { DEFAULT_NAME, mainName, skiffAgentChoice } from "../app/skiffAgent";
 import { continueLine } from "../terminal/resume";
-import { rowTable, sectionHead, tableState, type RowTableState } from "./rowTable";
-import { BAD_TASK_TYPE_NAME, fileSize, modelError, modelFlag, TASK_TYPE_NAME } from "./taskTypes";
+import { rowTable, sectionHead, tableState, tableWords, type RowTableState } from "./rowTable";
+import { t, tn, upper } from "../i18n";
+import { badTaskTypeName, fileSize, modelError, modelFlag, TASK_TYPE_NAME } from "./taskTypes";
 import { reveal } from "../platform/fileActions";
 import { copyText } from "../platform/clipboard";
 import { showError } from "../ui/alerts";
@@ -55,14 +56,14 @@ export function skiffAgentSection(
   const choices = agents.filter((a) => a.enabled || a.custom);
   const chosen = skiffAgentChoice(agents, set.agent);
 
-  const name = textRow("Main", set.name ?? "", DEFAULT_NAME, (v) => save({ key: "name", value: v || null }));
-  const skipperName = textRow("Project/Fleet", set.skipper_name ?? "", "Skipper", (v) => save({ key: "skipper_name", value: v || null }));
+  const name = textRow(t("skipper.name"), t("skipper.nameAria"), set.name ?? "", DEFAULT_NAME, (v) => save({ key: "name", value: v || null }));
+  const skipperName = textRow(t("skipper.skipperName"), t("skipper.skipperNameAria"), set.skipper_name ?? "", "Skipper", (v) => save({ key: "skipper_name", value: v || null }));
 
   const main = mainName(set.name);
-  const pick = agentPick(`${main}'s agent`, choices, null);
+  const pick = agentPick(t("skipper.agentOf", { name: main }), choices, null);
   if (chosen) pick.value = chosen.id;
   pick.addEventListener("change", () => save({ key: "agent", value: pick.value }));
-  const agentRow = agentModelRow(pick, chosen ?? undefined, set.model, `${main}'s model`, (v) => save({ key: "model", value: v }));
+  const agentRow = agentModelRow(pick, chosen ?? undefined, set.model, t("skipper.modelOf", { name: main }), (v) => save({ key: "model", value: v }));
 
   // A custom agent has no continue line: the switch shows off.
   const line = chosen ? continueLine(chosen.id, chosen.command) : null;
@@ -73,13 +74,13 @@ export function skiffAgentSection(
   sw.disabled = !line;
   sw.setAttribute("role", "switch");
   sw.setAttribute("aria-checked", String(on));
-  sw.setAttribute("aria-label", `Continue the last conversation on restore ${on ? "on" : "off"}`);
+  sw.setAttribute("aria-label", t(on ? "skipper.continueOn" : "skipper.continueOff"));
   sw.appendChild(h("span", "switch"));
   sw.addEventListener("click", () => save({ key: "continue_on_restore", value: !on }));
   const what = line
     ? h("span", "c-cmd mono", line)
-    : h("span", "c-cmd", chosen ? `${chosen.id} has no continue command.` : "No agent is on.");
-  cont.append(h("span", "c-name", "Continue on restore"), what, sw);
+    : h("span", "c-cmd", chosen ? t("skipper.noContinue", { id: chosen.id }) : t("skipper.noAgentOn"));
+  cont.append(h("span", "c-name", t("skipper.continue")), what, sw);
   return [...folderRows(set, changeFolder), name, skipperName, agentRow, cont];
 }
 
@@ -89,14 +90,14 @@ export function skiffAgentSection(
  * `skipper_agent` in projects.toml still wins for its project Skipper.
  */
 export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInfo[], save: (e: SkiffAgentEdit) => void): HTMLElement[] {
-  const head = sectionHead("Project and fleet Skippers");
+  const head = sectionHead(t("skipper.projectSkippers"));
   const choices = agents.filter((a) => a.enabled || a.custom);
-  const pick = agentPick("Project and fleet Skippers' agent", choices, `Same as ${mainName(set.name)}`);
+  const pick = agentPick(t("skipper.projectAgent"), choices, t("skipper.sameAs", { name: mainName(set.name) }));
   const own = choices.find((a) => a.id === set.project_agent);
   pick.value = own ? own.id : "";
   pick.addEventListener("change", () => save({ key: "project_agent", value: pick.value || null }));
   const agent = own ?? skiffAgentChoice(agents, set.agent) ?? undefined;
-  const row = agentModelRow(pick, agent, set.project_model, "Project and fleet Skippers' model", (v) => save({ key: "project_model", value: v }));
+  const row = agentModelRow(pick, agent, set.project_model, t("skipper.projectModel"), (v) => save({ key: "project_model", value: v }));
   return [head, row];
 }
 
@@ -111,19 +112,19 @@ export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTM
   if (!scopes.length) return [];
   const word = set.skipper_name || "Skipper";
   const rows = scopes.map((scope) => {
-    const label = scope ? `${scopeName(scope)} ${scope.startsWith("fleet:") ? "fleet " : ""}${word}` : mainName(set.name);
+    const label = scope ? t(scope.startsWith("fleet:") ? "skipper.avatarFleet" : "skipper.avatarProject", { scope: scopeName(scope), skipper: word }) : mainName(set.name);
     const row = h("div", "set-row set-open set-agent set-avatar on");
     const face = h("span", "c-cmd");
     face.appendChild(skipperFace(scope || null, 26));
-    const change = h("button", "set-rm", "Change…");
+    const change = h("button", "set-rm", t("skipper.change"));
     change.type = "button";
-    change.addEventListener("click", () => setAvatarDialog(scope || null, `Avatar: ${label}`, redraw));
+    change.addEventListener("click", () => setAvatarDialog(scope || null, t("skipper.avatarTitle", { name: label }), redraw));
     const acts = h("span", "c-acts");
     acts.append(change);
     row.append(h("span", "c-name", label), face, acts);
     return row;
   });
-  return [sectionHead("Avatars", undefined, String(scopes.length)), ...rows];
+  return [sectionHead(t("skipper.avatars"), undefined, String(scopes.length)), ...rows];
 }
 
 /**
@@ -134,45 +135,43 @@ export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTM
  */
 export function instructionsSection(set: SkiffAgentSettings, acts: InstructionActs): HTMLElement[] {
   const edited = acts.files.filter((f) => f.status.startsWith("edited")).length;
-  const head = sectionHead("Instructions", "set-h-instructions", `${acts.files.length} ${acts.files.length === 1 ? "file" : "files"} · ${edited} edited`);
+  const head = sectionHead(t("skipper.instructions"), "set-h-instructions", t("skipper.instructionsCount", { files: tn("skipper.files", acts.files.length), edited }));
   const skipper = mainName(set.name);
   const table = rowTable<InstructionFile>(
     {
       grid: "g-instr",
-      noun: "file",
-      article: "A file",
-      dupHint: "",
+      words: tableWords("file"),
       labelledBy: "set-h-instructions",
       rows: acts.files,
       id: (f) => f.file,
       cols: [
         {
           key: "scope",
-          head: "SCOPE",
-          name: "scope",
+          head: upper(t("skipper.colScope")),
+          name: t("skipper.scope"),
           kind: "lead",
           draw: (f) => {
             const cell = h("span", "c-scope", f.scope.kind === "skipper" ? skipper : f.scope.name);
-            if (f.scope.kind === "skipper" || f.scope.kind === "fleet") cell.append(h("span", "c-kind", f.scope.kind === "skipper" ? "every Skipper" : "fleet"));
+            if (f.scope.kind === "skipper" || f.scope.kind === "fleet") cell.append(h("span", "c-kind", t(f.scope.kind === "skipper" ? "skipper.everySkipper" : "skipper.fleet")));
             return cell;
           },
         },
-        { key: "file", head: "FILE", name: "file", kind: "preview", get: (f) => f.file },
-        { key: "status", head: "STATUS", name: "status", kind: "lead", draw: fileState },
+        { key: "file", head: upper(t("skipper.colFile")), name: t("skipper.file"), kind: "preview", get: (f) => f.file },
+        { key: "status", head: upper(t("settings.colStatus")), name: t("skipper.status"), kind: "lead", draw: fileState },
       ],
       // The buttons go straight into the end cell, so they line up with every other row's.
       status: (f) => {
         const box = document.createDocumentFragment();
         if (!acts.editable) return box;
-        const edit = h("button", "set-rm", "Edit");
+        const edit = h("button", "set-rm", t("skipper.edit"));
         edit.type = "button";
-        edit.setAttribute("aria-label", `Edit ${f.file}`);
+        edit.setAttribute("aria-label", t("skipper.editFile", { file: f.file }));
         edit.addEventListener("click", () => acts.edit(f));
         box.append(edit);
         if (f.status.startsWith("edited")) {
-          const reset = h("button", "set-rm", "Reset…");
+          const reset = h("button", "set-rm", t("skipper.reset"));
           reset.type = "button";
-          reset.setAttribute("aria-label", `Reset ${f.file}`);
+          reset.setAttribute("aria-label", t("skipper.resetFile", { file: f.file }));
           reset.addEventListener("click", () => acts.reset(f));
           box.append(reset);
         }
@@ -196,8 +195,8 @@ export function instructionsSection(set: SkiffAgentSettings, acts: InstructionAc
 function fileState(f: InstructionFile): HTMLElement {
   const cls = f.status === "none" ? " none" : f.status === "template" ? " tpl" : "";
   const cell = h("span", "c-state" + cls);
-  cell.append(h("span", "sq"), f.status === "edited-template-changed" ? "edited" : f.status);
-  if (f.status === "edited-template-changed") cell.append(h("span", "dim", "· template changed"));
+  cell.append(h("span", "sq"), t(f.status === "none" ? "skipper.status.none" : f.status === "template" ? "skipper.status.template" : "skipper.status.edited"));
+  if (f.status === "edited-template-changed") cell.append(h("span", "dim", t("skipper.status.templateChanged")));
   return cell;
 }
 
@@ -209,9 +208,9 @@ function agentPick(label: string, choices: AgentInfo[], first: string | null): H
     const o = h("option", "", first);
     o.value = "";
     pick.append(o);
-  } else if (!choices.length) pick.append(h("option", "", "No agent is on"));
+  } else if (!choices.length) pick.append(h("option", "", t("skipper.noAgentOnShort")));
   for (const a of choices) {
-    const o = h("option", "", a.custom ? `${a.id} (custom)` : a.id);
+    const o = h("option", "", a.custom ? t("skipper.custom", { id: a.id }) : a.id);
     o.value = a.id;
     pick.append(o);
   }
@@ -232,7 +231,7 @@ function agentModelRow(pick: HTMLSelectElement, agent: AgentInfo | undefined, mo
     const old = model ?? "";
     const input = h("input", "c-cmd mono");
     input.value = old;
-    input.placeholder = "agent's default";
+    input.placeholder = t("skipper.agentDefault");
     input.spellcheck = false;
     input.setAttribute("aria-label", label);
     input.addEventListener("keydown", (e) => {
@@ -254,8 +253,8 @@ function agentModelRow(pick: HTMLSelectElement, agent: AgentInfo | undefined, mo
       save(v || null);
     });
     cell.append(input);
-  } else cell.append(h("span", "c-note", agent ? "in the command" : ""));
-  row.append(h("span", "c-name", "Agent"), cell, h("span", "c-mode", "At next start"));
+  } else cell.append(h("span", "c-note", agent ? t("skipper.inCommand") : ""));
+  row.append(h("span", "c-name", t("skipper.agent")), cell, h("span", "c-mode", t("skipper.atNextStart")));
   return row;
 }
 
@@ -275,29 +274,29 @@ function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] 
   path.spellcheck = false;
   path.value = set.configured;
   path.title = set.configured;
-  path.setAttribute("aria-label", "Skiff agent folder");
+  path.setAttribute("aria-label", t("skipper.folderAria"));
   const acts = h("span", "c-acts");
-  const copy = h("button", "set-rm", "Copy path");
+  const copy = h("button", "set-rm", t("menu.copyPath"));
   copy.type = "button";
   copy.addEventListener("click", () => void copyText(set.configured).catch(showError));
   acts.append(copy);
   // A remote Host's folder is on that Host: no file manager here opens it.
   if (set.folder_status === "ready" && !isRemote()) {
-    const show = h("button", "set-rm", "Show in file manager");
+    const show = h("button", "set-rm", t("menu.showInFileManager"));
     show.type = "button";
     show.addEventListener("click", () => reveal(set.configured));
     acts.append(show);
   }
-  const edit = h("button", "set-rm", "Change…");
+  const edit = h("button", "set-rm", t("skipper.change"));
   edit.type = "button";
   edit.addEventListener("click", change);
   acts.append(edit);
-  row.append(h("span", "c-name", "Folder"), path, acts);
+  row.append(h("span", "c-name", t("skipper.folder")), path, acts);
   const why =
     set.folder_status === "other"
-      ? "Not usable: it holds other files. Choose another folder."
+      ? t("skipper.folderOther")
       : set.folder_status === "refused" || set.folder_status === "missing"
-        ? (set.folder_error ?? "Refused.")
+        ? (set.folder_error ?? t("skipper.refused"))
         : null;
   if (!why) return [row];
   const meta = h("div", "set-error", why);
@@ -328,93 +327,91 @@ export function taskTypesSection(
   // As the Agent row above: enabled agents and the user's own.
   const choices = agents.filter((a) => a.enabled || a.custom);
   const byId = (id: string) => agents.find((a) => a.id === id);
-  const label = (a: AgentInfo) => (a.custom ? `${a.id} (custom)` : a.id);
+  const label = (a: AgentInfo) => (a.custom ? t("skipper.custom", { id: a.id }) : a.id);
   const head = h("div", "set-head");
-  const title = h("div", "set-h", "Task types");
+  const title = h("div", "set-h", t("settings.tab.taskTypes"));
   title.id = "set-h-tasks";
   head.append(title, h("div", "set-sub mono", set.types));
-  const row = (t: TaskType, change: Partial<TaskEdit>): TaskEdit => ({ type: t.type, agent: t.agent, model: t.model, ...change });
+  const row = (task: TaskType, change: Partial<TaskEdit>): TaskEdit => ({ type: task.type, agent: task.agent, model: task.model, ...change });
   const table = rowTable<TaskType>(
     {
       grid: "g-tasks",
-      noun: "task type",
-      article: "A task type",
-      dupHint: "Change it in its row.",
+      words: tableWords("taskType"),
       labelledBy: title.id,
       rows: set.tasks ?? [],
-      id: (t) => t.type,
+      id: (task) => task.type,
       cols: [
         {
           key: "type",
-          head: "TYPE",
-          name: "type",
+          head: upper(t("tasks.colType")),
+          name: t("tasks.type"),
           kind: "key",
           required: true,
-          get: (t) => t.type,
-          check: (v) => (TASK_TYPE_NAME.test(v) ? null : BAD_TASK_TYPE_NAME),
+          get: (task) => task.type,
+          check: (v) => (TASK_TYPE_NAME.test(v) ? null : badTaskTypeName()),
         },
         {
           key: "agent",
-          head: "AGENT",
-          name: "agent",
+          head: upper(t("settings.agents.colAgent")),
+          name: t("tasks.agent"),
           kind: "select",
-          empty: "No agent is on",
-          options: (t) => {
+          empty: t("skipper.noAgentOnShort"),
+          options: (task) => {
             const list: [string, string][] = choices.map((a) => [a.id, label(a)]);
             // A row keeps an agent that is off or gone, so the select shows the truth.
-            if (t && !choices.some((a) => a.id === t.agent)) list.unshift([t.agent, `${t.agent} (${byId(t.agent) ? "off" : "gone"})`]);
+            if (task && !choices.some((a) => a.id === task.agent)) list.unshift([task.agent, t(byId(task.agent) ? "tasks.agentOff" : "tasks.agentGone", { id: task.agent })]);
             return list;
           },
           initial: () => skiffAgentChoice(agents, set.agent)?.id ?? choices[0]?.id ?? "",
-          get: (t) => t.agent,
+          get: (task) => task.agent,
         },
         {
           key: "model",
-          head: "MODEL",
-          name: "model",
+          head: upper(t("tasks.colModel")),
+          name: t("tasks.model"),
           kind: "text",
           mono: true,
-          placeholder: () => "agent's default",
-          get: (t) => t.model ?? "",
+          placeholder: () => t("skipper.agentDefault"),
+          get: (task) => task.model ?? "",
           // A custom agent sets its model itself. A gone agent has none.
-          note: (t, d) => {
-            const a = byId(t ? t.agent : (d.agent ?? ""));
-            return modelFlag(a) ? null : a ? "set by agent" : "";
+          note: (task, d) => {
+            const a = byId(task ? task.agent : (d.agent ?? ""));
+            return modelFlag(a) ? null : a ? t("tasks.setByAgent") : "";
           },
           check: modelError,
         },
         {
           key: "instructions",
-          head: "INSTRUCTIONS",
-          name: "instructions",
+          head: upper(t("tasks.colInstructions")),
+          name: t("tasks.instructions"),
           kind: "lead",
-          draw: (t) => {
+          draw: (task) => {
             const cell = h("span", "c-file");
-            const none = t.instructions == null;
+            const none = task.instructions == null;
             const state = h("span", "c-state" + (none ? " none" : ""));
-            state.append(h("span", "sq"), none ? "none" : fileSize(t.instructions!));
-            const edit = h("button", "set-rm", "Edit");
+            state.append(h("span", "sq"), none ? t("tasks.none") : fileSize(task.instructions!));
+            const edit = h("button", "set-rm", t("skipper.edit"));
             edit.type = "button";
-            edit.setAttribute("aria-label", `Edit the instructions of ${t.type}`);
-            edit.addEventListener("click", () => files.edit(t));
+            edit.setAttribute("aria-label", t("tasks.editInstructions", { type: task.type }));
+            edit.addEventListener("click", () => files.edit(task));
             cell.append(state, edit);
             return cell;
           },
           drawDraft: () => {
             const state = h("span", "c-state none");
-            state.append(h("span", "sq"), "none");
+            state.append(h("span", "sq"), t("tasks.none"));
             return state;
           },
         },
       ],
-      blocked: () => (choices.length ? null : "Turn on an agent in Settings › Agents to add a task type."),
+      blocked: () => (choices.length ? null : t("tasks.blocked")),
       add: (d) => save({ key: "add_task", value: { type: d.type, agent: d.agent, model: d.model || null } }),
-      edit: (t, key, v) => {
-        if (key === "type") return save({ key: "rename_task", value: { from: t.type, to: v } });
+      edit: (task, key, v) => {
+        if (key === "type") return save({ key: "rename_task", value: { from: task.type, to: v } });
         // A new agent with no model flag drops the model: skiff-core saves none.
-        return save({ key: "task", value: row(t, key === "agent" ? { agent: v } : { model: v || null }) });
+        return save({ key: "task", value: row(task, key === "agent" ? { agent: v } : { model: v || null }) });
       },
-      remove: (t) => save({ key: "remove_task", value: t.type }),
+      remove: (task) => save({ key: "remove_task", value: task.type }),
     },
     state,
     redraw,
@@ -430,13 +427,13 @@ export function taskTypesSection(
 }
 
 /** A label and a text field that saves on Enter or blur. Esc puts the old value back. */
-function textRow(label: string, value: string, placeholder: string, save: (v: string) => void): HTMLElement {
+function textRow(label: string, aria: string, value: string, placeholder: string, save: (v: string) => void): HTMLElement {
   const row = h("div", "set-row set-open set-agent on");
   const input = h("input", "c-cmd");
   input.value = value;
   input.placeholder = placeholder;
   input.spellcheck = false;
-  input.setAttribute("aria-label", `Skiff agent ${label.toLowerCase()}`);
+  input.setAttribute("aria-label", aria);
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();

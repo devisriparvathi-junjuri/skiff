@@ -10,6 +10,7 @@ import type { MenuEntry } from "../ui/menu";
 import { confirmAction } from "../ui/confirm";
 import { h } from "../ui/dom";
 import { showError, showNotice } from "../ui/alerts";
+import { t } from "../i18n";
 
 export interface KnownHost {
   id: string;
@@ -57,7 +58,7 @@ export async function loadHosts(): Promise<void> {
     const name = before.hosts.find((x) => x.id === before.selected)?.name ?? list.removed;
     await invoke("select_host", { id: null });
     try {
-      sessionStorage.setItem(REMOVED_NOTE, `${name} was removed. Showing ${localHostName()}.`);
+      sessionStorage.setItem(REMOVED_NOTE, t("hosts.removedNote", { name, local: localHostName() }));
     } catch {}
     location.reload();
     return;
@@ -88,7 +89,7 @@ export function watchHosts() {
 export const isRemote = () => list.selected !== null;
 
 /** The local Host's label, on every OS: "This computer (thr0w-deb)". */
-export const localHostName = () => (list.localName ? `This computer (${list.localName})` : "This computer");
+export const localHostName = () => (list.localName ? t("hosts.thisComputerName", { name: list.localName }) : t("hosts.thisComputer"));
 
 export const hostName = () => list.hosts.find((x) => x.id === list.selected)?.name ?? list.selected ?? localHostName();
 
@@ -164,8 +165,8 @@ function renderHostLabel() {
   cell.replaceChildren(h("span", `dot ${state}`), h("span", "host-name", name));
   cell.classList.toggle("remote", isRemote());
   cell.title = connected
-    ? `Host: ${name}. Pick another Host.`
-    : `Host: ${name}, disconnected. Input is off. Skiff connects again on its own.`;
+    ? t("hosts.cellTitle", { name })
+    : t("hosts.cellTitleOff", { name });
   cell.setAttribute("aria-label", cell.title);
 }
 
@@ -187,31 +188,31 @@ function openHostMenu(anchor: HTMLElement) {
     ...list.hosts.map((x) => ({
       icon: mark(x.id === list.selected),
       label: x.name,
-      hint: x.state === "attention" ? "Needs attention" : undefined,
+      hint: x.state === "attention" ? t("hosts.needsAttention") : undefined,
       run: () => (x.state === "attention" ? manage({ check: x.id }) : pick(x.id)),
     })),
-    { icon: "indicators-plus", label: "Add SSH Host…", run: () => manage({ add: true }) },
+    { icon: "indicators-plus", label: t("hosts.addSsh"), run: () => manage({ add: true }) },
   ];
   const shown = list.selected;
-  if (shown && !connected) entries.push({ icon: "indicators-check", label: `Check ${hostName()}…`, run: () => manage({ check: shown }) });
+  if (shown && !connected) entries.push({ icon: "indicators-check", label: t("hosts.checkHost", { name: hostName() }), run: () => manage({ check: shown }) });
   if (isRemote()) {
     entries.push({
       icon: "code-copy",
-      label: clipboardAllowed() ? "Block clipboard writes from this Host" : "Allow clipboard writes from this Host…",
+      label: t(clipboardAllowed() ? "hosts.clipboardBlock" : "hosts.clipboardAllow"),
       run: () => void toggleClipboard(),
     });
   }
-  entries.push({ icon: "tools-pencil", label: "Manage Hosts…", run: () => manage({}) });
-  ctxMenu.open(r.left, r.bottom, "Host", entries);
+  entries.push({ icon: "tools-pencil", label: t("hosts.manage"), run: () => manage({}) });
+  ctxMenu.open(r.left, r.bottom, t("hosts.menuTitle"), entries);
 }
 
 async function toggleClipboard() {
   const allow = !clipboardAllowed();
   if (allow) {
     const ok = await confirmAction({
-      title: `Allow clipboard writes from ${hostName()}?`,
-      body: "A program in a terminal on this Host can then replace this computer's clipboard with OSC 52. It cannot read the clipboard.",
-      action: "Allow writes",
+      title: t("hosts.clipboardTitle", { name: hostName() }),
+      body: t("hosts.clipboardBody"),
+      action: t("hosts.clipboardAction"),
     });
     if (!ok) return;
   }
@@ -263,9 +264,9 @@ async function recover(reconnect: () => Promise<void>, online: () => void) {
 export async function acceptHostIdentity() {
   const name = hostName();
   const ok = await confirmAction({
-    title: `Accept the new identity of ${name}?`,
-    body: "Skiff then connects to the Host that answers there now. Accept only if you know why it changed, such as a new install of Skiff on that Host. Clipboard writes from it are blocked again.",
-    action: "Accept identity",
+    title: t("hosts.identityTitle", { name }),
+    body: t("hosts.identityBody"),
+    action: t("hosts.identityAction"),
   });
   if (!ok) return;
   await invoke("accept_host_identity", { id: list.selected })

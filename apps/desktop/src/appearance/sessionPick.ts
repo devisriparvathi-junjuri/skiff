@@ -1,7 +1,8 @@
 /**
  * The selection in the skiffd activity list, and the words of its Sink action.
- * No DOM here: the page tests run it as is.
+ * No DOM here: the page tests run it with the real catalog.
  */
+import { t, tn } from "../i18n";
 
 /** The selected session ids, the start of a range, and the current row. */
 export interface Pick { sel: Set<string>; anchor: string | null; now: string | null; }
@@ -60,10 +61,10 @@ export function keepLive(p: Pick, order: string[]) {
 export const picked = (p: Pick, order: string[]) => order.filter((id) => p.sel.has(id));
 
 /** The Sink button. It opens a dialog, so it ends in "…". */
-export const sinkLabel = (n: number) => (n > 1 ? "Sink Selected…" : "Sink…");
+export const sinkLabel = (n: number) => t(n > 1 ? "sink.selected" : "sink.one");
 
 /** The status line that reads the selection out. */
-export const pickedText = (n: number) => (n ? `${n} selected` : "");
+export const pickedText = (n: number) => (n ? t("sink.picked", { n }) : "");
 
 /** More names than this and the dialog gives the count only. */
 export const NAMES_SHOWN = 5;
@@ -71,8 +72,8 @@ export const NAMES_SHOWN = 5;
 /** The Abandon Ship dialog: the sessions that end, by name, or their count when there are many. */
 export function abandonShip(names: string[]): { title: string; body: string; action: string } {
   const n = names.length;
-  const title = "Abandon Ship";
-  if (n === 1) return { title, body: `Kills ${names[0]}.\nUnsaved work in its terminal is lost.`, action: "Sink session" };
-  const list = n <= NAMES_SHOWN ? `Kills ${n} sessions:\n${names.join("\n")}` : `Kills ${n} sessions.`;
-  return { title, body: `${list}\nUnsaved work in their terminals is lost.`, action: `Sink ${n} sessions` };
+  const title = t("sink.title");
+  if (n === 1) return { title, body: t("sink.bodyOne", { name: names[0] }), action: t("sink.actionOne") };
+  const list = n <= NAMES_SHOWN ? t("sink.listNames", { n, names: names.join("\n") }) : t("sink.listCount", { n });
+  return { title, body: `${list}\n${t("sink.lost")}`, action: tn("sink.action", n) };
 }

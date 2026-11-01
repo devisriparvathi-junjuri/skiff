@@ -31,6 +31,7 @@ import { button, h, setHidden } from "../ui/dom";
 import type { MenuEntry } from "../ui/menu";
 import { fleetKey, projectKey, treeSections, useTreeView } from "./tree";
 import { selectProject } from "./view";
+import { t, tn, upper } from "../i18n";
 
 /** The profile as `workspace_read` gives it and `workspace_write` takes it. */
 export interface Profile {
@@ -98,7 +99,7 @@ const emptyProfile = (): Profile => ({ name: "", projects: [], fleets: [], folde
 const clone = (p: Profile): Profile => JSON.parse(JSON.stringify(p));
 
 export const workspaceOpen = () => doc !== null;
-export const workspaceName = () => (doc ? doc.profile.name.trim() || "Untitled" : "All projects");
+export const workspaceName = () => (doc ? doc.profile.name.trim() || t("workspace.untitled") : t("workspace.allProjects"));
 
 export function workspaceEdited(): boolean {
   return !!doc && (canon(doc.profile) !== doc.base || (doc.kept && doc.disk !== "ok"));
@@ -129,7 +130,7 @@ export const ledgerAllWork = () => allWork;
 export function setLedgerAllWork(on: boolean) {
   if (allWork === on) return;
   allWork = on;
-  announce(on ? "Ledger shows all work" : `Ledger shows ${workspaceName()} work`);
+  announce(on ? t("workspace.ledgerAll") : t("workspace.ledgerScoped", { name: workspaceName() }));
   render();
 }
 
@@ -146,10 +147,10 @@ function missing(): Missing[] {
   for (const path of doc.profile.projects) {
     if (S.projects.some((p) => trimPath(p.path) === trimPath(path))) continue;
     const closed = S.closedProjects.find((p) => trimPath(p.path) === trimPath(path));
-    out.push({ kind: "project", ref: path, why: closed ? `${closed.name} is closed` : "no project has this folder" });
+    out.push({ kind: "project", ref: path, why: closed ? t("workspace.whyClosed", { name: closed.name }) : t("workspace.whyNoProject") });
   }
   const fleets = new Set(S.projects.map((p) => p.fleet).filter((f): f is string => !!f));
-  for (const f of doc.profile.fleets) if (!fleets.has(f)) out.push({ kind: "fleet", ref: f, why: "no fleet has this name" });
+  for (const f of doc.profile.fleets) if (!fleets.has(f)) out.push({ kind: "fleet", ref: f, why: t("workspace.whyNoFleet") });
   return out;
 }
 
@@ -239,7 +240,12 @@ function setIncluded(kind: "project" | "fleet", ref: string, on: boolean) {
   d.profile.folded_projects = d.profile.folded_projects.filter((x) => !left(x));
   if (d.profile.selected && left(d.profile.selected)) d.profile.selected = null;
   if (kind === "fleet" && !on) d.profile.folded_fleets = d.profile.folded_fleets.filter((x) => x !== ref);
-  announce(`${kind === "fleet" ? `Fleet ${ref}` : (S.projects.find((p) => trimPath(p.path) === trimPath(ref))?.name ?? ref)} ${on ? "added to" : "removed from"} ${workspaceName()}`);
+  const workspace = workspaceName();
+  if (kind === "fleet") announce(t(on ? "workspace.fleetAdded" : "workspace.fleetRemoved", { fleet: ref, workspace }));
+  else {
+    const project = S.projects.find((p) => trimPath(p.path) === trimPath(ref))?.name ?? ref;
+    announce(t(on ? "workspace.projectAdded" : "workspace.projectRemoved", { project, workspace }));
+  }
   changed();
   if (!on) showView(false);
 }
@@ -272,27 +278,27 @@ export function projectsPlus(at: HTMLElement, addProject: () => void) {
   const fleets = fleetNames().filter((f) => !doc!.profile.fleets.includes(f));
   const hidden = S.projects.filter((p) => !shows(p));
   const entries: MenuEntry[] = [];
-  if (fleets.length || hidden.length) entries.push({ head: "ADD TO WORKSPACE" });
-  for (const f of fleets) entries.push({ icon: "code-group", label: `Fleet ${f}`, run: () => setIncluded("fleet", f, true) });
-  for (const p of hidden) entries.push({ label: p.fleet ? `${p.name} (${p.fleet})` : p.name, run: () => setIncluded("project", p.path, true) });
-  if (entries.length) entries.push({ head: "SKIFF" });
-  entries.push({ icon: "indicators-plus", label: "Add project…", run: addProject });
+  if (fleets.length || hidden.length) entries.push({ head: upper(t("workspace.headAdd")) });
+  for (const f of fleets) entries.push({ icon: "code-group", label: t("menu.fleet", { name: f }), run: () => setIncluded("fleet", f, true) });
+  for (const p of hidden) entries.push({ label: p.fleet ? t("workspace.projectInFleet", { name: p.name, fleet: p.fleet }) : p.name, run: () => setIncluded("project", p.path, true) });
+  if (entries.length) entries.push({ head: upper(t("workspace.headSkiff")) });
+  entries.push({ icon: "indicators-plus", label: t("cmd.addProject"), run: addProject });
   ctxMenu.open(r.left, r.bottom, workspaceName(), entries);
 }
 
 /** The workspace items in a project's menu. None in All projects. */
 export function projectWorkspaceEntries(p: Project): MenuEntry[] {
   if (!doc) return [];
-  if (listed(p)) return [{ icon: "code-ungroup", label: "Remove from workspace", run: () => setIncluded("project", p.path, false) }];
+  if (listed(p)) return [{ icon: "code-ungroup", label: t("workspace.removeProject"), run: () => setIncluded("project", p.path, false) }];
   // In by its fleet only: the fleet's menu takes it out.
-  return [{ icon: "code-ungroup", label: `Remove from workspace (in by fleet ${p.fleet})`, disabled: true }];
+  return [{ icon: "code-ungroup", label: t("workspace.inByFleet", { fleet: p.fleet ?? "" }), disabled: true }];
 }
 
 /** The workspace items in a fleet's menu. None in All projects. */
 export function fleetWorkspaceEntries(name: string): MenuEntry[] {
   if (!doc) return [];
-  if (doc.profile.fleets.includes(name)) return [{ icon: "code-ungroup", label: "Remove fleet from workspace", run: () => setIncluded("fleet", name, false) }];
-  return [{ icon: "indicators-plus", label: "Add whole fleet to workspace", run: () => setIncluded("fleet", name, true) }];
+  if (doc.profile.fleets.includes(name)) return [{ icon: "code-ungroup", label: t("workspace.removeFleet"), run: () => setIncluded("fleet", name, false) }];
+  return [{ icon: "indicators-plus", label: t("workspace.addFleet"), run: () => setIncluded("fleet", name, true) }];
 }
 
 // ── Notices ────────────────────────────────────────────────────────────────
@@ -310,7 +316,7 @@ function announce(text: string) {
 /** The profile changed in memory. */
 function changed() {
   const now = workspaceEdited();
-  if (now !== wasEdited) announce(now ? `${workspaceName()} edited` : `${workspaceName()} has no unsaved changes`);
+  if (now !== wasEdited) announce(t(now ? "workspace.editedSay" : "workspace.cleanSay", { name: workspaceName() }));
   wasEdited = now;
   render();
 }
@@ -388,7 +394,7 @@ function showView(focus = true) {
     if (target) selectProject(target.name);
     render();
   });
-  announce(doc ? `Workspace ${workspaceName()}` : "All projects");
+  announce(doc ? t("workspace.openedSay", { name: workspaceName() }) : t("workspace.allProjects"));
   if (focus) requestAnimationFrame(() => home()?.focus());
 }
 
@@ -403,7 +409,7 @@ async function write(path: string, expect: string | null): Promise<boolean> {
   const snap = clone(d.profile);
   saving = true;
   render();
-  announce("Saving workspace…");
+  announce(t("workspace.savingSay"));
   try {
     const revision = await invoke<string>("workspace_write", { path, profile: snap, expect });
     d.path = path;
@@ -413,13 +419,13 @@ async function write(path: string, expect: string | null): Promise<boolean> {
     d.kept = false;
     d.answered = false;
     remember(path);
-    announce(`Saved ${fileName(path)}`);
+    announce(t("workspace.savedSay", { file: fileName(path) }));
     return true;
   } catch (e) {
     const text = String(e);
     if (text.startsWith("conflict:") && path === d.path) d.disk = "changed";
-    announce(`Not saved: ${text}`);
-    showError(`The workspace is not saved. ${text.replace(/^conflict: /, "")}`);
+    announce(t("workspace.notSavedSay", { error: text }));
+    showError(t("workspace.notSaved", { error: text.replace(/^conflict: /, "") }));
     return false;
   } finally {
     saving = false;
@@ -442,9 +448,9 @@ async function saveAsNow(): Promise<boolean> {
   if (!doc) return false;
   const name = workspaceName().replace(/[/\\]/g, "-");
   const picked = await saveDialog({
-    title: "Save workspace as",
+    title: t("workspace.saveAsTitle"),
     defaultPath: doc.path ?? `${name}.${EXT}`,
-    filters: [{ name: "Skiff workspace", extensions: [EXT] }],
+    filters: [{ name: t("workspace.fileType"), extensions: [EXT] }],
   }).catch((e) => {
     showError(e);
     return null;
@@ -453,7 +459,7 @@ async function saveAsNow(): Promise<boolean> {
   const path = picked.endsWith(`.${EXT}`) ? picked : `${picked}.${EXT}`;
   if (path === doc.path) {
     if (doc.disk !== "ok") {
-      showError(`${fileName(path)} changed on disk or is gone. Reload it first, or save to another file.`);
+      showError(t("workspace.changedOrGone", { file: fileName(path) }));
       return false;
     }
     return write(path, doc.revision);
@@ -468,9 +474,9 @@ async function saveAsNow(): Promise<boolean> {
   // The file dialog asked about `picked`. With the extension added, the file it replaces was never named.
   if (expect !== null && path !== picked) {
     const ok = await choose({
-      title: "Replace workspace file",
-      body: `${path} exists. Replace it with this workspace?`,
-      choices: [{ id: "replace", label: "Replace", tone: "danger" }],
+      title: t("workspace.replaceTitle"),
+      body: t("workspace.replaceBody", { path }),
+      choices: [{ id: "replace", label: t("workspace.replace"), tone: "danger" }],
     });
     if (ok !== "replace") return false;
   }
@@ -501,13 +507,13 @@ export function leave(what: string, go: () => Promise<boolean>): Promise<boolean
   const restore = () => requestAnimationFrame(() => (back?.isConnected ? back : home())?.focus());
   return exclusive(async () => {
     if (workspaceEdited()) {
-      const where = doc!.path ?? "Untitled, not saved yet";
+      const where = doc!.path ?? t("workspace.notSavedYet");
       const c = await choose({
-        title: `Save changes to ${workspaceName()}?`,
-        body: `${where}\n${what} Don't Save drops the changes to this workspace view. Projects, fleets, sessions and the ledger stay as they are.`,
+        title: t("workspace.saveTitle", { name: workspaceName() }),
+        body: t("workspace.saveBody", { where, what }),
         choices: [
-          { id: "save", label: "Save", tone: "go" },
-          { id: "discard", label: "Don't Save", tone: "plain" },
+          { id: "save", label: t("workspace.save"), tone: "go" },
+          { id: "discard", label: t("workspace.dontSave"), tone: "plain" },
         ],
       });
       if (c === "cancel") return (restore(), false);
@@ -526,7 +532,7 @@ async function openNow(path: string): Promise<boolean> {
     l = await read(path);
   } catch (e) {
     const known = recents().includes(path);
-    showError(`Cannot open the workspace. ${e}`, known ? { label: "Remove from recent", run: async () => forget(path) } : undefined);
+    showError(t("workspace.cannotOpen", { error: String(e) }), known ? { label: t("workspace.removeRecent"), run: async () => forget(path) } : undefined);
     return false;
   }
   commit(l);
@@ -534,7 +540,7 @@ async function openNow(path: string): Promise<boolean> {
 }
 
 export function newWorkspace() {
-  void leave("A new workspace replaces it.", async () => {
+  void leave(t("workspace.leaveNew"), async () => {
     commitUntitled();
     return true;
   }).then((ok) => ok && editWorkspace());
@@ -548,7 +554,7 @@ export async function openWorkspace(path?: string) {
   let target: string | string[] | null = path ?? null;
   if (!target) {
     picking = true;
-    target = await openDialog({ title: "Open workspace", filters: [{ name: "Skiff workspace", extensions: [EXT] }], multiple: false, directory: false })
+    target = await openDialog({ title: t("workspace.openTitle"), filters: [{ name: t("workspace.fileType"), extensions: [EXT] }], multiple: false, directory: false })
       .catch((e) => {
         showError(e);
         return null;
@@ -556,13 +562,13 @@ export async function openWorkspace(path?: string) {
       .finally(() => (picking = false));
   }
   if (typeof target !== "string") return;
-  await leave(`Opening ${fileName(target)} replaces it.`, () => openNow(target));
+  await leave(t("workspace.leaveOpen", { file: fileName(target) }), () => openNow(target));
 }
 
 /** Close workspace: back to All projects. */
 export function closeWorkspace() {
   if (!doc) return;
-  void leave("Closing it shows all projects.", async () => {
+  void leave(t("workspace.leaveClose"), async () => {
     commit(null);
     store(LAST_KEY, null);
     return true;
@@ -579,7 +585,7 @@ export function saveWorkspaceAs() {
 
 /** Quit and the window's close: the same guard. Sessions keep running in skiffd. */
 export function quitApp() {
-  void leave("Skiff quits. Sessions keep running.", async () => {
+  void leave(t("workspace.leaveQuit"), async () => {
     try {
       await invoke("quit_app");
       return true;
@@ -605,8 +611,8 @@ async function checkDisk() {
   if (doc !== d || saving || now === d.disk) return;
   d.disk = now;
   d.answered = false;
-  if (now === "changed") announce(`${fileName(d.path!)} changed on disk`);
-  else if (now === "missing") announce(`${fileName(d.path!)} is unavailable`);
+  if (now === "changed") announce(t("workspace.changedSay", { file: fileName(d.path!) }));
+  else if (now === "missing") announce(t("workspace.unavailableSay", { file: fileName(d.path!) }));
   changed();
 }
 
@@ -618,14 +624,14 @@ async function reload() {
     try {
       l = await read(doc.path);
     } catch (e) {
-      showError(`Cannot reload the workspace. ${e}`);
+      showError(t("workspace.cannotReload", { error: String(e) }));
       return false;
     }
     if (workspaceEdited()) {
       const c = await choose({
-        title: `Reload ${workspaceName()}?`,
-        body: `${doc.path}\nThe changes to this workspace view go. Projects, fleets, sessions and the ledger stay as they are.`,
-        choices: [{ id: "reload", label: "Reload", tone: "danger" }],
+        title: t("workspace.reloadTitle", { name: workspaceName() }),
+        body: t("workspace.reloadBody", { path: doc.path }),
+        choices: [{ id: "reload", label: t("workspace.reload"), tone: "danger" }],
       });
       if (c !== "reload") return false;
     }
@@ -650,17 +656,17 @@ export function editWorkspace() {
   if (!doc || saving) return;
   const d = doc;
   const back = document.activeElement as HTMLElement | null;
-  const { overlay, panel } = dialogFrame("confirm-panel ws-edit", "dialog", `Edit workspace ${workspaceName()}`);
-  const title = h("div", "confirm-title", "Edit workspace");
+  const { overlay, panel } = dialogFrame("confirm-panel ws-edit", "dialog", t("workspace.editLabel", { name: workspaceName() }));
+  const title = h("div", "confirm-title", t("workspace.editTitle"));
   const body = h("div", "ws-edit-body");
   const nameLabel = h("label", "ws-field");
   const name = h("input", "prompt-input");
   name.type = "text";
   name.value = d.profile.name;
-  name.placeholder = "Untitled";
+  name.placeholder = t("workspace.untitled");
   name.spellcheck = false;
-  nameLabel.append(h("span", "ws-label", "Name"), name);
-  body.append(nameLabel, h("div", "ws-note", "The workspace shows these projects and fleets. It changes no project, fleet or session."));
+  nameLabel.append(h("span", "ws-label", t("workspace.name")), name);
+  body.append(nameLabel, h("div", "ws-note", t("workspace.editNote")));
 
   const fleets = [...new Set(S.projects.map((p) => p.fleet).filter((f): f is string => !!f))];
   // One tree in the sidebar's order: projects in no fleet, then each fleet with its projects under it.
@@ -680,7 +686,7 @@ export function editWorkspace() {
   const loose: HTMLInputElement[] = [];
   const tree = h("div", "ws-tree");
   tree.setAttribute("role", "group");
-  tree.setAttribute("aria-label", "Fleets and projects in this workspace");
+  tree.setAttribute("aria-label", t("workspace.treeLabel"));
   const inList = (p: Project) => d.profile.projects.some((x) => trimPath(x) === trimPath(p.path));
   const projectBox = (p: Project, nested: boolean) => {
     const { l, c } = box(p.name, inList(p), nested);
@@ -755,38 +761,38 @@ export function editWorkspace() {
 
   const head = h("label", "ws-sec");
   if (S.projects.length) {
-    all.setAttribute("aria-label", "Select all fleets and projects");
-    head.append(all, h("span", "", "Select all"));
+    all.setAttribute("aria-label", t("workspace.selectAllLabel"));
+    head.append(all, h("span", "", t("workspace.selectAll")));
     all.addEventListener("keydown", step);
-  } else head.textContent = "Projects";
+  } else head.textContent = t("workspace.projects");
   body.append(head);
-  if (!S.projects.length) body.append(h("div", "ws-note", "No open projects."));
+  if (!S.projects.length) body.append(h("div", "ws-note", t("workspace.noProjects")));
   body.append(tree);
   const repairs = new Map<Missing, HTMLSelectElement>();
   const lost = missing();
   if (lost.length) {
-    body.append(h("div", "ws-sec", "Missing"));
+    body.append(h("div", "ws-sec", t("workspace.missing")));
     for (const m of lost) {
       const row = h("div", "ws-missing");
       const sel = h("select", "ws-repair");
-      sel.setAttribute("aria-label", `What to do with ${m.ref}`);
+      sel.setAttribute("aria-label", t("workspace.repairLabel", { ref: m.ref }));
       const opt = (value: string, text: string) => {
         const o = h("option", "", text);
         o.value = value;
         sel.append(o);
       };
-      opt("keep", "Keep, unresolved");
-      opt("remove", "Remove from workspace");
-      if (m.kind === "project") for (const p of S.projects) opt(`use:${trimPath(p.path)}`, `Use ${p.name} (${p.path})`);
-      else for (const f of fleets) opt(`use:${f}`, `Use fleet ${f}`);
+      opt("keep", t("workspace.keepUnresolved"));
+      opt("remove", t("workspace.removeProject"));
+      if (m.kind === "project") for (const p of S.projects) opt(`use:${trimPath(p.path)}`, t("workspace.useProject", { name: p.name, path: p.path }));
+      else for (const f of fleets) opt(`use:${f}`, t("workspace.useFleet", { name: f }));
       row.append(h("span", "ws-missing-ref", m.ref), h("span", "ws-missing-why", m.why), sel);
       repairs.set(m, sel);
       body.append(row);
     }
   }
   const foot = h("div", "confirm-foot");
-  const cancel = button("confirm-cancel", "Cancel", () => close());
-  const apply = button("confirm-act go", "Apply", () => submit());
+  const cancel = button("confirm-cancel", t("workspace.cancel"), () => close());
+  const apply = button("confirm-act go", t("workspace.apply"), () => submit());
   foot.append(cancel, apply);
   panel.append(title, body, foot);
   overlay.append(panel);
@@ -872,7 +878,7 @@ function choose(o: { title: string; body: string; choices: { id: string; label: 
       overlay.remove();
       resolve(id);
     };
-    const cancel = button("confirm-cancel", "Cancel", () => done("cancel"));
+    const cancel = button("confirm-cancel", t("workspace.cancel"), () => done("cancel"));
     foot.append(cancel);
     for (const c of o.choices) {
       const cls = c.tone === "go" ? "confirm-act go" : c.tone === "danger" ? "confirm-act" : "confirm-cancel";
@@ -905,7 +911,7 @@ const home = () => document.querySelector<HTMLElement>('#sidebar-scroll [tabinde
 
 const recentEntries = (): MenuEntry[] =>
   recents().map((path) => ({
-    label: path === doc?.path ? `${fileName(path)} (open)` : fileName(path),
+    label: path === doc?.path ? t("workspace.recentOpen", { file: fileName(path) }) : fileName(path),
     run: () => void openWorkspace(path),
   }));
 
@@ -913,8 +919,8 @@ const recentEntries = (): MenuEntry[] =>
 export function recentWorkspacesMenu() {
   const r = document.querySelector<HTMLElement>("#sidebar-scroll .tree-head:not(.fleet-head)")?.getBoundingClientRect();
   const entries = recentEntries();
-  if (!entries.length) entries.push({ label: "No recent workspaces", disabled: true });
-  ctxMenu.open(r ? r.left + 24 : 80, r ? r.bottom : 80, "Recent workspaces", entries);
+  if (!entries.length) entries.push({ label: t("workspace.noRecent"), disabled: true });
+  ctxMenu.open(r ? r.left + 24 : 80, r ? r.bottom : 80, t("workspace.recentTitle"), entries);
 }
 
 /** What the open workspace needs a look for, for the File menu: a disk change, and missing references. */
@@ -941,35 +947,39 @@ function menuEntries(): MenuEntry[] {
   const n = workspaceNotice();
   const notice: MenuEntry[] = [];
   if (n.disk) {
-    notice.push({ head: n.disk === "changed" ? "CHANGED ON DISK" : "FILE MISSING" });
-    if (n.disk === "changed") notice.push({ label: "Reload from disk", run: reloadWorkspace });
-    notice.push({ label: "Keep current", run: keepWorkspace });
+    notice.push({ head: upper(t(n.disk === "changed" ? "workspace.changedOnDisk" : "workspace.fileMissing")) });
+    if (n.disk === "changed") notice.push({ label: t("workspace.reloadFromDisk"), run: reloadWorkspace });
+    notice.push({ label: t("workspace.keepCurrent"), run: keepWorkspace });
   }
-  if (n.missing) notice.push({ icon: "tools-pencil", label: `Repair ${n.missing} missing ${n.missing === 1 ? "reference" : "references"}…`, run: editWorkspace });
-  if (notice.length) notice.push({ head: "WORKSPACE" });
+  if (n.missing) notice.push({ icon: "tools-pencil", label: tn("workspace.repair", n.missing), run: editWorkspace });
+  if (notice.length) notice.push({ head: upper(t("workspace.head")) });
   return [
     ...notice,
-    { icon: "indicators-plus", label: "New workspace…", run: newWorkspace },
-    { icon: "documents-folder-open", label: "Open workspace…", run: () => void openWorkspace() },
-    { icon: "documents-folder-open", label: "Open recent", sub: recent.length ? recent : [{ label: "No recent workspaces", disabled: true }], disabled: !recent.length },
-    { icon: "tools-pencil", label: "Edit workspace…", run: editWorkspace, disabled: !on },
-    { label: "Save", run: saveWorkspace, disabled: !on },
-    { label: "Save as…", run: saveWorkspaceAs, disabled: !on },
-    { icon: "code-ungroup", label: "Close workspace: All projects", run: closeWorkspace, disabled: !on },
-    { label: allWork ? "Ledger: show workspace work" : "Ledger: show all work", run: () => setLedgerAllWork(!allWork), disabled: !on },
+    { icon: "indicators-plus", label: t("cmd.newWorkspace"), run: newWorkspace },
+    { icon: "documents-folder-open", label: t("cmd.openWorkspace"), run: () => void openWorkspace() },
+    { icon: "documents-folder-open", label: t("workspace.openRecent"), sub: recent.length ? recent : [{ label: t("workspace.noRecent"), disabled: true }], disabled: !recent.length },
+    { icon: "tools-pencil", label: t("cmd.editWorkspace"), run: editWorkspace, disabled: !on },
+    { label: t("workspace.save"), run: saveWorkspace, disabled: !on },
+    { label: t("workspace.saveAs"), run: saveWorkspaceAs, disabled: !on },
+    { icon: "code-ungroup", label: t("workspace.closeToAll"), run: closeWorkspace, disabled: !on },
+    { label: allWork ? t("workspace.ledgerShowWorkspace") : t("workspace.ledgerShowAll"), run: () => setLedgerAllWork(!allWork), disabled: !on },
   ];
 }
 
 /** The one short mark beside the name: what needs a look first. */
 function markOf(lost: number): { text: string; cls: string; say: string } | null {
-  if (saving) return { text: "Saving…", cls: "", say: "saving" };
+  if (saving) return { text: t("workspace.markSaving"), cls: "", say: t("workspace.saySaving") };
   if (doc && doc.disk !== "ok" && !doc.answered) {
-    const text = doc.disk === "changed" ? "Changed on disk" : "File missing";
-    return { text, cls: "edited", say: `${text.toLowerCase()}, File menu or this item to reload or keep it` };
+    const changedOnDisk = doc.disk === "changed";
+    return {
+      text: t(changedOnDisk ? "workspace.changedOnDisk" : "workspace.fileMissing"),
+      cls: "edited",
+      say: t(changedOnDisk ? "workspace.sayChanged" : "workspace.sayFileMissing"),
+    };
   }
-  if (workspaceEdited()) return { text: "Edited", cls: "edited", say: "edited" };
-  if (lost) return { text: `${lost} missing`, cls: "", say: `${lost} missing ${lost === 1 ? "reference" : "references"}` };
-  return doc ? { text: "", cls: "", say: "saved" } : null;
+  if (workspaceEdited()) return { text: t("workspace.markEdited"), cls: "edited", say: t("workspace.sayEdited") };
+  if (lost) return { text: tn("workspace.markMissing", lost), cls: "", say: tn("workspace.sayMissing", lost) };
+  return doc ? { text: "", cls: "", say: t("workspace.saySaved") } : null;
 }
 
 /**
@@ -991,14 +1001,14 @@ export function renderWorkspaceStatus() {
   const lost = missing();
   const state = markOf(lost.length);
   const name = workspaceName();
-  const why = lost.map((m) => `${m.kind === "project" ? m.ref : `fleet ${m.ref}`}: ${m.why}`);
+  const why = lost.map((m) => t(m.kind === "project" ? "workspace.missingProject" : "workspace.missingFleet", { ref: m.ref, why: m.why }));
   const sig = JSON.stringify([name, doc.path, state, why]);
   if (el.dataset.sig === sig) return;
   el.dataset.sig = sig;
   el.replaceChildren(h("span", "ws-status-name", name));
   if (state?.text) el.append(h("span", `ws-status-mark ${state.cls}`.trim(), state.text));
-  el.title = [doc.path ?? "Untitled, not saved yet", ...why].join("\n");
-  el.setAttribute("aria-label", `Workspace: ${name}${state ? `, ${state.say}` : ""}`);
+  el.title = [doc.path ?? t("workspace.notSavedYet"), ...why].join("\n");
+  el.setAttribute("aria-label", state ? t("workspace.statusLabelSay", { name, state: state.say }) : t("workspace.statusLabel", { name }));
   if (!el.dataset.wired) {
     el.dataset.wired = "1";
     el.addEventListener("click", () => workspaceMenu(el));
@@ -1046,7 +1056,7 @@ export async function startWorkspaces() {
     } catch (e) {
       store(LAST_KEY, null);
       const known = recents().includes(path);
-      showError(`Cannot open the workspace. ${e} Skiff shows all projects.`, known ? { label: "Remove from recent", run: async () => forget(path) } : undefined);
+      showError(t("workspace.cannotOpenStart", { error: String(e) }), known ? { label: t("workspace.removeRecent"), run: async () => forget(path) } : undefined);
     }
   }
   ready = true;

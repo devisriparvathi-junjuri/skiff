@@ -1,4 +1,5 @@
 import { $, button, h } from "./dom";
+import { t } from "../i18n";
 
 /**
  * A bar above the workspace that stays until dismissed. The status bar was
@@ -33,6 +34,6 @@ function showBar(text: string, role: string, action?: { label: string; run: () =
     });
     alert.append(run);
   }
-  alert.append(button("alert-btn", "Dismiss", () => alert.remove()));
+  alert.append(button("alert-btn", t("alert.dismiss"), () => alert.remove()));
   $("body").before(alert);
 }

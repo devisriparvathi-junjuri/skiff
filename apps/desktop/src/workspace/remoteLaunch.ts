@@ -19,6 +19,7 @@ import { launchIcon } from "../appearance/agentIcon";
 import { openFolderPicker } from "./folderPicker";
 import { basename } from "./model";
 import { refocusTerminal } from "./view";
+import { t, upper } from "../i18n";
 
 /** The folders the Host reported: its sessions' and groups' folders, once each, `first` before the rest. */
 export function hostFolders(list: Iterable<SessionInfo>, groups: Group[], first?: string | null): string[] {
@@ -62,7 +63,7 @@ function refreshRecent(host: string) {
 function startEntries(cwd: string | null): MenuEntry[] {
   return launchChoices().map((a, i) => ({
     glyph: launchIcon(a),
-    label: a?.id ?? "Shell",
+    label: a?.id ?? t("menu.shell"),
     hint: launchDigit(i),
     run: () => start(cwd, a?.id ?? null),
   }));
@@ -73,9 +74,9 @@ function startEntries(cwd: string | null): MenuEntry[] {
  *  agent's command as the Host lists it now, or nothing. */
 function start(cwd: string | null, id: string | null) {
   const host = hostName();
-  if (!hostConnected()) return showError(`${host} is not connected. Try again once it is back.`);
+  if (!hostConnected()) return showError(t("remote.notConnected", { host }));
   const a = id === null ? null : launchChoices().find((c) => c?.id === id);
-  if (a === undefined) return showError(`${host} no longer offers ${id}. Open New session again.`);
+  if (a === undefined) return showError(t("remote.noAgent", { host, agent: id ?? "" }));
   void newSession(cwd, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell").catch(showError);
 }
 
@@ -88,15 +89,15 @@ export function openRemoteNewSession(x: number, y: number, near?: string | null)
   const hostRecent = recent.host === host ? recent.list : [];
   const others = recentFolders(hostRecent, hostFolders(sessions.values(), S.groups), skip);
   const entries: MenuEntry[] = [
-    { head: `FOLDER ON ${host.toUpperCase()}` },
+    { head: upper(t("remote.folderOn", { host })) },
     ...(near ? [folder(near, near)] : []),
-    ...(worktrees.length ? [{ head: "WORKTREES" }, ...worktrees.map((w) => folder(w.label, w.path))] : []),
-    ...(others.length ? [{ head: "RECENT" }, ...others.map((f) => folder(f, f))] : []),
+    ...(worktrees.length ? [{ head: upper(t("remote.worktrees")) }, ...worktrees.map((w) => folder(w.label, w.path))] : []),
+    ...(others.length ? [{ head: upper(t("remote.recent")) }, ...others.map((f) => folder(f, f))] : []),
     { sep: true },
-    folder("Home folder", null),
-    { icon: "documents-folder-open", label: "Choose a folder…", run: () => chooseFolder(x, y) },
+    folder(t("remote.homeFolder"), null),
+    { icon: "documents-folder-open", label: t("remote.chooseFolder"), run: () => chooseFolder(x, y) },
   ];
-  ctxMenu.open(x, y, "New session", entries);
+  ctxMenu.open(x, y, t("menu.newSessionIn"), entries);
   refreshRecent(host);
 }
 
@@ -104,11 +105,11 @@ export function openRemoteNewSession(x: number, y: number, near?: string | null)
 function chooseFolder(x: number, y: number) {
   let picked: string | null = null;
   openFolderPicker({
-    action: "Start here",
+    action: t("remote.startHere"),
     pick: async (path) => void (picked = path),
     onClose: () => {
       if (picked === null) return refocusTerminal();
-      ctxMenu.open(x, y, "New session", [{ head: `NEW IN ${basename(picked).toUpperCase()}` }, ...startEntries(picked)]);
+      ctxMenu.open(x, y, t("menu.newSessionIn"), [{ head: upper(t("remote.newIn", { name: basename(picked) })) }, ...startEntries(picked)]);
     },
   });
 }

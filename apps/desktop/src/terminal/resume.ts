@@ -8,6 +8,7 @@ import { showError } from "../ui/alerts";
 import { ctxMenu } from "../ui/contextMenu";
 import type { MenuEntry } from "../ui/menu";
 import { basename, branchName, samePath } from "../workspace/model";
+import { locale, t, tn } from "../i18n";
 import { hostInvoke } from "../app/hostCaps";
 
 /**
@@ -81,7 +82,7 @@ const ADAPTERS: Record<string, Adapter> = {
         const rows = JSON.parse(out) as { id: string; title?: string; updated?: number; directory?: string }[];
         return rows
           .filter((r) => !r.directory || samePath(r.directory, cwd))
-          .map((r) => ({ id: r.id, title: r.title || "(no title)", updated: r.updated ?? null }));
+          .map((r) => ({ id: r.id, title: r.title || t("resume.noTitle"), updated: r.updated ?? null }));
       },
       resume: (cmd, id) => `${cmd} -s ${q(id)}`,
     },
@@ -145,17 +146,18 @@ function uuidTime(id: string): number | null {
   return hex.length === 32 && hex[12] === "7" ? parseInt(hex.slice(0, 12), 16) : null;
 }
 
-const clock = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
-const date = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+// English keeps "3:42 PM"; other languages take their own clock.
+const clock = new Intl.DateTimeFormat(locale(), { hour: "numeric", minute: "2-digit" });
+const date = new Intl.DateTimeFormat(locale(), { month: "short", day: "numeric" });
 
 /** "3:42 PM" today, "Yesterday 3:42 PM", else "Sep 30, 3:42 PM". */
 function when(r: Recent): string {
   if (r.updated == null) return r.day ?? "";
-  const t = new Date(r.updated);
-  const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(t).setHours(0, 0, 0, 0)) / 86400000);
-  if (days === 0) return clock.format(t);
-  if (days === 1) return `Yesterday ${clock.format(t)}`;
-  return `${date.format(t)}, ${clock.format(t)}`;
+  const at = new Date(r.updated);
+  const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(at).setHours(0, 0, 0, 0)) / 86400000);
+  if (days === 0) return clock.format(at);
+  if (days === 1) return t("resume.yesterday", { time: clock.format(at) });
+  return t("resume.dateTime", { date: date.format(at), time: clock.format(at) });
 }
 
 /** Where the list opens: a menu point, or under a button with its right edge. */
@@ -178,14 +180,14 @@ export function resumePane(id: string, at: Anchor) {
   if (a.picker) return run(id, a.picker(cmd, was.title));
   const p = place(s);
   const where = p ? branchName(p.worktree) : basename(s.cwd);
-  const title = `${was.agent} · recent in ${where}`;
+  const title = t("resume.recentIn", { agent: was.agent, where });
   if (a.latest) {
-    openAt(at, title, [{ icon: "schedule-refresh-cw", label: "Continue latest", hint: a.latest(cmd), run: () => run(id, a.latest!(cmd)) }]);
+    openAt(at, title, [{ icon: "schedule-refresh-cw", label: t("resume.continueLatest"), hint: a.latest(cmd), run: () => run(id, a.latest!(cmd)) }]);
     return;
   }
   const list = a.list!;
   const show = async (n: number) => {
-    openAt(at, title, [{ label: "Loading…", disabled: true }]);
+    openAt(at, title, [{ label: t("resume.loading"), disabled: true }]);
     let rows: Recent[];
     try {
       const program = cmd.split(/\s+/)[0];
@@ -200,11 +202,11 @@ export function resumePane(id: string, at: Anchor) {
     const entries: MenuEntry[] = rows.map((r) => ({
       icon: "·",
       label: r.title,
-      hint: (r.title === was.title ? "last title · " : "") + when(r),
+      hint: r.title === was.title ? t("resume.lastTitle", { when: when(r) }) : when(r),
       run: () => run(id, list.resume(cmd, r.id)),
     }));
-    if (!entries.length) entries.push({ label: "No sessions in this folder", disabled: true });
-    if (rows.length >= n && n < MORE) entries.push({ icon: "·", label: "Show more…", run: () => void show(MORE) });
+    if (!entries.length) entries.push({ label: t("resume.none"), disabled: true });
+    if (rows.length >= n && n < MORE) entries.push({ icon: "·", label: t("resume.showMore"), run: () => void show(MORE) });
     openAt(at, title, entries);
   };
   void show(FIRST);
@@ -219,7 +221,7 @@ export function resumeAllEntry(ids: string[]): MenuEntry | null {
   if (!ready.length) return null;
   return {
     icon: "schedule-refresh-cw",
-    label: ready.length === 1 ? "Resume 1 session" : `Resume ${ready.length} sessions`,
+    label: tn("resume.sessions", ready.length),
     run: () => ready.forEach((id) => resumePane(id, { x: 0, y: 0 })),
   };
 }

@@ -9,6 +9,7 @@ import "./styles/fonts.css";
 import "./styles.css";
 
 import { keyLabel, setKeymap } from "./app/keys";
+import { t } from "./i18n";
 import { bySessionPriority } from "./workspace/model";
 import type { Appearance, DaemonStatus } from "./platform/types";
 import { invoke } from "@tauri-apps/api/core";
@@ -60,7 +61,28 @@ document.addEventListener("contextmenu", (e) => {
   if (!field) e.preventDefault();
 });
 
+/** The page's static words, in the current language. index.html keeps the English for the first paint. */
+function staticText() {
+  const set = (sel: string, text: string) => {
+    const el = document.querySelector(sel);
+    if (el) el.textContent = text;
+  };
+  // The palette's real hint replaces the search line once skiffd answers.
+  set("#open-switcher .spacer", t("switcher.search"));
+  set("#next-waiting .label", t("topbar.waiting"));
+  set("#next-unread .label", t("topbar.unread"));
+  $("next-waiting").title = t("topbar.nextWaiting");
+  $("next-unread").title = t("topbar.nextUnread");
+  $("open-settings").title = t("cmd.settings");
+  $("open-settings").setAttribute("aria-label", t("cmd.settings"));
+  // header.ts and daemon.ts write these again later.
+  set("#keys-to", t("topbar.keysGoTo"));
+  set("#daemon-label", t("status.connecting"));
+  $("ledger").setAttribute("aria-label", t("section.ledger"));
+}
+
 async function boot() {
+  staticText();
   await startWorkspaceQuitGuard();
   // Which Host this window shows decides everything below.
   await loadHosts().catch(showError);
@@ -141,7 +163,7 @@ async function boot() {
   const kbd = document.querySelector("#open-switcher kbd");
   if (kbd) kbd.textContent = keyLabel("palette").replace(/\+/g, " ");
   const hint = document.querySelector("#open-switcher .spacer");
-  if (hint) hint.textContent = "Commands, sessions, worktrees";
+  if (hint) hint.textContent = t("switcher.hint");
   // Projects and Git come back on their own when skiff-host starts late or restarts.
   followDataPlane();
   await loadGroups();

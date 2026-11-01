@@ -1,5 +1,6 @@
 import { dialogFrame, dialogHeader } from "./dialogParts";
-import { DESCRIBE, describeText, isMac, keyLabel } from "../app/keys";
+import { DESCRIBE, describe, describeText, isMac, keyLabel } from "../app/keys";
+import { type MessageKey, t, upper } from "../i18n";
 
 import type { DaemonStatus } from "../platform/types";
 import { getVersion } from "@tauri-apps/api/app";
@@ -40,71 +41,79 @@ function infoDialog(title: string, body: HTMLElement, initialFocus?: HTMLElement
 
 type Shortcut = [section: string, what: string, key: string];
 
+/**
+ * A fixed key's F1 line: catalog keys for the section and the words. The key
+ * column is a key label, or `{ words }` when it names a mouse act or a word.
+ */
+type FixedShortcut = [section: MessageKey, what: MessageKey, key: string | { words: MessageKey }];
+
+const keyWords = (key: FixedShortcut[2]) => (typeof key === "string" ? key : t(key.words));
+
 /** Keyboard controls that do not come from the configurable action keymap. */
-const FIXED_SHORTCUTS: Shortcut[] = [
-  ["Projects", "Project 1 through 9, counted down the list: its Skipper, else its first pane. Folded fleets do not count. In Mission control and the Skippers list, Skipper 1 through 9, counted down the Skippers list", isMac ? "⌘+Option+1…9" : "Ctrl+Shift+1…9"],
-  ["Session list", "Open or fold the focused project or fleet", "Enter / Space / ← / →"],
-  ["Session list", "Close or remove the project from the project row", "Delete / Backspace"],
-  ["Session list", "Open or close the focused worktree", "Enter / Space"],
-  ["Session list", "Open the focused session or group", "Enter"],
-  ["Session list", "Collapse or expand the focused worktree, Changes, Files or folder", "← / →"],
-  ["Session list", "Go into the preview of the focused change, file, folder, Changes or Files", "Enter"],
-  ["Session list", "Open or close the focused Changes, Files or folder", "Space"],
-  ["Session list", "Give the keys to the preview", "Tab"],
-  ["Session list", "Close the preview. A tool that took the terminal keeps Esc", "Esc"],
-  ["Session list", "Open the file of the focused change", "Shift+Enter"],
-  ["Session list", "Extend the session selection", "Shift+↑ / ↓"],
-  ["Session list", "Make a group from the selected sessions", "Enter"],
-  ["Session list", "Clear the session selection", "Esc"],
-  ["Session list", "Rename the focused session or group", "F2"],
-  ["Session list", "End a session or remove a group", "Delete / Backspace"],
-  ["Session list", "Open the row menu", "Menu / Shift+F10"],
-  ["Ledger", "Next or previous row", "↑ / ↓"],
-  ["Ledger", "Open the row's pane or result", "Enter"],
-  ["Ledger", "Back to {skiff-agent}'s pane", "Esc"],
-  ["Mission control", "The parent, the first child, the card to the left or right", "↑ / ↓ / ← / →"],
-  ["Mission control", "Go to the lit session. A cluster: its first session", "Enter"],
-  ["Mission control", "Fold or open the lit cluster", "Space"],
-  ["Mission control", "Fit the graph, zoom in, zoom out", "Home / = / -"],
-  ["Mission control", "Pan, or zoom at the pointer. Drag a card to reorder it in its cluster, or a cluster head to move the cluster inside its fleet or on the canvas", isMac ? "Drag / wheel / ⌘+wheel" : "Drag / wheel / Ctrl+wheel"],
-  ["Mission control", "Close. With text in the search, the first Esc clears it", "Esc"],
-  ["Images", "Search images", "Type"],
-  ["Images", "Go from the search to the list, and back", "↓ / ↑"],
-  ["Images", "Next or previous image", "↑ / ↓"],
-  ["Images", "Open, Insert, Pin, Copy path, Delete (in the list)", "Enter / I / P / C / Delete"],
-  ["Images", "Close Images", "Esc"],
-  ["Settings › Images", "Select one more image, or a range", isMac ? "⌘+click / Shift+click" : "Ctrl+click / Shift+click"],
-  ["Settings › Images", "Move, or extend the selection", "Arrows / Shift+Arrows"],
-  ["Settings › Images", "Add or remove the current image", "Space"],
-  ["Settings › Images", "Select all matches", isMac ? "⌘+A" : "Ctrl+A"],
-  ["Settings › Images", "Insert, Pin, Copy path, Delete the selection", "I / P / C / Delete"],
-  ["Settings", "Change the section from its tab", "↑ / ↓"],
-  ["Settings", "Go into the section from its tab", "→"],
-  ["Settings", "Move between controls in a section", "↑ / ↓ / ← / →"],
-  ["Settings", "Back to the tab from the start of a row", "←"],
-  ["Settings", "Cut or select all in a text field", isMac ? "⌘+X / ⌘+A" : "Ctrl+X / Ctrl+A"],
-  ["Panes", "Focus mode, or Maximize in a split, and back", "Pane header buttons"],
-  ["Panes", "Maximize in a split, focus mode alone, and back", "Double-click the pane header"],
-  ["Panes", "Focus mode, Maximize, Add pane, Rename", "Right-click the pane"],
-  ["Command palette", "Move through matches", "↑ / ↓"],
-  ["Command palette", "Run the selected match", "Enter"],
-  ["Command palette", "Close the palette", "Esc"],
-  ["Find in terminal", "Find the next or previous match", "Enter / Shift+Enter"],
-  ["Find in terminal", "Close the find bar", "Esc"],
-  ["Start-session menu", "Move through choices", "↑ / ↓"],
-  ["Start-session menu", "Start or open the Skipper", "1"],
-  ["Start-session menu", "Start the numbered choice", "2…9"],
-  ["Start-session menu", "Close the menu", "Esc"],
-  ["Empty pane", "Move through session choices", "↑ / ↓"],
-  ["Empty pane", "Start the numbered choice", "1…9"],
-  ["Empty pane", "Move to the next empty pane", "Tab / Shift+Tab"],
-  ["Empty pane", "Remove the pane", "Delete"],
-  ["Menus", "Move through menu items", "↑ / ↓"],
-  ["Menus", "Open a submenu", "→ / Enter / Space"],
-  ["Menus", "In Add pane and group menus, start the numbered choice", "1…9"],
-  ["Menus", "Close a menu or submenu", "Esc / ←"],
-  ["Dialogs", "Close the dialog", "Esc"],
-  ["Dialogs", "Run the selected dialog action", "Enter"],
+const FIXED_SHORTCUTS: FixedShortcut[] = [
+  ["section.projects", "fixed.projects.select", isMac ? "⌘+Option+1…9" : "Ctrl+Shift+1…9"],
+  ["section.sessionList", "fixed.list.openProject", "Enter / Space / ← / →"],
+  ["section.sessionList", "fixed.list.closeProject", "Delete / Backspace"],
+  ["section.sessionList", "fixed.list.openWorktree", "Enter / Space"],
+  ["section.sessionList", "fixed.list.openSession", "Enter"],
+  ["section.sessionList", "fixed.list.foldWorktree", "← / →"],
+  ["section.sessionList", "fixed.list.intoPreview", "Enter"],
+  ["section.sessionList", "fixed.list.openFolder", "Space"],
+  ["section.sessionList", "fixed.list.previewKeys", "Tab"],
+  ["section.sessionList", "fixed.list.closePreview", "Esc"],
+  ["section.sessionList", "fixed.list.openChangeFile", "Shift+Enter"],
+  ["section.sessionList", "fixed.list.extendSelection", "Shift+↑ / ↓"],
+  ["section.sessionList", "fixed.list.makeGroup", "Enter"],
+  ["section.sessionList", "fixed.list.clearSelection", "Esc"],
+  ["section.sessionList", "fixed.list.rename", "F2"],
+  ["section.sessionList", "fixed.list.end", "Delete / Backspace"],
+  ["section.sessionList", "fixed.list.menu", "Menu / Shift+F10"],
+  ["section.ledger", "fixed.ledger.step", "↑ / ↓"],
+  ["section.ledger", "fixed.ledger.open", "Enter"],
+  ["section.ledger", "fixed.ledger.back", "Esc"],
+  ["section.missionControl", "fixed.mission.move", "↑ / ↓ / ← / →"],
+  ["section.missionControl", "fixed.mission.go", "Enter"],
+  ["section.missionControl", "fixed.mission.fold", "Space"],
+  ["section.missionControl", "fixed.mission.zoom", "Home / = / -"],
+  ["section.missionControl", "fixed.mission.pan", { words: isMac ? "fixed.key.dragWheelMac" : "fixed.key.dragWheel" }],
+  ["section.missionControl", "fixed.mission.close", "Esc"],
+  ["section.images", "fixed.images.search", { words: "fixed.key.type" }],
+  ["section.images", "fixed.images.toList", "↓ / ↑"],
+  ["section.images", "fixed.images.step", "↑ / ↓"],
+  ["section.images", "fixed.images.actions", "Enter / I / P / C / Delete"],
+  ["section.images", "fixed.images.close", "Esc"],
+  ["section.imagesGallery", "fixed.gallery.select", isMac ? "⌘+click / Shift+click" : "Ctrl+click / Shift+click"],
+  ["section.imagesGallery", "fixed.gallery.move", { words: "fixed.key.arrows" }],
+  ["section.imagesGallery", "fixed.gallery.toggle", "Space"],
+  ["section.imagesGallery", "fixed.gallery.selectAll", isMac ? "⌘+A" : "Ctrl+A"],
+  ["section.imagesGallery", "fixed.gallery.actions", "I / P / C / Delete"],
+  ["section.settings", "fixed.settings.section", "↑ / ↓"],
+  ["section.settings", "fixed.settings.into", "→"],
+  ["section.settings", "fixed.settings.move", "↑ / ↓ / ← / →"],
+  ["section.settings", "fixed.settings.back", "←"],
+  ["section.settings", "fixed.settings.cut", isMac ? "⌘+X / ⌘+A" : "Ctrl+X / Ctrl+A"],
+  ["section.panes", "fixed.panes.buttons", { words: "fixed.key.headerButtons" }],
+  ["section.panes", "fixed.panes.doubleClick", { words: "fixed.key.doubleClick" }],
+  ["section.panes", "fixed.panes.menu", { words: "fixed.key.rightClick" }],
+  ["section.palette", "fixed.palette.move", "↑ / ↓"],
+  ["section.palette", "fixed.palette.run", "Enter"],
+  ["section.palette", "fixed.palette.close", "Esc"],
+  ["section.find", "fixed.find.step", "Enter / Shift+Enter"],
+  ["section.find", "fixed.find.close", "Esc"],
+  ["section.startMenu", "fixed.startMenu.move", "↑ / ↓"],
+  ["section.startMenu", "fixed.startMenu.skipper", "1"],
+  ["section.startMenu", "fixed.startMenu.start", "2…9"],
+  ["section.startMenu", "fixed.startMenu.close", "Esc"],
+  ["section.emptyPane", "fixed.emptyPane.move", "↑ / ↓"],
+  ["section.emptyPane", "fixed.emptyPane.start", "1…9"],
+  ["section.emptyPane", "fixed.emptyPane.next", "Tab / Shift+Tab"],
+  ["section.emptyPane", "fixed.emptyPane.remove", "Delete"],
+  ["section.menus", "fixed.menus.move", "↑ / ↓"],
+  ["section.menus", "fixed.menus.submenu", "→ / Enter / Space"],
+  ["section.menus", "fixed.menus.start", "1…9"],
+  ["section.menus", "fixed.menus.close", "Esc / ←"],
+  ["section.dialogs", "fixed.dialogs.close", "Esc"],
+  ["section.dialogs", "fixed.dialogs.run", "Enter"],
 ];
 
 /** F1: all app controls. Action keys come from the live keymap. */
@@ -114,12 +123,12 @@ export function showShortcuts() {
   search.type = "search";
   search.autocomplete = "off";
   search.spellcheck = false;
-  search.placeholder = "Find a shortcut";
-  search.setAttribute("aria-label", "Find a shortcut");
+  search.placeholder = t("keys.search");
+  search.setAttribute("aria-label", t("keys.search"));
   const table = h("div", "keys-table");
   const shortcuts: Shortcut[] = [
-    ...DESCRIBE.map(([section, action, what]): Shortcut => [section, describeText(what), keyLabel(action)]),
-    ...FIXED_SHORTCUTS.map(([section, what, key]): Shortcut => [section, describeText(what), key]),
+    ...DESCRIBE.map(([section, action]): Shortcut => [t(`section.${section}`), describe(action), keyLabel(action)]),
+    ...FIXED_SHORTCUTS.map(([section, what, key]): Shortcut => [t(section), describeText(what), keyWords(key)]),
   ];
   const render = () => {
     const query = search.value.trim().toLocaleLowerCase();
@@ -130,20 +139,20 @@ export function showShortcuts() {
     let section = "";
     for (const [sec, what, key] of shown) {
       if (sec !== section) {
-        table.appendChild(h("div", "keys-head", sec.toUpperCase()));
+        table.appendChild(h("div", "keys-head", upper(sec)));
         section = sec;
       }
       const row = h("div", "keys-row");
       row.append(h("span", "keys-what", what), h("kbd", "", key));
       table.appendChild(row);
     }
-    if (!shown.length) table.appendChild(h("div", "keys-empty", "No shortcuts match."));
-    if (!query) table.appendChild(h("div", "keys-note", "Change an action key in projects.toml. For example: [keys] palette = \"ctrl+shift+k\"."));
+    if (!shown.length) table.appendChild(h("div", "keys-empty", t("keys.none")));
+    if (!query) table.appendChild(h("div", "keys-note", t("keys.note")));
   };
   search.addEventListener("input", render);
   render();
   body.append(search, table);
-  infoDialog("Keyboard shortcuts", body, search);
+  infoDialog(t("keys.title"), body, search);
 }
 
 export async function showAbout() {
@@ -158,11 +167,11 @@ export async function showAbout() {
     r.append(h("span", "keys-what", what), h("span", "about-value mono", value));
     table.appendChild(r);
   };
-  row("App", app);
-  row("skiffd", status?.version ?? "not reachable");
-  row("Socket", status?.socket ?? "?");
-  if (status?.pid) row("Pid", String(status.pid));
-  row("Config", config);
-  table.appendChild(h("div", "keys-note", "Skiff runs coding agents side by side. Sessions live in skiffd and keep running when the window closes."));
-  infoDialog("About Skiff", table);
+  row(t("about.app"), app);
+  row(t("about.daemon"), status?.version ?? t("about.unreachable"));
+  row(t("about.socket"), status?.socket ?? "?");
+  if (status?.pid) row(t("about.pid"), String(status.pid));
+  row(t("about.config"), config);
+  table.appendChild(h("div", "keys-note", t("about.note")));
+  infoDialog(t("about.title"), table);
 }

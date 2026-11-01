@@ -13,6 +13,7 @@ import { $, button, h } from "../ui/dom";
 import { rune } from "../ui/runes";
 import { copyText } from "../platform/clipboard";
 import { checkShownHost, hostName } from "./hosts";
+import { t } from "../i18n";
 
 /** Lines the panel shows: the newest eight. */
 const SHOWN = 8;
@@ -97,9 +98,9 @@ function render() {
   const label = $("daemon-label");
   const newest = lines.at(-1)?.text;
   if (failed) {
-    if (label) label.textContent = `${host} needs attention`;
+    if (label) label.textContent = t("connect.attention", { host });
   } else if (label) {
-    label.textContent = `${newest ?? `Connecting to ${host}`} · ${Math.floor(elapsed / 1000)} s`;
+    label.textContent = `${newest ?? t("connect.connecting", { host })} · ${Math.floor(elapsed / 1000)} s`;
   }
   if (!failed && elapsed < QUIET_MS) return;
   const main = document.getElementById("main");
@@ -113,7 +114,7 @@ function render() {
   }
   const time = panel.querySelector(".cp-time");
   const when = failed
-    ? `Next try in ${Math.max(0, Math.ceil((failed.next - Date.now()) / 1000))} s`
+    ? t("connect.nextTry", { n: Math.max(0, Math.ceil((failed.next - Date.now()) / 1000)) })
     : `${Math.floor(elapsed / 1000)} s`;
   // A failed panel keeps its buttons, and the keys on them: only the clock moves.
   if (failed && panel.classList.contains("failed") && time && panel.querySelector(".cp-acts")) {
@@ -124,7 +125,7 @@ function render() {
   const head = h("div", "cp-head");
   const mark = h("span", "cp-mark");
   mark.append(failed ? rune("indicators-x", 12) : h("span", "sq"));
-  head.append(mark, h("span", "cp-title", failed ? `Cannot connect to ${host}` : `Connecting to ${host}`), h("span", "cp-time", when));
+  head.append(mark, h("span", "cp-title", t(failed ? "connect.cannot" : "connect.connecting", { host })), h("span", "cp-time", when));
   const list = h("div", "cp-lines");
   const shown = failed ? lines : lines.slice(-SHOWN);
   shown.forEach((l, i) => {
@@ -141,9 +142,9 @@ function render() {
     const cause = h("div", "cp-cause", failed.cause);
     const acts = h("div", "cp-acts");
     acts.append(
-      button("cp-btn", "Check…", () => checkShownHost()),
-      button("cp-btn", "Try again", () => wake?.()),
-      button("cp-btn", "Copy output", () => void copyText(connectOutput())),
+      button("cp-btn", t("connect.check"), () => checkShownHost()),
+      button("cp-btn", t("connect.tryAgain"), () => wake?.()),
+      button("cp-btn", t("connect.copyOutput"), () => void copyText(connectOutput())),
     );
     panel.append(cause, acts);
   }

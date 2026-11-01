@@ -42,8 +42,8 @@ function section(errors = new Map<string, string>()) {
     "../src/appearance/skiffAgentSettings.ts",
     {
       "../ui/dom": { h: (tag: string, cls = "", text = "") => new El(tag, cls, text) },
-      "./rowTable": { rowTable: (s: any) => ((spec = s), table), tableState: () => ({}) },
-      "./taskTypes": { fileSize: (n: number) => `${n} B`, modelFlag: (a: any) => (a?.id === "claude" ? "--model" : null), modelError: () => null, TASK_TYPE_NAME: /./, BAD_TASK_TYPE_NAME: "" },
+      "./rowTable": { rowTable: (s: any) => ((spec = s), table), tableState: () => ({}), tableWords: () => ({}) },
+      "./taskTypes": { fileSize: (n: number) => `${n} B`, modelFlag: (a: any) => (a?.id === "claude" ? "--model" : null), modelError: () => null, TASK_TYPE_NAME: /./, badTaskTypeName: () => "" },
       "../app/skiffAgent": { DEFAULT_NAME: "Admiral", mainName: (n?: string | null) => n?.trim() || "Admiral", skiffAgentChoice: () => null },
     },
     { console, CSS: { escape: (s: string) => s } },
