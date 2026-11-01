@@ -258,6 +258,26 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-table.g-instr .c-state.none .sq { background: var(--rule-strong); }
 .set-table.g-instr .c-state .dim { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-dim); }
 
+/* Skippers › Avatars: flush tiles, as many across as fit. Each is one row high. */
+.set-avatars { flex-shrink: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(240 * var(--u)), 1fr)); border-bottom: 1px solid var(--rule); }
+.set-avatar { height: var(--row); min-width: 0; display: flex; align-items: center; gap: calc(10 * var(--u)); padding: 0 calc(12 * var(--u)); border: 0; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); margin-bottom: -1px; border-radius: 0; background: transparent; color: var(--text); font: calc(13px * var(--zoom, 1)) var(--font); text-align: left; }
+.set-avatar:hover { background: var(--bg-raised); }
+.set-avatar > :first-child { flex-shrink: 0; }
+.set-avatar-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Language: one row per catalog, as Disk use. LANGUAGE | CODE | WORDS | STATE. */
+.set-lang .set-row { grid-template-columns: var(--set-label) calc(120 * var(--u)) calc(160 * var(--u)) minmax(0, 1fr); }
+.set-lang .set-row > * { min-width: 0; }
+.set-lang .set-cols { position: sticky; top: calc(80 * var(--u)); z-index: 1; background: var(--bg); }
+.set-lang .c-num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+.set-lang .dim { color: var(--text-dim); font-size: calc(12px * var(--zoom, 1)); }
+.set-lang-row { width: 100%; padding: 0; border: 0; border-bottom: 1px solid var(--rule); background: transparent; color: var(--text); font: calc(13px * var(--zoom, 1)) var(--font); text-align: left; }
+.set-lang-row:hover { background: var(--bg-raised); }
+.set-lang-row.cur { background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); }
+.set-lang .c-state { gap: calc(8 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); }
+.lang-mk { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
+.lang-mk.pending { background: var(--state-waiting); }
+
 /* Disk use: the agent folder as a tree. NAME | SIZE | CAN FLUSH | STATE | action. Numbers align right. */
 .set-disk .set-row { grid-template-columns: minmax(0, 1.3fr) calc(96 * var(--u)) calc(112 * var(--u)) minmax(0, 1fr) var(--set-acts); }
 .set-disk .set-row > * { min-width: 0; }
@@ -296,6 +316,12 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
 /* Show in file manager changes nothing: it is not red. */
 .set-disk .set-rm.set-ico:not(:disabled):is(:hover, :focus-visible) { border-color: var(--text-3); color: var(--text); }
 .set-disk-auto span.c-cmd { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
+/* The column heads stay under the head, and the foot stays at the bottom, as the tree scrolls. */
+.set-main:has(> .set-disk) { scroll-padding: calc(120 * var(--u)) 0 calc(80 * var(--u)); }
+.set-disk .set-cols { position: sticky; top: calc(80 * var(--u)); z-index: 1; background: var(--bg); }
+.set-disk-foot { position: sticky; bottom: 0; z-index: 2; margin-top: auto; flex-shrink: 0; display: flex; flex-direction: column; background: var(--bg); box-shadow: 0 -1px 0 var(--rule); }
+.set-disk-foot > :last-child { border-bottom: 0; }
+.set-disk-auto { grid-template-columns: var(--set-label) minmax(0, 1fr) auto var(--set-acts); }
 /* The flush dialog: REMOVE and KEEP, one line for each reason. */
 .disk-scope { padding: calc(8 * var(--u)) calc(20 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
 .disk-list { max-height: calc(360 * var(--u)); overflow-y: auto; }

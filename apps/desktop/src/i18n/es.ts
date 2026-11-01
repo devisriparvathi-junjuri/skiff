@@ -730,6 +730,12 @@ export const es = {
   "settings.language": "Idioma",
   "settings.languageAuto": "Auto ({name})",
   "settings.onRestart": "Al reiniciar",
+  "lang.colLanguage": "Idioma",
+  "lang.colCode": "Código",
+  "lang.colWords": "Textos",
+  "lang.colState": "Estado",
+  "lang.words": "{has} de {all}",
+  "lang.inUse": "En uso",
 
   // Terminal y sistema.
   "peek.kindFile": "archivo",
@@ -1071,6 +1077,7 @@ export const es = {
   "disk.colState": "Estado",
   "disk.fold": "Cerrar",
   "disk.flushButton": "Vaciar…",
+  "disk.flushNow": "Vaciar ahora…",
   "disk.nothing": "No hay nada que vaciar.",
   "disk.ledgerError": "Skiff no puede leer el ledger: {error}",
   "disk.agoMin#one": "hace {count} min",

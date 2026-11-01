@@ -3,7 +3,7 @@ import { escapeButton } from "../ui/dialogParts";
 import { h } from "../ui/dom";
 import { invoke } from "@tauri-apps/api/core";
 import type { AgentInfo, Appearance, TerminalTheme } from "../platform/types";
-import { catalogFor, language, languageName, languages, type MessageKey, systemLanguage, t, upper } from "../i18n";
+import { catalogFor, language, languageName, languages, locale, type MessageKey, systemLanguage, t, upper, wordCount } from "../i18n";
 import { agentNameList, setAgentNameList } from "./agentNames";
 import { nextCard, themeGrid, type ThemeFilters } from "./themeCards";
 import { type Action, actionFor, isMac } from "../app/keys";
@@ -455,17 +455,43 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   }
 
   /**
-   * The app's language. The window reads it when it opens. A set code lights
-   * the catalog it picks: "es-MX" lights Español, "fr" lights English.
+   * The app's language as a table: Auto, then each catalog. LANGUAGE | CODE |
+   * WORDS | STATE. The window reads the choice when it opens. A set code
+   * lights the catalog it picks: "es-MX" lights Español, "fr" lights English.
    */
   function languagePick(): HTMLElement {
-    const choices: [string | null, string][] = [
-      [null, t("settings.languageAuto", { name: languageName(systemLanguage()) })],
-      ...languages().map((code): [string, string] => [code, languageName(code)]),
-    ];
+    const table = h("div", "set-lang");
+    table.setAttribute("role", "radiogroup");
+    table.setAttribute("aria-label", t("settings.language"));
+    const cols = h("div", "set-row set-cols");
+    cols.append(...(["lang.colLanguage", "lang.colCode", "lang.colWords", "lang.colState"] as const).map((k, i) => h("span", i === 2 ? "c-num" : "", upper(t(k)))));
+    table.append(cols);
     const chosen = langSet === null ? null : catalogFor(langSet);
-    const pending = catalogFor(langSet ?? navigator.language) !== language();
-    return segRow(t("settings.language"), t("settings.language"), choices, chosen, pending, (v) => void setLanguageSetting(v));
+    const choices: [string | null, string, string][] = [
+      [null, t("settings.languageAuto", { name: languageName(systemLanguage()) }), navigator.language],
+      ...languages().map((code): [string, string, string] => [code, languageName(code), code]),
+    ];
+    const n = (x: number) => x.toLocaleString(locale());
+    for (const [value, name, code] of choices) {
+      const on = chosen === value;
+      // The catalog this row gives, and whether the window shows it now.
+      const gives = value ?? systemLanguage();
+      const shown = on && gives === language();
+      const r = h("button", "set-row set-lang-row" + (on ? " cur" : ""));
+      r.type = "button";
+      r.dataset.key = `lang:${value ?? "auto"}`;
+      r.setAttribute("role", "radio");
+      r.setAttribute("aria-checked", String(on));
+      const w = wordCount(gives);
+      const state = h("span", "c-state");
+      if (on) state.append(h("i", "lang-mk" + (shown ? "" : " pending")), h("span", "", t(shown ? "lang.inUse" : "settings.onRestart")));
+      r.append(h("span", "c-name", name), h("span", "mono dim", code), h("span", "c-num", t("lang.words", { has: n(w.has), all: n(w.all) })), state);
+      r.addEventListener("click", () => {
+        if (!on) void setLanguageSetting(value);
+      });
+      table.append(r);
+    }
+    return table;
   }
 
   async function setLanguageSetting(code: string | null) {

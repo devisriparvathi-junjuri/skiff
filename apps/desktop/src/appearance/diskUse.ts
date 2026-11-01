@@ -325,7 +325,22 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
   sw.setAttribute("aria-label", t(on ? "disk.autoOn" : "disk.autoOff"));
   sw.appendChild(h("span", "switch"));
   sw.addEventListener("click", () => setDays(on ? 0 : 30));
-  auto.append(h("span", "c-name", t("disk.auto")), h("span", "c-cmd", on ? count("disk.days", days) : ""), sw);
+  // Flush now: the whole folder's stale files, through the same dialog as a row's Flush….
+  const now = h("span", "c-acts");
+  const all = h("button", "set-rm", t("disk.flushNow"));
+  all.type = "button";
+  all.dataset.key = "flush-now";
+  all.disabled = !u || s.counting || canFlush(u.tree) === 0;
+  all.addEventListener("click", () => {
+    if (!u) return;
+    s.cur = "";
+    askFlush(s, u.tree, redraw);
+  });
+  now.append(all);
+  auto.append(h("span", "c-name", t("disk.auto")), h("span", "c-cmd", on ? count("disk.days", days) : ""), sw, now);
 
-  return [head, table, status, ...errors, auto];
+  // The status, the errors and the flush controls stay at the bottom as the tree scrolls.
+  const foot = h("div", "set-disk-foot");
+  foot.append(status, ...errors, auto);
+  return [head, table, foot];
 }

@@ -701,6 +701,12 @@ export const zh = {
   "settings.language": "语言",
   "settings.languageAuto": "自动（{name}）",
   "settings.onRestart": "重启后生效",
+  "lang.colLanguage": "语言",
+  "lang.colCode": "代码",
+  "lang.colWords": "词条",
+  "lang.colState": "状态",
+  "lang.words": "{has} / {all}",
+  "lang.inUse": "使用中",
 
   // 终端与系统。
   "peek.kindFile": "文件",
@@ -1029,6 +1035,7 @@ export const zh = {
   "disk.colState": "状态",
   "disk.fold": "折叠",
   "disk.flushButton": "清理…",
+  "disk.flushNow": "立即清理…",
   "disk.nothing": "没有可清理的内容。",
   "disk.ledgerError": "Skiff 无法读取 ledger：{error}",
   "disk.agoMin#other": "{count} 分钟前",

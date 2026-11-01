@@ -20,6 +20,9 @@ let plurals = new Intl.PluralRules("en");
 /** The languages Skiff has words for. */
 export const languages = () => Object.keys(catalogs);
 
+/** The words a catalog has, and the words English has: "1,180 of 1,204". */
+export const wordCount = (code: string) => ({ has: Object.keys(catalogs[code] ?? {}).length, all: Object.keys(en).length });
+
 /** A language's name in that language: "English", "Español". */
 export const languageName = (code: string) => catalogs[code]?.["language.name"] ?? en["language.name"];
 

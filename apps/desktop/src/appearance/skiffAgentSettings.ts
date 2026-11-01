@@ -103,7 +103,7 @@ export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInf
 
 /**
  * Settings › Skippers › Avatars: each fleet and project
- * Skipper with a folder on this Mac, its face, and Change… for the picker.
+ * Skipper with a folder on this computer, as a tile with its face. A click opens the picker.
  * The faces are kept in those folders: a remote Host shows none here.
  */
 export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTMLElement[] {
@@ -111,20 +111,20 @@ export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTM
   const scopes = isRemote() ? [] : avatarScopes().filter((s) => s);
   if (!scopes.length) return [];
   const word = set.skipper_name || "Skipper";
-  const rows = scopes.map((scope) => {
+  // A grid of tiles, as many across as fit: the face and the name. A click opens the picker.
+  const grid = h("div", "set-avatars");
+  for (const scope of scopes) {
     const label = scope ? t(scope.startsWith("fleet:") ? "skipper.avatarFleet" : "skipper.avatarProject", { scope: scopeName(scope), skipper: word }) : mainName(set.name);
-    const row = h("div", "set-row set-open set-agent set-avatar on");
-    const face = h("span", "c-cmd");
-    face.appendChild(skipperFace(scope || null, 26));
-    const change = h("button", "set-rm", t("skipper.change"));
-    change.type = "button";
-    change.addEventListener("click", () => setAvatarDialog(scope || null, t("skipper.avatarTitle", { name: label }), redraw));
-    const acts = h("span", "c-acts");
-    acts.append(change);
-    row.append(h("span", "c-name", label), face, acts);
-    return row;
-  });
-  return [sectionHead(t("skipper.avatars"), undefined, String(scopes.length)), ...rows];
+    const title = t("skipper.avatarTitle", { name: label });
+    const tile = h("button", "set-avatar");
+    tile.type = "button";
+    tile.title = title;
+    tile.setAttribute("aria-label", title);
+    tile.append(skipperFace(scope || null, 26), h("span", "set-avatar-name", label));
+    tile.addEventListener("click", () => setAvatarDialog(scope || null, title, redraw));
+    grid.append(tile);
+  }
+  return [sectionHead(t("skipper.avatars"), undefined, String(scopes.length)), grid];
 }
 
 /**
