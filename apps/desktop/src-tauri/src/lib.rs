@@ -57,7 +57,7 @@ fn disable_dmabuf_where_broken() {
 const LOCAL_ONLY: &[&str] = &[
     "skiff_watch_log",
     "init_repository", "set_project_icon", "set_project_background", "skipper_avatars", "set_skipper_avatar",
-    "open_diff", "preview_file", "open_file", "reveal_file", "open_path",
+    "open_diff", "preview_file", "open_file", "reveal_file", "open_path", "disk_open", "disk_reveal",
     "list_agent_sessions", "config_path", "open_config", "install_cli", "restart_daemon", "reload_daemon", "update_daemon",
 ];
 
@@ -191,6 +191,8 @@ pub fn run() {
             disk::disk_usage,
             disk::flush_disk,
             disk::set_cache_days,
+            disk::disk_open,
+            disk::disk_reveal,
             commands::list_sessions,
             commands::daemon_metrics,
             commands::create_session,
@@ -350,7 +352,7 @@ mod tests {
         // and Skipper's settings writes, launch and watcher (#166 R7) and the
         // agent settings (R8) go to it. The watch log stays here.
         // Icon and background paths, `git init` and every opener of this Mac stay listed.
-        for local in ["open_path", "open_file", "reveal_file", "open_diff", "preview_file", "set_project_icon", "set_project_background", "init_repository", "skiff_watch_log", "restart_daemon", "reload_daemon", "update_daemon", "install_cli", "list_agent_sessions"] {
+        for local in ["open_path", "open_file", "reveal_file", "disk_open", "disk_reveal", "open_diff", "preview_file", "set_project_icon", "set_project_background", "init_repository", "skiff_watch_log", "restart_daemon", "reload_daemon", "update_daemon", "install_cli", "list_agent_sessions"] {
             assert!(super::LOCAL_ONLY.contains(&local), "{local}");
         }
         // A command added later must be placed on one side or the other.

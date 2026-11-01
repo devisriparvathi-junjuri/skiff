@@ -119,6 +119,7 @@ test("the page draws the tree, and Flush asks with REMOVE and KEEP, then sends w
       },
       "../ui/dom": { h: (tag: string, cls = "", text = "") => new El(tag, cls, text) },
       "../ui/dialogParts": { actionDialog: (o: any) => dialogs.push(o) },
+      "../ui/runes": { rune: () => new El("svg") },
       "./skiffFolderDialog": { size },
       "./diskTree": T,
     },
@@ -128,7 +129,7 @@ test("the page draws the tree, and Flush asks with REMOVE and KEEP, then sends w
   const s = P.diskState();
   s.usage = usage;
   let draws = 0;
-  const parts: El[] = P.diskUseSection(s, () => draws++, () => {});
+  const parts: El[] = P.diskUseSection(s, () => draws++, () => {}, { local: true, peek: () => {} });
   const rows = parts[1].all().filter((e) => e.className.includes("set-disk-row"));
   assert.deepEqual(plain(rows.map((r) => r.dataset.path)), ["", "results", "results/p1-ship", "results/2026-10-01-old.md", "results/new.md", "cache", "ledger.db"]);
   const plan = rows.find((r) => r.dataset.path === "results/p1-ship")!;
@@ -150,4 +151,86 @@ test("the page draws the tree, and Flush asks with REMOVE and KEEP, then sends w
   await d.submit();
   assert.deepEqual(plain(calls[0]), ["flush_disk", { items: [{ path: "results/p1-ship/a1-review", bytes: 1000, files: 401, mtime: 1 }] }]);
   assert.equal(s.removed, "Removed 401 files, 1000 B. 1 ledger row now shows “Result flushed”.");
+});
+
+/** The page with `answer` for each command; `calls` gets each command. */
+function page(answer: (cmd: string) => unknown, local = true) {
+  const calls: [string, any][] = [];
+  const peeks: [string, string, string][] = [];
+  const P = moduleFromSource(
+    "../src/appearance/diskUse.ts",
+    {
+      "@tauri-apps/api/core": {
+        invoke: async (cmd: string, args: any) => {
+          calls.push([cmd, args]);
+          const out = answer(cmd);
+          if (out instanceof Error) throw out;
+          return out;
+        },
+      },
+      "../ui/dom": { h: (tag: string, cls = "", text = "") => new El(tag, cls, text) },
+      "../ui/dialogParts": { actionDialog: () => {} },
+      "../ui/runes": { rune: () => new El("svg") },
+      "./skiffFolderDialog": { size },
+      "./diskTree": T,
+    },
+    { document: { querySelector: () => null }, CSS: { escape: (s: string) => s } },
+    "",
+  );
+  const s = P.diskState();
+  s.usage = { shown: "~/skiff-agent", tree: tree(), now: NOW, daemon: true, ledger_error: null, unreadable: 0, cache_days: 30 };
+  const draw = () => {
+    const parts: El[] = P.diskUseSection(s, draw, () => {}, { local, peek: (script: string, cwd: string, name: string) => peeks.push([script, cwd, name]) });
+    return parts[1].all().filter((e) => e.className.includes("set-disk-row"));
+  };
+  const row = (path: string) => draw().find((r) => r.dataset.path === path)!;
+  return { s, calls, peeks, row };
+}
+
+const tick = () => new Promise((r) => setImmediate(r));
+const reveal = (r: El) => r.all().find((e) => e.dataset.key?.startsWith("reveal:"));
+
+test("a click on a file row opens it through disk_open, as Open with says; a folder row's click only moves the row", async () => {
+  const p = page((cmd) => (cmd === "disk_open" ? { kind: "run", script: "glow result.md", cwd: "/home/u/skiff-agent/results" } : null));
+  p.row("results/new.md").fire("click");
+  await tick();
+  assert.deepEqual(plain(p.calls), [["disk_open", { path: "results/new.md" }]]);
+  assert.deepEqual(p.peeks, [["glow result.md", "/home/u/skiff-agent/results", "new.md"]]);
+  assert.equal(p.s.cur, "results/new.md");
+  p.row("results").fire("click");
+  await tick();
+  assert.equal(p.calls.length, 1);
+  assert.equal(p.s.cur, "results");
+
+  // No app, or a path the native check refuses: one error line, and no peek.
+  const q = page((cmd) => (cmd === "disk_open" ? { kind: "no_app", message: "No app opens new.md." } : null));
+  q.row("results/new.md").fire("click");
+  await tick();
+  assert.equal(q.s.error, "No app opens new.md.");
+  const r = page(() => new Error("results/out is not in the agent folder"));
+  r.row("results/new.md").fire("click");
+  await tick();
+  assert.equal(r.s.error, "Error: results/out is not in the agent folder");
+  assert.equal(r.peeks.length, 0);
+});
+
+test("a folder row has Show in file manager, which sends the tree's path to disk_reveal; a file row has none", async () => {
+  const p = page(() => null);
+  assert.equal(reveal(p.row("results/new.md")), undefined);
+  const b = reveal(p.row("results/p1-ship"))!;
+  assert.equal(b.attrs["aria-label"], "Show in file manager");
+  b.fire("click");
+  await tick();
+  assert.deepEqual(plain(p.calls), [["disk_reveal", { path: "results/p1-ship" }]]);
+  // The agent folder's own row shows the folder itself.
+  reveal(p.row(""))!.fire("click");
+  await tick();
+  assert.deepEqual(plain(p.calls[1]), ["disk_reveal", { path: "" }]);
+
+  // A remote Host is shown: this computer's openers are off.
+  const remote = page(() => null, false);
+  assert.equal(reveal(remote.row("results")), undefined);
+  remote.row("results/new.md").fire("click");
+  await tick();
+  assert.equal(remote.calls.length, 0);
 });
