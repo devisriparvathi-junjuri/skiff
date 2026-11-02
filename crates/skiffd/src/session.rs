@@ -425,7 +425,19 @@ impl Session {
         let echoing = self.echoing();
         let front = self.front();
         let mut st = self.screen.lock().unwrap();
-        let signals = st.screen.feed(chunk);
+        // A synchronized update past its timeout ends before more bytes
+        // come in, as in alacritty's event loop: steady output would keep
+        // the reader from its deadline.
+        let ended = if st
+            .screen
+            .sync_due()
+            .is_some_and(|due| due <= Instant::now())
+        {
+            st.screen.end_sync()
+        } else {
+            Signals::default()
+        };
+        let signals = ended.then(st.screen.feed(chunk));
         // The probe is answered before these bytes reach a client. A
         // client answers the DA1 query a program sends right after it, and
         // the program takes OSC 7501 as supported only when this reply comes
@@ -481,26 +493,41 @@ impl Session {
     /// wakes.
     fn next_due(&self) -> Option<Instant> {
         let st = self.screen.lock().unwrap();
-        match (st.flush_due(), st.scan_due()) {
-            (Some(flush), Some(scan)) => Some(flush.min(scan)),
-            (flush, scan) => flush.or(scan),
-        }
+        [st.flush_due(), st.scan_due(), st.screen.sync_due()]
+            .into_iter()
+            .flatten()
+            .min()
     }
 
-    /// Does what is due at the reader's deadline: sends the held output, and
-    /// scans the screen. Work not due yet waits for the next deadline.
-    fn on_due(&self) -> Scan {
+    /// Does what is due at the reader's deadline: ends a synchronized update
+    /// that timed out, sends the held output, and scans the screen. Work not
+    /// due yet waits for the next deadline.
+    fn on_due(&self) -> (Signals, Scan) {
         let front = self.front();
         let now = Instant::now();
         let mut st = self.screen.lock().unwrap();
+        let mut signals = Signals::default();
+        // A program that dies mid-frame sends no `?2026l`. Without this the
+        // screen, its title and its reports would wait for megabytes more.
+        if st.screen.sync_due().is_some_and(|due| due <= now) {
+            signals = st.screen.end_sync();
+            for _ in 0..signals.probes {
+                self.reply(program_status::PROBE_REPLY);
+            }
+            // The held frame drew now: the next scan reads it. It is no work:
+            // the program went quiet.
+            st.unscanned = true;
+            st.printed = true;
+        }
         if st.flush_due().is_some_and(|due| due <= now) {
             st.flush(&self.output);
         }
-        if st.scan_due().is_some_and(|due| due <= now) {
+        let scan = if st.scan_due().is_some_and(|due| due <= now) {
             st.scan(front)
         } else {
             Scan::default()
-        }
+        };
+        (signals, scan)
     }
 }
 
@@ -876,7 +903,8 @@ impl SessionPool {
                     }
                     // The deadline, or a wake from `pause_reader` or `set_front`.
                     if events.is_empty() {
-                        pool.apply_scan(&session, session.on_due());
+                        let (signals, scan) = session.on_due();
+                        pool.apply_read(&session, &sid, signals, scan, false);
                         continue;
                     }
                     let n = match reader.read(&mut buf) {
@@ -908,7 +936,20 @@ impl SessionPool {
             // So a copy of the info, as the updates send, has it too.
             info.last_output_at = now;
         }
-        let (mut signals, scan, echo) = session.push_output(chunk);
+        let (signals, scan, echo) = session.push_output(chunk);
+        self.apply_read(session, sid, signals, scan, echo);
+    }
+
+    /// What one read brought, or the end of a synchronized update that held
+    /// it: the reports, open queries, the bell, the screen rules, the title.
+    fn apply_read(
+        &self,
+        session: &Arc<Session>,
+        sid: &str,
+        mut signals: Signals,
+        scan: Scan,
+        echo: bool,
+    ) {
         self.apply_status(session, std::mem::take(&mut signals.status));
         // Output again: a stalled program is not.
         if session.stalled.swap(false, Ordering::Relaxed) {

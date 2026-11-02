@@ -41,6 +41,21 @@ pub struct Signals {
     pub probes: u32,
 }
 
+impl Signals {
+    /// These, then `later`'s: two feeds in a row as one.
+    pub fn then(mut self, later: Signals) -> Signals {
+        self.bell |= later.bell;
+        if later.title.is_some() {
+            self.title = later.title;
+        }
+        let room = MAX_STATUS.saturating_sub(self.status.len());
+        self.status.extend(later.status.into_iter().take(room));
+        self.queries = self.queries.saturating_add(later.queries);
+        self.probes = self.probes.saturating_add(later.probes);
+        self
+    }
+}
+
 /// What the program status records hear from the emulator.
 #[derive(Debug, PartialEq)]
 pub enum StatusSignal {
@@ -165,13 +180,17 @@ impl Screen {
     pub fn restore(bytes: &[u8]) -> Result<Self> {
         let save: SaveOwned = postcard::from_bytes(bytes)?;
         let signals = Listener::default();
+        let parser = Processor::restore(save.parser);
+        // The daemon that saved answered the probes an open update holds.
+        // Before it did so, the DA1 reply after such a probe had long gone.
+        let (early, held_from) = held_probes(parser.sync_bytes());
         Ok(Self {
             term: Term::restore(save.term, config(), signals.clone()).map_err(|e| anyhow!("terminal state: {e}"))?,
-            parser: Processor::restore(save.parser),
+            parser,
             signals,
             text: save.text,
-            early: 0,
-            held_from: 0,
+            early,
+            held_from,
         })
     }
 
@@ -187,6 +206,27 @@ impl Screen {
 
     pub fn feed(&mut self, bytes: &[u8]) -> Signals {
         self.parser.advance(&mut self.term, bytes);
+        self.take_signals()
+    }
+
+    /// When an open synchronized update (`?2026h`) times out: the program
+    /// sent no `?2026l` in time, as when it dies mid-frame. `None` while
+    /// none is open. The deadline is the parser's own, which alacritty's
+    /// event loop waits on too.
+    pub fn sync_due(&self) -> Option<std::time::Instant> {
+        self.parser.sync_timeout().sync_timeout()
+    }
+
+    /// Ends the open synchronized update, as alacritty's event loop does at
+    /// its timeout: the held bytes apply now, with what they signal.
+    pub fn end_sync(&mut self) -> Signals {
+        self.parser.stop_sync(&mut self.term);
+        self.take_signals()
+    }
+
+    /// What the parser signalled since the last call. A probe answered while
+    /// a synchronized update held it is not answered again.
+    fn take_signals(&mut self) -> Signals {
         let mut s = std::mem::take(&mut *self.signals.0.lock().unwrap());
         let parsed = s
             .status
@@ -653,6 +693,47 @@ mod tests {
         assert!(!sig.bell);
         assert_eq!(sig.title, Some(Some("fix worktrees".into())));
         assert!(s.feed(b"\x07").bell);
+    }
+
+    /// A synchronized update the program never ends times out, as in
+    /// alacritty: its frame, its title and its report apply then. A probe
+    /// in it is answered once. A save carries the open update. An update
+    /// that ends applies at once, as before.
+    #[test]
+    fn a_synchronized_update_left_open_ends_at_its_timeout() {
+        let frozen = b"\x1b[?2026h\x1b]0;Frozen\x07\x1b]7501;state=working\x07\x1b]7501;?\x07hello";
+        let mut screen = Screen::new(80, 24);
+        let held = screen.feed(frozen);
+        assert_eq!((held.title, held.status.len(), held.probes), (None, 0, 1));
+        let due = screen.sync_due().expect("no deadline");
+        let wait = due.saturating_duration_since(std::time::Instant::now());
+        assert!(wait <= std::time::Duration::from_millis(150), "{wait:?}");
+        // A reload in the middle keeps the update and its deadline.
+        let mut screen = Screen::restore(&screen.save().unwrap()).unwrap();
+        assert!(screen.sync_due().is_some());
+        assert!(!screen.tail_text(None, 3).concat().contains("hello"));
+        let ended = screen.end_sync();
+        assert_eq!(ended.title, Some(Some("Frozen".into())));
+        assert_eq!(
+            ended.status,
+            [
+                StatusSignal::Report(b"state=working".to_vec()),
+                StatusSignal::Report(b"?".to_vec())
+            ]
+        );
+        assert_eq!(
+            ended.probes, 0,
+            "the probe was answered twice across the reload"
+        );
+        assert!(screen.tail_text(None, 3).concat().contains("hello"));
+        assert_eq!(screen.sync_due(), None);
+
+        let mut screen = Screen::new(80, 24);
+        let whole = screen.feed(b"\x1b[?2026h\x1b]0;Whole\x07hi\x1b[?2026l");
+        assert_eq!(
+            (whole.title, screen.sync_due()),
+            (Some(Some("Whole".into())), None)
+        );
     }
 
     /// A probe in a synchronized update is answered while the update holds
