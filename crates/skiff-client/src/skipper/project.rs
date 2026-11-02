@@ -278,31 +278,6 @@ pub fn reset_file(cfg: &Config, scope: &Scope) -> Result<FileStatus> {
     status_in(&top, scope, &text)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::super::host_file;
-    use super::*;
-
-    // SPLIT-SCAFFOLD
-    #[test]
-    fn scopes_keep_their_files_templates_and_host_paths() {
-        let cfg = config::parse(
-            "[skiff_agent]\nfolder = \"/tmp/skiff-agent\"\n\n[[project]]\nname = \"api\"\npath = \"/tmp/api\"\nfleet = \"Harbor\"\n",
-        )
-        .unwrap();
-        let scopes = [
-            (Scope::Skipper, skiff_host_api::HostFileScope::Skipper, "AGENTS.md"),
-            (Scope::Fleet("Harbor".into()), skiff_host_api::HostFileScope::Fleet("Harbor".into()), "fleets/Harbor/SKIPPER.md"),
-            (Scope::Project("api".into()), skiff_host_api::HostFileScope::Project("api".into()), "projects/api/SKIPPER.md"),
-        ];
-        for (scope, host, file) in scopes {
-            assert_eq!(scope.file(), file);
-            assert_eq!(host_file(&host).unwrap(), file);
-            assert!(!scope.template(&cfg, Path::new("/tmp/skiff-agent")).unwrap().is_empty());
-        }
-    }
-}
-
 /// A project or fleet Skipper the CLI found or started.
 pub struct ProjectSkipper {
     pub session: SessionInfo,
@@ -534,37 +509,6 @@ pub(super) fn spec(command: &str, name: &str, dir: PathBuf) -> SessionSpec {
         command: words.next(),
         args: words.collect(),
         ..Default::default()
-    }
-}
-
-#[cfg(test)]
-mod discovery_keeps_config_order_and_fleet_precedence_tests {
-    use super::*;
-
-    // SPLIT-SCAFFOLD
-    #[test]
-    fn discovery_keeps_config_order_and_fleet_precedence() {
-        let cfg = config::parse(
-            "[[project]]\nname = \"api\"\npath = \"/tmp/api\"\nfleet = \"Harbor\"\n\n[[project]]\nname = \"app\"\npath = \"/tmp/app\"\nfleet = \"Harbor\"\n",
-        )
-        .unwrap();
-        let pane = |id: &str, skipper: Option<&str>, state: &str| {
-            let mut pane: SessionInfo = serde_json::from_value(serde_json::json!({
-                "id": id, "label": id, "role": "agent", "cwd": "/tmp", "command": "claude", "args": [],
-                "state": state, "cols": 80, "rows": 24, "pid": 1, "exit_code": null,
-            }))
-            .unwrap();
-            pane.skipper = skipper.map(str::to_string);
-            pane
-        };
-        let panes = vec![pane("done", Some("api"), "done"), pane("app", Some("app"), "idle"), pane("fleet", Some("fleet:Harbor"), "working")];
-        assert!(find_project(&panes, "api").is_none());
-        assert_eq!(find_fleet(&panes, "Harbor").map(|s| s.id.as_str()), Some("fleet"));
-        assert_eq!(
-            project_skippers_in(&cfg, &panes, "Harbor").into_iter().map(|(project, pane)| (project, pane.id.clone())).collect::<Vec<_>>(),
-            [("app".to_string(), "app".to_string())]
-        );
-        assert_eq!(commanding_fleet(&cfg, &panes, "api"), Some("Harbor"));
     }
 }
 
