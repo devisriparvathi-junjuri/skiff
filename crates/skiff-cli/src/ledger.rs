@@ -13,7 +13,7 @@ use skiff_core::{
 
 use crate::{print, resolve, sessions, LedgerCmd};
 pub use skiff_client::ledger::{path, Row, GRAND};
-use skiff_client::ledger::{gen, heads, mark_live, roll_up, rows, GONE, INTERRUPTED, OPEN, WORKING};
+use skiff_client::ledger::{gen, heads, mark_live, roll_up, rows, GONE, INTERRUPTED};
 
 mod schema;
 mod paths;
@@ -23,7 +23,7 @@ use schema::NOW;
 use paths::{label, make_work_folder, new_uid, result_in, work_folder};
 pub use paths::results_dir;
 pub use read::{close_gone, gone_unreported, handed_back, open_tasks, plan_tasks, unreported};
-use read::{container, head, join, live, one, pane, project_of, state, sweep, top, under};
+use read::{container, head, join, keep, live, one, pane, print_one, print_rows, project_of, rank, state, sweep, top, tree, under, View};
 #[cfg(test)]
 use read::{close_gone_in, open_tasks_at, unreported_at};
 #[cfg(test)]
@@ -31,7 +31,7 @@ use paths::container_folder;
 #[cfg(test)]
 use schema::{OWNER, TASKS, UIDS};
 #[cfg(test)]
-use skiff_client::ledger::VERSION;
+use skiff_client::ledger::{OPEN, VERSION, WORKING};
 
 fn open() -> Result<Connection> {
     schema::open()
@@ -42,201 +42,6 @@ fn open_at(file: &Path) -> Result<Connection> {
 }
 
 
-/// Which rows `ls` lists.
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum View {
-    /// The work that is not closed.
-    Open,
-    /// Only closed work.
-    Closed,
-    All,
-    /// Only the done tasks the person was not told of, under their plans.
-    Unreported,
-}
-
-/// Keeps the rows in `view`. A work's rows go together: a task in a plan is
-/// closed with its plan.
-fn keep(rows: &mut Vec<Row>, view: View) {
-    use std::collections::HashSet;
-    let head = heads(rows);
-    let closed: HashSet<String> = rows.iter().filter(|r| r.closed_at.is_some()).map(|r| r.uid.clone()).collect();
-    let untold = |r: &Row| !r.is_plan() && r.state == "done" && r.reported_at.is_none();
-    let plans: HashSet<String> = rows.iter().filter(|r| untold(r)).filter_map(|r| r.parent.clone()).collect();
-    rows.retain(|r| match view {
-        View::Open => !closed.contains(&head[&r.uid]),
-        View::Closed => closed.contains(&head[&r.uid]),
-        View::All => true,
-        View::Unreported => untold(r) || plans.contains(&r.uid),
-    });
-}
-
-/// The order of the groups in `ls`.
-fn rank(bucket: Option<&str>) -> u8 {
-    match bucket {
-        Some(WORKING) => 0,
-        Some(OPEN) => 1,
-        _ => 2,
-    }
-}
-
-/// Each plan with its tasks under it, and each hand-off with its tasks under
-/// it, by id. A row whose parent is not in `rows` stands alone. The number
-/// is the depth: 0 at the top.
-fn tree(rows: Vec<Row>) -> Vec<(Row, usize)> {
-    let uids: std::collections::HashSet<String> = rows.iter().map(|r| r.uid.clone()).collect();
-    let under = |r: &Row| r.parent.as_ref().is_some_and(|p| uids.contains(p));
-    let (children, top): (Vec<Row>, Vec<Row>) = rows.into_iter().partition(under);
-    fn add(out: &mut Vec<(Row, usize)>, r: Row, depth: usize, children: &[Row]) {
-        let uid = r.uid.clone();
-        out.push((r, depth));
-        for c in children.iter().filter(|c| c.parent.as_deref() == Some(&uid)) {
-            if depth < 3 {
-                add(out, c.clone(), depth + 1, children);
-            }
-        }
-    }
-    let mut out = Vec::new();
-    for r in top {
-        add(&mut out, r, 0, &children);
-    }
-    out
-}
-
-/// A result path as the table shows it: from the agent's folder when it is in
-/// there, else with `~`.
-fn shown_path(p: &str) -> String {
-    let p = Path::new(p);
-    let base = path().ok().and_then(|l| l.parent().map(Path::to_path_buf));
-    match base.as_deref().and_then(|b| p.strip_prefix(b).ok()) {
-        Some(rel) => rel.display().to_string(),
-        None => print::tilde(p),
-    }
-}
-
-/// Rows grouped by bucket. WORK names each group on its first row. `closed`:
-/// add the CLOSED column, the work head's stamp.
-fn print_rows(rows: &[(Row, usize)], closed: bool) {
-    let yn = |l: Option<bool>| match l {
-        Some(true) => "yes",
-        Some(false) => "no",
-        None => "?",
-    };
-    let refs = rows.iter().any(|(r, _)| r.reference.is_some());
-    let types = rows.iter().any(|(r, _)| r.task_type.is_some());
-    let sockets = rows.iter().any(|(r, _)| r.elsewhere);
-    let owners = rows.iter().any(|(r, _)| r.owner != GRAND);
-    let table: Vec<Vec<String>> = rows
-        .iter()
-        .enumerate()
-        .map(|(i, (r, child))| {
-            let first = i == 0 || rows[i - 1].0.bucket != r.bucket;
-            let mut row = vec![
-                if first { r.bucket.unwrap_or_default().to_string() } else { String::new() },
-                if *child > 0 { format!("{}└ {}", "  ".repeat(child - 1), r.id) } else { r.id.to_string() },
-                r.uid.clone(),
-                r.shown_state().to_string(),
-                if r.is_plan() {
-                    "plan".into()
-                } else if r.is_handoff() {
-                    format!("handoff {}", print::short_id(r.pane_id.as_deref().unwrap_or("")))
-                } else {
-                    print::short_id(r.pane_id.as_deref().unwrap_or("")).to_string()
-                },
-                if r.is_plan() { "-".into() } else if r.elsewhere { "elsewhere".into() } else { yn(r.live).to_string() },
-                r.project.clone(),
-                r.sent_at.clone(),
-                r.result_path.as_deref().map(shown_path).unwrap_or_default(),
-            ];
-            if refs {
-                row.push(r.reference.clone().unwrap_or_default());
-            }
-            if types {
-                row.push(r.task_type.clone().unwrap_or_default());
-            }
-            if sockets {
-                row.push(if r.elsewhere { r.socket.clone().unwrap_or_default() } else { String::new() });
-            }
-            if owners {
-                row.push(r.owner.clone());
-            }
-            if closed {
-                row.push(r.closed_at.clone().unwrap_or_default());
-            }
-            row.push(one_line(&r.task));
-            row
-        })
-        .collect();
-    let mut header = vec!["WORK", "ID", "UID", "STATE", "PANE", "LIVE", "PROJECT", "SENT", "RESULT"];
-    if refs {
-        header.push("REF");
-    }
-    if types {
-        header.push("TYPE");
-    }
-    if sockets {
-        header.push("SOCKET");
-    }
-    if owners {
-        header.push("OWNER");
-    }
-    if closed {
-        header.push("CLOSED");
-    }
-    header.push("TASK");
-    print::table(&header, &table);
-}
-
-/// The text on one line, for a table cell: line breaks and runs of space
-/// become one space.
-fn one_line(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// One row, a field per line, as `show` prints it. `closed`: the work
-/// head's stamp.
-fn print_one(r: &Row, closed: Option<&str>) {
-    let yn = |l: Option<bool>| l.map_or("?", |l| if l { "yes" } else { "no" });
-    let mut f: Vec<(&str, String)> = vec![("id", r.id.to_string()), ("uid", r.uid.clone()), ("kind", r.kind.clone()), ("state", r.shown_state().to_string())];
-    if let Some(p) = &r.parent {
-        f.push(("plan", p.clone()));
-    }
-    if !r.is_plan() {
-        f.push(("pane", r.pane_id.clone().unwrap_or_default()));
-        f.push(("live", if r.elsewhere { "elsewhere".into() } else { yn(r.live).into() }));
-        if let Some(s) = &r.socket {
-            f.push(("socket", s.clone()));
-        }
-    }
-    f.extend([
-        ("owner", r.owner.clone()),
-        ("project", r.project.clone()),
-        ("sent", r.sent_at.clone()),
-        ("updated", r.updated_at.clone()),
-        ("reported", r.reported_at.clone().unwrap_or_else(|| "no".into())),
-        ("work", r.bucket.unwrap_or_default().to_string()),
-        ("closed", closed.unwrap_or("no").to_string()),
-    ]);
-    if let Some(d) = &r.work_dir {
-        f.push(("folder", d.clone()));
-    }
-    if let Some(p) = &r.result_path {
-        f.push(("result", p.clone()));
-    }
-    if let Some(x) = &r.flushed_at {
-        f.push(("flushed", x.clone()));
-    }
-    if let Some(x) = &r.title {
-        f.push(("title", x.clone()));
-    }
-    if let Some(x) = &r.reference {
-        f.push(("ref", x.clone()));
-    }
-    if let Some(x) = &r.task_type {
-        f.push(("type", x.clone()));
-    }
-    f.push(("task", r.task.clone()));
-    print::table(&["", ""], &f.into_iter().map(|(k, v)| vec![k.to_string(), v]).collect::<Vec<_>>());
-}
 
 /// A row for [`insert`].
 struct New {
