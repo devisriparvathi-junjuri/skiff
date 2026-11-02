@@ -1135,6 +1135,14 @@ mod tests {
     use std::{path::PathBuf, time::Duration};
     use std::cmp::Ordering::*;
 
+    #[test]
+    fn page_status_dtos_keep_their_json_shapes() {
+        let daemon = super::DaemonStatus { connected: false, version: None, protocol: None, socket: "/s.sock".into(), pid: None, spawned: false, warning: None, replaced: None, reload: false };
+        assert_eq!(serde_json::to_value(daemon).unwrap(), serde_json::json!({"connected":false,"version":null,"protocol":null,"socket":"/s.sock","pid":null,"spawned":false,"warning":null,"replaced":null,"reload":false}));
+        let data = super::DataPlaneStatus { ready: false, waiting: true, host_id: None, instance_id: None, connection: 0, capabilities: vec![], message: None };
+        assert_eq!(serde_json::to_value(data).unwrap(), serde_json::json!({"ready":false,"waiting":true,"host_id":null,"instance_id":null,"connection":0,"capabilities":[],"message":null}));
+    }
+
     /// This Mac's settings writes do not wait on skiff-host: an old one that
     /// lacks them, or none, still leaves them offered, each once.
     #[test]
