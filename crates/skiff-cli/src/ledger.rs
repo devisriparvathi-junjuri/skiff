@@ -43,9 +43,9 @@ fn open_at(file: &Path) -> Result<Connection> {
     schema::open_at(file)
 }
 
-/// The exit code: `send`'s for `send` and `add --send`, else 0.
 /// Runs one `skiff ledger` command. After a command that writes, work that
 /// is done and reported closes by itself (see [`auto_close`]).
+/// The exit code: `send`'s for `send` and `add --send`, else 0.
 pub async fn run(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
     let writes = !matches!(cmd, LedgerCmd::Ls { .. } | LedgerCmd::Show { .. } | LedgerCmd::Dir { .. });
     let code = commands::run_one(socket, cmd, person).await?;
