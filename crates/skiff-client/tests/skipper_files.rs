@@ -5,8 +5,11 @@
 use skiff_client::skipper::{self, Scope, Status};
 use skiff_core::config;
 
+static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn instruction_files_are_written_once_and_keep_their_status() {
+    let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
     let root = std::env::temp_dir().join(format!("skiff-skipper-files-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let home = root.join("home");
@@ -85,5 +88,28 @@ fn instruction_files_are_written_once_and_keep_their_status() {
             top.display()
         )
     );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+// SPLIT-SCAFFOLD
+#[test]
+fn skipper_file_read_write_keeps_revisions_and_the_size_limit() {
+    let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let root = std::env::temp_dir().join(format!("skiff-skipper-file-write-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::create_dir_all(root.join("config")).unwrap();
+    std::env::set_var("SKIFF_CONFIG", root.join("config/projects.toml"));
+    let folder = root.join("agent");
+    std::fs::write(root.join("config/projects.toml"), format!("[skiff_agent]\nfolder = \"{}\"\n", folder.display())).unwrap();
+    let cfg = config::load().unwrap();
+    let scope = skiff_host_api::HostFileScope::Skipper;
+    let first = skipper::host_read(&cfg, &scope).unwrap();
+    let skipper::Wrote::Done(wrote) = skipper::host_write(&cfg, &scope, "mine\n", &first.revision).unwrap() else { panic!("the first revision writes") };
+    assert_eq!(wrote.text, "mine\n");
+    assert!(matches!(skipper::host_write(&cfg, &scope, "other\n", &first.revision).unwrap(), skipper::Wrote::Changed));
+    let too_big = "x".repeat(skipper::FILE_MAX + 1);
+    let Err(err) = skipper::host_write(&cfg, &scope, &too_big, &wrote.revision) else { panic!("an oversized file is refused") };
+    assert_eq!(err.to_string(), "The file is over 1 MiB.");
     let _ = std::fs::remove_dir_all(&root);
 }
