@@ -1,6 +1,11 @@
 //! Skipper identity, scope, naming, agent selection and command helpers.
 
-use super::*;
+use skiff_core::{
+    config::{self, Config},
+    project::AgentInfo,
+};
+#[cfg(test)]
+use std::path::PathBuf;
 
 /// The main Skipper's name until Settings has one. The app keeps the same default.
 pub const DEFAULT_NAME: &str = config::ADMIRAL;

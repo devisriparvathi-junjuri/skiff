@@ -2,6 +2,18 @@
 
 use super::*;
 
+use std::path::{Path, PathBuf};
+
+use anyhow::{bail, Context, Result};
+use skiff_core::{
+    config::{self, Config, ProjectConfig},
+    project::AgentInfo,
+    session::{Role, SessionInfo, SessionSpec, SessionState},
+};
+
+use crate::{Client, Coordinated, Coordinator};
+use super::folder::{hash, refresh, write_file, written};
+
 /// A project Skipper's `SKIPPER.md`: the project section only, as
 /// [`TEMPLATE`] is the base of every Skipper. `{{project}}`, `{{path}}`,
 /// `{{dir}}` and `{{folder}}` become the project, its folder, the

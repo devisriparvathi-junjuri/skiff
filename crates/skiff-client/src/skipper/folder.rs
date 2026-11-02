@@ -2,6 +2,11 @@
 
 use super::*;
 
+use std::path::{Path, PathBuf};
+
+use anyhow::{bail, Context, Result};
+use skiff_core::config::{self, Config};
+
 /// The folder's instructions. `{{name}}` becomes the agent's name.
 const TEMPLATE: &str = include_str!("../../agent-template/AGENTS.md.tmpl");
 

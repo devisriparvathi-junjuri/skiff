@@ -1,6 +1,8 @@
 //! Skipper watcher ownership, locks, restart policy and detached processes.
 
-use super::*;
+use std::path::{Path, PathBuf};
+
+use anyhow::{bail, Context, Result};
 
 /// The watcher that holds the lock, as it writes itself into the lock file.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
