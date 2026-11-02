@@ -514,11 +514,21 @@ mod tests {
         let uid = sh("id -u", &[]).trim().to_string();
         let plist = home.join("Library/LaunchAgents/com.solutionscay.skiff.skiffd.plist");
 
-        // Not loaded: one bootstrap. /dev/console is not this account's
-        // here, so it goes to the user domain, which ssh reaches.
+        // Not loaded: one bootstrap. It goes to the GUI domain when this
+        // account owns /dev/console (a desktop login), else to the user
+        // domain, which ssh reaches. A Mac at its desktop is the first.
+        let console = {
+            use std::os::unix::fs::MetadataExt;
+            std::fs::metadata("/dev/console").map(|m| m.uid().to_string())
+        };
+        let domain = if console.as_deref().ok() == Some(uid.as_str()) {
+            "gui"
+        } else {
+            "user"
+        };
         let out = sh(SERVER, &["start", "skiffd.sock"]);
         let o = started(&out);
-        assert_eq!((o.how.as_str(), o.running, value(&out, "domain")), ("launchd", true, "user"), "{out}");
+        assert_eq!((o.how.as_str(), o.running, value(&out, "domain")), ("launchd", true, domain), "{out}");
         let text = std::fs::read_to_string(&plist).unwrap();
         let want = format!("<string>{}/.local/share/skiff/server/current/skiffd</string>", dir.join("a&amp;b").display());
         assert!(text.contains(&want), "{text}");
@@ -526,7 +536,7 @@ mod tests {
             assert!(text.contains(key), "{key}");
         }
         let calls = std::fs::read_to_string(&log).unwrap();
-        assert!(calls.contains(&format!("bootstrap user/{uid} {}", plist.display())), "{calls}");
+        assert!(calls.contains(&format!("bootstrap {domain}/{uid} {}", plist.display())), "{calls}");
         assert!(!calls.contains("kickstart") && !calls.contains("bootout"), "{calls}");
         // skiff-host gets its own agent, for this skiffd's socket, always kept alive.
         let host = std::fs::read_to_string(home.join("Library/LaunchAgents/com.solutionscay.skiff.skiff-host.plist")).unwrap();
