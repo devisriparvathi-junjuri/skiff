@@ -123,13 +123,13 @@ impl Build {
     /// Runs the new file in this process. The lock closes with the old
     /// program, and the new one takes it. Returns only on a failure.
     #[cfg(unix)]
-    pub(super) fn take_over(&self) -> std::io::Error {
+    fn take_over(&self) -> std::io::Error {
         use std::os::unix::process::CommandExt;
         std::process::Command::new(&self.path).args(std::env::args_os().skip(1)).exec()
     }
 
     #[cfg(not(unix))]
-    pub(super) fn take_over(&self) -> std::io::Error {
+    fn take_over(&self) -> std::io::Error {
         std::io::Error::other("not on this system")
     }
 }
@@ -344,7 +344,7 @@ pub(super) fn route(
 /// Types the held lines of `owner`'s watcher into its coordinator `skipper`
 /// when it can take them. The start line goes alone, before any wake. A
 /// refused one waits.
-pub(super) async fn deliver(c: &Client, w: &mut Watcher, owner: &str, skipper: &SessionInfo, all: &[SessionInfo], coordinators: &[&str], here: &Path) -> Result<()> {
+async fn deliver(c: &Client, w: &mut Watcher, owner: &str, skipper: &SessionInfo, all: &[SessionInfo], coordinators: &[&str], here: &Path) -> Result<()> {
     if let Some(line) = w.unreported.clone() {
         if ready(c, skipper).await {
             let d = submit(c, skipper, &line).await?;

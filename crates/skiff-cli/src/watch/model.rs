@@ -11,7 +11,7 @@ pub struct Options {
 
 /// What a ledger pane is now.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Now {
+pub(super) enum Now {
     Working,
     Waiting,
     Idle { unread: bool },
@@ -70,7 +70,7 @@ impl Fact {
 /// unread flag and the pending rows then bring back what still needs
 /// attention.
 #[derive(Default)]
-pub struct Pane {
+pub(super) struct Pane {
     /// The last fact told, so a fact is told once.
     pub(super) told: Option<Fact>,
     pub(super) name: String,

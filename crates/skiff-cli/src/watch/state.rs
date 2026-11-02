@@ -9,13 +9,13 @@ pub(super) struct Watcher {
     /// Sessions the daemon marked unread since the last step.
     pub(super) turned: HashSet<String>,
     /// Sessions that showed a prompt since the last step.
-    pub(super) prompted: HashSet<String>,
+    prompted: HashSet<String>,
     /// Sessions that worked or showed a prompt since the last step.
     pub(super) busy: HashSet<String>,
     /// The failure to show in the app, sent with `Watching`.
     pub(super) failure: Option<WatchFailure>,
     /// Failed ledger reads in a row.
-    pub(super) bad_reads: u32,
+    bad_reads: u32,
     /// The live panes with an open task, from the last good ledger read.
     /// `None` before the first one.
     pub(super) follows: Option<Vec<String>>,
@@ -43,7 +43,7 @@ pub(super) struct Watcher {
     pub(super) lines: Vec<String>,
     /// The plan of each pane whose open tasks are all `sent` and in one plan,
     /// by pane key, as last read. Its idle line waits for the plan.
-    pub(super) plan_of: HashMap<String, String>,
+    plan_of: HashMap<String, String>,
     /// Each plan in `plan_of`: how many of its tasks ended, of how many.
     pub(super) plans: HashMap<String, (usize, usize)>,
 }
@@ -63,7 +63,7 @@ impl Watcher {
 }
 
 /// The line for a fleet that changed: who joined, who left.
-pub(super) fn fleet_line(fleet: &str, old: &[String], now: &[String]) -> String {
+fn fleet_line(fleet: &str, old: &[String], now: &[String]) -> String {
     let joined: Vec<&str> = now.iter().filter(|p| !old.contains(p)).map(String::as_str).collect();
     let left: Vec<&str> = old.iter().filter(|p| !now.contains(p)).map(String::as_str).collect();
     let mut parts = Vec::new();
@@ -94,7 +94,7 @@ pub(super) fn ended(r: &ledger::Row, all: &[SessionInfo]) -> bool {
 /// The plan of the pane `g`: the one plan that holds all its open tasks,
 /// when each is `sent`. A pending or blocked task, or a task with no plan,
 /// keeps the pane's lines its own.
-pub(super) fn plan_of(g: &Group, tasks: &[ledger::Row], plans: &HashSet<&str>) -> Option<String> {
+fn plan_of(g: &Group, tasks: &[ledger::Row], plans: &HashSet<&str>) -> Option<String> {
     let mut rows = tasks.iter().filter(|t| g.open.contains(&t.uid));
     let first = rows.next()?;
     let plan = first.parent.as_deref().filter(|p| plans.contains(p))?;
@@ -103,7 +103,7 @@ pub(super) fn plan_of(g: &Group, tasks: &[ledger::Row], plans: &HashSet<&str>) -
 
 /// The line for a plan whose tasks all ended, with the panes whose idle
 /// lines waited for it.
-pub(super) fn plan_line(plan: &str, (ended, total): (usize, usize), wakes: &[&Wake]) -> String {
+fn plan_line(plan: &str, (ended, total): (usize, usize), wakes: &[&Wake]) -> String {
     let tasks = if total == 1 { "task" } else { "tasks" };
     let panes: Vec<String> = wakes
         .iter()
@@ -160,7 +160,7 @@ pub(super) fn report(d: Delivery, line: &str) -> String {
 /// resolves to.
 pub(super) struct Group<'a> {
     /// The resolved session id, else the ledger's pane value.
-    pub(super) key: String,
+    key: String,
     pub(super) s: Option<&'a SessionInfo>,
     /// Its pending uids, oldest first.
     pub(super) pending: Vec<String>,
@@ -423,7 +423,7 @@ impl Watcher {
 
     /// The plan whose line carries the held line `h`: an idle line, not a
     /// pending one, of a pane in a plan.
-    pub(super) fn plan_held(&self, h: &Wake) -> Option<&str> {
+    fn plan_held(&self, h: &Wake) -> Option<&str> {
         (h.fact == Fact::Idle).then(|| self.plan_of.get(&h.pane).map(String::as_str)).flatten()
     }
 

@@ -24,7 +24,7 @@ pub enum Front {
     NoBox,
 }
 
-pub fn front(rows: &[(String, String)], agent: &str) -> Front {
+pub(super) fn front(rows: &[(String, String)], agent: &str) -> Front {
     if busy_line(rows) {
         return Front::Busy;
     }
@@ -44,7 +44,7 @@ pub async fn read_front(c: &Client, s: &SessionInfo) -> Result<Front> {
 
 /// The line an agent keeps up while it works: "esc to interrupt" and its
 /// kin. The daemon calls a quiet stretch idle, so this is the second check.
-pub fn busy_line(rows: &[(String, String)]) -> bool {
+pub(super) fn busy_line(rows: &[(String, String)]) -> bool {
     let end = rows.iter().rposition(|(a, _)| !a.is_empty()).map_or(0, |i| i + 1);
     rows[end.saturating_sub(8)..end].iter().any(|(a, _)| {
         let t: String = a.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_lowercase();
@@ -81,7 +81,7 @@ pub fn rows_of(data: &[u8], cols: u16, rows: u16) -> Vec<(String, String)> {
 /// Codex marks its input line with `›`. The others draw the box between two
 /// rules of box-drawing characters (Claude Code's `───`, Gemini's `╭──╮` and
 /// `╰──╯`): the last two such rows on the screen.
-pub fn input_box(rows: &[(String, String)], agent: &str) -> Option<bool> {
+pub(super) fn input_box(rows: &[(String, String)], agent: &str) -> Option<bool> {
     let content = |s: &str| {
         let t = s.trim().trim_matches(|c| c == '│' || c == '┃').trim();
         t.trim_start_matches(['>', '❯', '›']).trim().to_string()

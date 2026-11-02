@@ -70,9 +70,9 @@ pub(super) fn insert(db: &mut Connection, file: &Path, n: New) -> Result<(i64, S
 
 /// The session that owns the ledger, and its socket.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Owner {
-    pub session: String,
-    pub socket: String,
+pub(super) struct Owner {
+    pub(super) session: String,
+    pub(super) socket: String,
 }
 
 pub(super) fn owner(db: &Connection) -> Result<Option<Owner>> {
@@ -81,7 +81,7 @@ pub(super) fn owner(db: &Connection) -> Result<Option<Owner>> {
     Ok(it.next().transpose()?)
 }
 
-pub(super) fn set_owner(db: &Connection, session: &str, socket: &Path) -> Result<()> {
+fn set_owner(db: &Connection, session: &str, socket: &Path) -> Result<()> {
     db.execute(
         &format!("INSERT INTO owner (id, session, socket, since) VALUES (1, ?1, ?2, {NOW}) ON CONFLICT (id) DO UPDATE SET session = ?1, socket = ?2, since = {NOW}"),
         params![session, socket.display().to_string()],
@@ -90,7 +90,7 @@ pub(super) fn set_owner(db: &Connection, session: &str, socket: &Path) -> Result
 }
 
 /// The owner is `session` on `socket`.
-pub(super) fn is_owner(cur: Option<&Owner>, session: &str, socket: &Path) -> bool {
+fn is_owner(cur: Option<&Owner>, session: &str, socket: &Path) -> bool {
     cur.is_some_and(|o| o.session == session && state::same_socket(Path::new(&o.socket), socket))
 }
 
@@ -99,7 +99,7 @@ pub(super) fn is_owner(cur: Option<&Owner>, session: &str, socket: &Path) -> boo
 /// session there replaces the old one), or when `socket` is the live one. A
 /// daemon runs one Skiff agent, so the live agent always wins, and an agent
 /// on another socket never takes the live agent's ledger.
-pub(super) fn may_claim(cur: Option<&Owner>, socket: &Path) -> bool {
+fn may_claim(cur: Option<&Owner>, socket: &Path) -> bool {
     match cur {
         None => true,
         Some(o) => state::same_socket(Path::new(&o.socket), socket) || state::is_live(socket),
@@ -156,7 +156,7 @@ impl Caller {
     }
 
     /// The caller may change `r`: the person any row, a coordinator its own.
-    pub(super) fn owns(&self, r: &Row) -> bool {
+    fn owns(&self, r: &Row) -> bool {
         *self == Caller::Person || r.owner == self.owner()
     }
 
@@ -274,11 +274,11 @@ pub(super) fn who(owner: &str) -> String {
     }
 }
 
-pub(super) fn main_name() -> String {
+fn main_name() -> String {
     skiff_client::skipper::name(&skiff_core::config::load().unwrap_or_default())
 }
 
-pub(super) fn skipper_name() -> String {
+fn skipper_name() -> String {
     skiff_core::config::load().unwrap_or_default().skiff_agent.skipper_word()
 }
 

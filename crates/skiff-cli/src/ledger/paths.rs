@@ -73,7 +73,7 @@ pub(super) fn label<'a>(title: Option<&'a str>, task: &'a str) -> &'a str {
 
 /// The folder a task under `p` goes in: `p`'s work folder, or for a row from
 /// before work folders, the plan folder it had (see [`plan_folder`]).
-pub(super) fn container_folder(results: &Path, p: &Row) -> PathBuf {
+fn container_folder(results: &Path, p: &Row) -> PathBuf {
     match &p.work_dir {
         Some(d) => PathBuf::from(d),
         None => plan_folder(results, p),
@@ -100,7 +100,7 @@ pub fn results_dir(ledger: &Path, owner: &str) -> PathBuf {
 /// For a row from before work folders: the folder of the plan's `plan.md`,
 /// or the folder of a hand-off's tasks. A plan whose result is elsewhere
 /// gets the folder it would have had.
-pub(super) fn plan_folder(results: &Path, p: &Row) -> PathBuf {
+fn plan_folder(results: &Path, p: &Row) -> PathBuf {
     if let Some(dir) = p.result_path.as_deref().map(Path::new).filter(|r| r.file_name() == Some("plan.md".as_ref())).and_then(Path::parent) {
         return dir.to_path_buf();
     }
