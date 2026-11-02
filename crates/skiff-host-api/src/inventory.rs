@@ -95,6 +95,30 @@ pub struct ProgramStatus {
     pub progress: Option<u8>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub stalled: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ended: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<ProgramChild>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProgramChild {
+    pub id: String,
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub msg: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<u8>,
+}
+
+fn is_false(b: &bool) -> bool {
+    !b
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

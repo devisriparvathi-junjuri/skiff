@@ -11,7 +11,7 @@
 
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
-use skiff_core::session::{ProgramStatus, SessionState};
+use skiff_core::session::{ProgramChild, ProgramStatus, SessionState};
 
 /// The reply to the probe `OSC 7501 ; ?`. With no lists it means every state
 /// and kind of rev 0.4, which is what skiffd reads. ST, whatever ended the
@@ -94,6 +94,9 @@ impl Record {
             title: self.title.clone(),
             progress: self.progress,
             app: self.app.clone(),
+            stalled: false,
+            ended: false,
+            children: Vec::new(),
         }
     }
 }
@@ -284,6 +287,10 @@ pub fn ends_turn(old: Option<State>, new: Option<State>) -> bool {
 pub struct Records {
     /// By id; `""` is the root record.
     list: Vec<(String, Record)>,
+    /// The process group in front of the PTY when they were reported. 0:
+    /// not known. Reports from another group are another program's.
+    #[serde(default)]
+    pub group: u32,
 }
 
 impl Records {
@@ -327,6 +334,61 @@ impl Records {
 
     pub fn clear(&mut self) {
         self.list.clear();
+    }
+
+    /// The root record with the others under it, by id. `None` with no root:
+    /// only the root speaks for the program.
+    pub fn view(&self) -> Option<ProgramStatus> {
+        let mut view = self.root()?.view();
+        let mut children: Vec<_> = self
+            .list
+            .iter()
+            .filter(|(id, _)| !id.is_empty())
+            .map(|(id, r)| ProgramChild {
+                id: id.clone(),
+                state: r.state.name().into(),
+                kind: r.kind.map(|k| k.name().into()),
+                msg: r.msg.clone(),
+                title: r.title.clone(),
+                progress: r.progress,
+            })
+            .collect();
+        children.sort_by(|a, b| a.id.cmp(&b.id));
+        view.children = children;
+        Some(view)
+    }
+
+    /// What is left to show once the program has left: a root `done` or
+    /// `error`, marked ended, without its children. The records are cleared.
+    pub fn end(&mut self) -> Option<ProgramStatus> {
+        let kept = self
+            .root()
+            .filter(|r| matches!(r.state, State::Done | State::Error))
+            .map(|r| ProgramStatus {
+                ended: true,
+                ..r.view()
+            });
+        self.clear();
+        kept
+    }
+
+    /// Only the result of the root changes from `old`: its msg, title or
+    /// progress, or a child's. Such a change may wait a moment to be sent.
+    pub fn minor_change(old: &ProgramStatus, new: &ProgramStatus) -> bool {
+        let key = |p: &ProgramStatus| {
+            (
+                p.state.clone(),
+                p.kind.clone(),
+                p.app.clone(),
+                p.ended,
+                p.stalled,
+                p.children
+                    .iter()
+                    .map(|c| (c.id.clone(), c.state.clone(), c.kind.clone()))
+                    .collect::<Vec<_>>(),
+            )
+        };
+        key(old) == key(new)
     }
 }
 
@@ -481,5 +543,42 @@ mod tests {
         }
         assert_eq!(r.len(), MAX_RECORDS);
         assert!(r.root().is_none() && r.get("t0").is_some());
+    }
+
+    #[test]
+    fn the_view_lists_children_and_only_a_result_outlives_its_program() {
+        let mut r = Records::default();
+        for body in [
+            "state=working:app=grok",
+            "state=blocked:id=s2:kind=question",
+            "state=working:id=s1",
+        ] {
+            r.apply(parse(body.as_bytes()).unwrap());
+        }
+        let view = r.view().unwrap();
+        let ids: Vec<_> = view
+            .children
+            .iter()
+            .map(|c| (c.id.as_str(), c.state.as_str()))
+            .collect();
+        assert_eq!(ids, [("s1", "working"), ("s2", "blocked")]);
+        assert_eq!(view.children[1].kind.as_deref(), Some("question"));
+        assert_eq!(
+            r.clone().end(),
+            None,
+            "a working program left nothing to read"
+        );
+        r.apply(parse(b"state=error:msg=Ym9vbQ==").unwrap());
+        let kept = r.end().unwrap();
+        assert_eq!(
+            (kept.state.as_str(), kept.ended, kept.msg.as_deref()),
+            ("error", true, Some("boom"))
+        );
+        assert!(kept.children.is_empty() && r.is_empty());
+        let mut a = view.clone();
+        a.msg = Some("Thinking".into());
+        assert!(Records::minor_change(&view, &a));
+        a.state = "idle".into();
+        assert!(!Records::minor_change(&view, &a));
     }
 }

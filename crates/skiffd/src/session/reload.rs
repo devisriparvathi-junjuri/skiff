@@ -438,6 +438,11 @@ impl SessionPool {
             // Answers to queries before the reload count as input, as before.
             queries: AtomicU32::new(0),
             queried_at: AtomicU64::new(0),
+            approval_since: AtomicU64::new(0),
+            raised: AtomicBool::new(false),
+            stalled: AtomicBool::new(false),
+            status_sent_at: AtomicU64::new(0),
+            status_dirty: AtomicBool::new(false),
             screen: Mutex::new(ScreenState {
                 screen,
                 pending: Vec::new(),

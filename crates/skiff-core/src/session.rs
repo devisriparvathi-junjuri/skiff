@@ -202,6 +202,40 @@ pub struct ProgramStatus {
     /// The program's name for itself, such as "codex" or "claude-code".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app: Option<String>,
+    /// "working", with no output for a long while: the program may hang.
+    /// A hint only; the state stays working.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub stalled: bool,
+    /// The program left: it exited, its shell's prompt came back, or another
+    /// program came in front. Only a "done" or "error" is kept so, until the
+    /// pane is seen or new work starts; it no longer decides `state`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ended: bool,
+    /// The program's records under its own, such as its sessions or
+    /// subagents, by id. Empty when it reports none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<ProgramChild>,
+}
+
+/// A record a program reports under its own with an `id`: a session or a
+/// subagent of it.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct ProgramChild {
+    /// Its path, such as "s1" or "s1/a2".
+    pub id: String,
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub msg: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<u8>,
+}
+
+fn is_false(b: &bool) -> bool {
+    !b
 }
 
 /// The watchers registered for a session with [`Request::Watching`].

@@ -125,6 +125,9 @@ fn project_program_status(value: core::ProgramStatus) -> api::ProgramStatus {
         title,
         progress,
         app,
+        stalled,
+        ended,
+        children,
     } = value;
     api::ProgramStatus {
         state,
@@ -133,6 +136,29 @@ fn project_program_status(value: core::ProgramStatus) -> api::ProgramStatus {
         title,
         progress,
         app,
+        stalled,
+        ended,
+        children: children
+            .into_iter()
+            .map(|c| {
+                let core::ProgramChild {
+                    id,
+                    state,
+                    kind,
+                    msg,
+                    title,
+                    progress,
+                } = c;
+                api::ProgramChild {
+                    id,
+                    state,
+                    kind,
+                    msg,
+                    title,
+                    progress,
+                }
+            })
+            .collect(),
     }
 }
 
@@ -265,6 +291,9 @@ fn restore_program_status(value: api::ProgramStatus) -> core::ProgramStatus {
         title,
         progress,
         app,
+        stalled,
+        ended,
+        children,
     } = value;
     core::ProgramStatus {
         state,
@@ -273,6 +302,29 @@ fn restore_program_status(value: api::ProgramStatus) -> core::ProgramStatus {
         title,
         progress,
         app,
+        stalled,
+        ended,
+        children: children
+            .into_iter()
+            .map(|c| {
+                let api::ProgramChild {
+                    id,
+                    state,
+                    kind,
+                    msg,
+                    title,
+                    progress,
+                } = c;
+                core::ProgramChild {
+                    id,
+                    state,
+                    kind,
+                    msg,
+                    title,
+                    progress,
+                }
+            })
+            .collect(),
     }
 }
 
