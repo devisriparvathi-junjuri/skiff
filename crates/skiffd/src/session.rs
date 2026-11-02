@@ -811,10 +811,13 @@ impl SessionPool {
 
     /// One read's worth of output: the screen, the bell, the state, the title.
     fn on_output(&self, session: &Arc<Session>, sid: &str, chunk: &[u8]) {
-        session.last_output.store(now_ms(), Ordering::Relaxed);
+        let now = now_ms();
+        session.last_output.store(now, Ordering::Relaxed);
         {
             let mut info = session.info.lock().unwrap();
             info.output_bytes = info.output_bytes.saturating_add(chunk.len() as u64);
+            // So a copy of the info, as the updates send, has it too.
+            info.last_output_at = now;
         }
         let (signals, scan, echo) = session.push_output(chunk);
         // A bell that answers a key is no call: the user is at the
@@ -1574,6 +1577,40 @@ mod tests {
         assert!(!prints(b"\x1b[?2026h\x1b[?25l\x1b[43;16H\x1b[?25h\x1b[?2026l"));
         assert!(prints(b"\x1b[38;2;215;119;87m*\x1b[39m"));
         assert!(prints("\x1b[3G✻".as_bytes()));
+    }
+
+    /// An update sent from the info under its lock (here the shell back in
+    /// front) carries the time of the last output, not the session's start.
+    #[test]
+    fn an_update_carries_the_last_output_time() {
+        use skiff_core::{protocol::Event, session::SessionSpec};
+        let pool = super::SessionPool::new();
+        let info = pool
+            .create(SessionSpec {
+                command: Some("/bin/sleep".into()),
+                args: vec!["30".into()],
+                ..Default::default()
+            })
+            .unwrap();
+        let session = pool.get(&info.id).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        pool.on_output(&session, &info.id, b"x");
+        let mut events = pool.events.subscribe();
+        pool.set_front(&session, Front::Shell);
+        let sent = std::iter::from_fn(|| events.try_recv().ok())
+            .find_map(|e| match e {
+                Event::SessionUpdated { session } => Some(session),
+                _ => None,
+            })
+            .expect("no update");
+        assert!(
+            sent.last_output_at > info.started_at,
+            "{} <= {}",
+            sent.last_output_at,
+            info.started_at
+        );
+        assert_eq!(sent.last_output_at, session.info().last_output_at);
+        pool.kill(&info.id).unwrap();
     }
 
     /// The pty's size, read back from the kernel.
