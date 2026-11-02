@@ -31,6 +31,9 @@ pub struct Signals {
     pub bell: bool,
     /// `Some(None)` when the program reset its title.
     pub title: Option<Option<String>>,
+    /// Queries the program sent that a terminal answers (DA1, DSR, colors).
+    /// A client answers them; see `session::replies`.
+    pub queries: u32,
 }
 
 #[derive(Clone, Default)]
@@ -43,6 +46,9 @@ impl EventListener for Listener {
             TermEvent::Bell => s.bell = true,
             TermEvent::Title(t) => s.title = Some(Some(t)),
             TermEvent::ResetTitle => s.title = Some(None),
+            TermEvent::PtyWrite(_)
+            | TermEvent::ColorRequest(..)
+            | TermEvent::TextAreaSizeRequest(_) => s.queries = s.queries.saturating_add(1),
             _ => {}
         }
     }
