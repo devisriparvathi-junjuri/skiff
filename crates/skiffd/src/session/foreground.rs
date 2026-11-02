@@ -151,7 +151,23 @@ pub(crate) fn generic_title(title: &str) -> bool {
     let t = title.trim().to_lowercase();
     matches!(
         t.as_str(),
-        "claude" | "claude code" | "codex" | "openai codex" | "opencode" | "gemini" | "gemini cli" | "antigravity" | "agy" | "grok" | "grok build" | "hermes" | "hermes agent" | "kimi" | "kimi code"
+        "claude"
+            | "claude code"
+            | "codex"
+            | "openai codex"
+            | "opencode"
+            | "gemini"
+            | "gemini cli"
+            | "antigravity"
+            | "agy"
+            | "grok"
+            | "grok build"
+            | "hermes"
+            | "hermes agent"
+            | "kimi"
+            | "kimi code"
+            | "copilot"
+            | "github copilot"
     )
 }
 
@@ -195,6 +211,7 @@ pub(crate) fn known(name: &str) -> Option<&'static str> {
         "opencode" => Some("opencode"),
         "hermes" => Some("hermes"),
         "kimi" => Some("kimi"),
+        "copilot" => Some("copilot"),
         _ => None,
     }
 }
@@ -230,6 +247,8 @@ fn agent_program(name: &str, argv: &[String]) -> Option<&'static str> {
         ("/@anthropic-ai/claude-code/", "claude"),
         ("/@openai/codex/", "codex"),
         ("/@google/gemini-cli/", "gemini"),
+        // GitHub Copilot CLI: node runs `bin/copilot`, or its `npm-loader.js`.
+        ("/@github/copilot/", "copilot"),
     ] {
         if script.contains(package) {
             return Some(agent);
@@ -263,6 +282,22 @@ mod tests {
             Some("hermes")
         );
         assert_eq!(agent_program("hermes", &[]), Some("hermes"));
+        // GitHub Copilot CLI runs in node, by its bin link or its loader.
+        assert_eq!(
+            agent_program("node", &["node".into(), "/opt/homebrew/bin/copilot".into()]),
+            Some("copilot")
+        );
+        assert_eq!(
+            agent_program(
+                "node",
+                &[
+                    "node".into(),
+                    "/opt/lib/node_modules/@github/copilot/npm-loader.js".into()
+                ]
+            ),
+            Some("copilot")
+        );
+        assert!(generic_title("GitHub Copilot"));
         assert_eq!(
             agent_program("bash", &["bash".into(), "-c".into(), "codex".into()]),
             None

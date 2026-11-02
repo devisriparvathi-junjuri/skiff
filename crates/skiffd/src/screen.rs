@@ -327,6 +327,16 @@ impl Screen {
                     && (t.contains("tabamend") || t.contains("enterconfirm")))
                     || (t.contains("allowonce") && t.contains("suggestchanges"))
             }
+            "copilot" => {
+                // A tool's "Do you want to create …?" ends with "3. No, and tell
+                // Copilot what to do differently (Esc to stop)"; the folder trust
+                // dialog asks "Do you trust the files in this folder?". Both
+                // close with "↑/↓ to navigate · enter to select · esc to cancel".
+                let t = self.bottom_text(14);
+                t.contains("↑/↓tonavigate")
+                    && (t.contains("no,andtellcopilotwhattododifferently")
+                        || t.contains("doyoutrustthefilesinthisfolder"))
+            }
             "grok" => {
                 // "1/4:select │ Tab:next option │ ...", or a command's
                 // "Allow once", "Always allow this command", "Reject".
@@ -355,6 +365,8 @@ impl Screen {
             // "(esc to cancel, 12s)". Antigravity shows "esc to cancel" at
             // its prompts and its slash-command menu too, under a "↑/↓ Navigate" list.
             "gemini" => t.contains("esctocancel") && !t.contains("↑/↓navigate"),
+            // "◎ Working esc esc edit prompt", "◎ Working · 19 B esc esc interrupt".
+            "copilot" => t.contains("working") && t.contains("escesc"),
             _ => false,
         }
     }
@@ -530,7 +542,10 @@ pub fn title_state(agent: &str, title: &str) -> Option<TitleState> {
 /// The agents whose busy line `Screen::busy_line` knows. For them, only that
 /// line makes a turn: text they print without it (a recap, a status line) is not one.
 pub fn has_busy_line(agent: &str) -> bool {
-    matches!(agent, "claude" | "codex" | "opencode" | "gemini")
+    matches!(
+        agent,
+        "claude" | "codex" | "opencode" | "gemini" | "copilot"
+    )
 }
 
 /// A row's characters, trailing spaces dropped.
@@ -880,6 +895,49 @@ mod tests {
         let gemini_work = ["⣟  Generating...", "────────────", ">", "────────────", "esc to cancel          Gemini 3.8 Flash"];
         assert!(!screen_with(&gemini_work).approval_prompt("gemini"));
         assert!(screen_with(&gemini_work).busy_line("gemini"));
+        // GitHub Copilot CLI 1.0.105, as captured: a tool's prompt, the folder
+        // trust dialog, its busy line at two widths, and its idle footer.
+        let hint = "│ ↑/↓ to navigate · enter to select · esc to cancel";
+        let copilot_tool = [
+            "│ Do you want to create hello.txt?",
+            "│",
+            "│ ❯ 1. Yes",
+            "│   2. Yes, and don't ask again for file operations when in this directory",
+            "│   3. No, and tell Copilot what to do differently (Esc to stop)",
+            "│",
+            hint,
+        ];
+        assert!(screen_with(&copilot_tool).approval_prompt("copilot"));
+        let copilot_trust = [
+            "│ Do you trust the files in this folder?",
+            "│",
+            "│ ❯ 1. Yes",
+            "│   2. Yes, and remember this folder for future sessions",
+            "│   3. No (Esc)",
+            "│",
+            hint,
+        ];
+        assert!(screen_with(&copilot_trust).approval_prompt("copilot"));
+        let copilot_menu = [
+            "│ /model   Switch models",
+            "│ /resume  Switch sessions",
+            hint,
+        ];
+        assert!(!screen_with(&copilot_menu).approval_prompt("copilot"));
+        for busy in [
+            " ◎ Working esc esc edit prompt                                                      Copilot Fusion → mai-code-1.1-f",
+            " ◎ Working esc esc edit prompt              Copilot Fusion → mai-code-1.1-flash ",
+            " ◎ Working · 19 B esc esc interrupt                                                 Copilot Fusion → mai-code-1.1-f",
+        ] {
+            assert!(screen_with(&["  ❯ say hi", busy]).busy_line("copilot"), "{busy}");
+        }
+        let copilot_idle = [
+            " ● Hi! How can I help?",
+            "┃",
+            " Interactive · Manual Approval · / commands Copilot Fusion → mai-code-1.1-flash ",
+        ];
+        assert!(!screen_with(&copilot_idle).busy_line("copilot"));
+        assert!(!screen_with(&copilot_idle).approval_prompt("copilot"));
         // Antigravity's slash-command menu and its file prompt, as captured.
         let agy_menu = [
             "> /add-dir             Add a directory to the workspace",
