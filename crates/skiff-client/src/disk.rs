@@ -36,109 +36,14 @@ use crate::ledger;
 
 mod checkout;
 mod model;
+mod tree;
 
 use checkout::{checkout, git, mtime, now_secs, plain_repo, Checkout, Repo};
 #[cfg(test)]
 use checkout::plain_config;
 use model::{FOLD_FILES, KEEP};
+use tree::{collect_states, find, fold, is_frame, is_home, kept_name, walk};
 pub use model::{words, Expected, Flushed, Kind, Node, Usage, Verdict, Work, HOLD_LOOSE, HOLD_WORK};
-
-/// A walk of `abs`, never through a link. Counts what it cannot read.
-fn walk(abs: &Path, rel: &str, bad: &mut u64) -> Node {
-    let name = abs.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let mut n = Node {
-        name: name.clone(),
-        path: rel.to_string(),
-        bytes: 0,
-        files: 0,
-        mtime: 0,
-        state: None,
-        children: Vec::new(),
-        dir: false,
-        frame: false,
-        work: None,
-        checkout: None,
-        abs: abs.to_path_buf(),
-    };
-    let meta = match std::fs::symlink_metadata(abs) {
-        Ok(m) => m,
-        Err(_) => {
-            *bad += 1;
-            n.state = Some(Verdict::new(Kind::Prot, "unreadable"));
-            n.files = 1;
-            return n;
-        }
-    };
-    n.mtime = mtime(&meta);
-    if !meta.is_dir() {
-        n.files = 1;
-        n.bytes = if meta.file_type().is_symlink() { 0 } else { meta.len() };
-        return n;
-    }
-    n.dir = true;
-    n.name.push('/');
-    let rd = match std::fs::read_dir(abs) {
-        Ok(rd) => rd,
-        Err(_) => {
-            // A folder Skiff cannot list: one protected row.
-            *bad += 1;
-            n.state = Some(Verdict::new(Kind::Prot, "unreadable"));
-            n.files = 1;
-            return n;
-        }
-    };
-    let mut kids: Vec<PathBuf> = Vec::new();
-    for e in rd {
-        match e {
-            Ok(e) => kids.push(e.path()),
-            Err(_) => *bad += 1,
-        }
-    }
-    kids.sort();
-    if kids.iter().any(|k| k.file_name().is_some_and(|f| f == ".git")) && !rel.is_empty() {
-        n.checkout = Some(checkout(abs));
-    }
-    let own = n.mtime;
-    for k in kids {
-        let kname = k.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-        let krel = if rel.is_empty() { kname } else { format!("{rel}/{kname}") };
-        let c = walk(&k, &krel, bad);
-        n.bytes += c.bytes;
-        n.files += c.files;
-        n.children.push(c);
-    }
-    n.mtime = n.children.iter().filter(|c| c.files > 0).map(|c| c.mtime).max().unwrap_or(own);
-    n
-}
-
-/// Skiff's own folders: the agent folder, `cache/`, `types/`, the results
-/// folders and the Skippers' folders above them.
-fn is_frame(rel: &str) -> bool {
-    let parts: Vec<&str> = if rel.is_empty() { Vec::new() } else { rel.split('/').collect() };
-    matches!(
-        parts.as_slice(),
-        [] | ["cache"] | ["results"] | ["types"] | ["projects"] | ["fleets"] | ["projects" | "fleets", _] | ["projects" | "fleets", _, "results"]
-    )
-}
-
-/// A Skipper's own folder: its pane's cwd holds every result, so it
-/// protects nothing.
-fn is_home(rel: &str) -> bool {
-    let parts: Vec<&str> = if rel.is_empty() { Vec::new() } else { rel.split('/').collect() };
-    matches!(parts.as_slice(), [] | ["projects" | "fleets", _])
-}
-
-/// Skiff's own files: [`KEEP`] and `types/` at the top of the agent
-/// folder, and [`KEEP`] in a Skipper's folder. A file of that name deeper
-/// down, such as a repository's `AGENTS.md`, is not Skiff's.
-fn kept_name(rel: &str) -> bool {
-    let parts: Vec<&str> = rel.split('/').collect();
-    match parts.as_slice() {
-        [first, ..] if *first == "types" || KEEP.contains(first) => true,
-        ["projects" | "fleets", _, name, ..] => KEEP.contains(name),
-        _ => false,
-    }
-}
 
 /// A work folder's row and what the ledger and the panes say of it.
 struct Unit {
@@ -374,33 +279,6 @@ fn unsure(n: &mut Node, why: &'static str) {
     }
 }
 
-/// Folds a folder whose files all have one verdict and that has many files.
-fn fold(n: &mut Node) {
-    for c in &mut n.children {
-        fold(c);
-    }
-    if !n.dir || n.frame || n.work.is_some() || n.files <= FOLD_FILES || n.children.is_empty() {
-        return;
-    }
-    let mut vs = Vec::new();
-    collect_states(n, &mut vs);
-    if vs.windows(2).all(|w| w[0] == w[1]) {
-        n.state = vs.into_iter().next();
-        n.children.clear();
-    }
-}
-
-fn collect_states(n: &Node, out: &mut Vec<Verdict>) {
-    if n.children.is_empty() {
-        if let Some(v) = &n.state {
-            out.push(v.clone());
-        }
-    }
-    for c in &n.children {
-        collect_states(c, out);
-    }
-}
-
 /// Counts and judges `folder`. `cache`: the image cache. `ledger`: the
 /// ledger file. `sessions`: the daemon's list, `None` when it did not answer.
 pub fn usage(folder: &Path, cache: &Path, ledger_file: &Path, sessions: Option<&[SessionInfo]>, socket: &Path) -> Usage {
@@ -459,13 +337,6 @@ fn raw(folder: &Path, cache: &Path, ledger_file: &Path, sessions: Option<&[Sessi
         hold_work: HOLD_WORK,
         hold_loose: HOLD_LOOSE,
     }
-}
-
-fn find<'a>(n: &'a Node, path: &str) -> Option<&'a Node> {
-    if n.path == path {
-        return Some(n);
-    }
-    n.children.iter().filter(|c| path == c.path || path.starts_with(&format!("{}/", c.path))).find_map(|c| find(c, path))
 }
 
 /// Every file under `n` is stale, and none of Skiff's folders is in it.
