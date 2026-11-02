@@ -36,6 +36,7 @@ import { createMembership } from "./profile/membership";
 import { canon, createWorkspaceState, emptyProfile, trimPath } from "./profile/state";
 import type { Doc, Profile } from "./profile/state";
 import { fileName, forget, forgetLast, last as lastPath, read, recents, remember, revision, write as writeFile } from "./profile/storage";
+import type { Loaded } from "./profile/storage";
 import { choose, trapTab } from "./profile/dialogs";
 export type { Profile } from "./profile/state";
 
@@ -81,7 +82,7 @@ state.setHooks({ announce, changed });
 // ── Files ──────────────────────────────────────────────────────────────────
 
 /** Makes the read file the document, Clean, and shows it. */
-function commit(l: Awaited<ReturnType<typeof read>> | null, focus = true) {
+function commit(l: Loaded | null, focus = true) {
   state.doc = l
     ? { path: l.path, profile: l.profile, base: canon(l.profile), revision: l.revision, disk: "ok", kept: false, answered: false }
     : null;
@@ -242,7 +243,7 @@ export function leave(what: string, go: () => Promise<boolean>): Promise<boolean
 
 /** Reads `path` and opens it. A bad file leaves the document as it was. */
 async function openNow(path: string): Promise<boolean> {
-  let l: Awaited<ReturnType<typeof read>>;
+  let l: Loaded;
   try {
     l = await read(path);
   } catch (e) {
@@ -335,7 +336,7 @@ async function checkDisk() {
 async function reload() {
   await exclusive(async () => {
     if (!state.doc?.path) return false;
-    let l: Awaited<ReturnType<typeof read>>;
+    let l: Loaded;
     try {
       l = await read(state.doc.path);
     } catch (e) {
