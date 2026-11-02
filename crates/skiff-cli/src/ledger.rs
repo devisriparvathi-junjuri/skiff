@@ -15,11 +15,11 @@ use crate::{print, resolve, sessions, LedgerCmd};
 pub use skiff_client::ledger::{path, Row, GRAND};
 use skiff_client::ledger::{gen, heads, mark_live, roll_up, rows, GONE, INTERRUPTED};
 
-mod schema;
+mod commands;
 mod paths;
 mod read;
+mod schema;
 mod write;
-mod commands;
 
 use schema::NOW;
 use paths::{label, make_work_folder, new_uid, result_in, work_folder};
@@ -43,9 +43,6 @@ fn open_at(file: &Path) -> Result<Connection> {
     schema::open_at(file)
 }
 
-
-
-
 /// The exit code: `send`'s for `send` and `add --send`, else 0.
 /// Runs one `skiff ledger` command. After a command that writes, work that
 /// is done and reported closes by itself (see [`auto_close`]).
@@ -59,7 +56,6 @@ pub async fn run(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
     }
     Ok(code)
 }
-
 
 #[cfg(test)]
 mod tests;

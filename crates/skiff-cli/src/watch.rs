@@ -48,22 +48,23 @@ use tokio::{
 
 use crate::{ledger, print, resolve, sessions};
 
-/// How often the ledger and the session list are read again without an event.
-const TICK: Duration = Duration::from_secs(2);
-mod terminal;
 mod model;
-mod state;
 mod runtime;
+mod state;
+mod terminal;
+
 pub use model::{wake_line, Options};
 pub use terminal::{input_box_rows, read_front, rows_of, Front};
-#[cfg(test)]
-use terminal::{busy_line, front, input_box};
-use terminal::desktop_notify;
 use model::{Fact, Now, Pane, Wake};
-use state::*;
 #[cfg(test)]
 use runtime::*;
+use state::*;
+use terminal::desktop_notify;
+#[cfg(test)]
+use terminal::{busy_line, front, input_box};
 
+/// How often the ledger and the session list are read again without an event.
+const TICK: Duration = Duration::from_secs(2);
 /// How long the watcher waits for skiffd to come back: a reload, or a restart.
 const RECONNECT_LIMIT: Duration = Duration::from_secs(600);
 /// How long a new watcher waits for the lock, so an old one can finish.
