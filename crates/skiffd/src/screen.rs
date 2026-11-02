@@ -22,17 +22,12 @@ use serde::{Deserialize, Serialize};
 /// Lines of history the daemon keeps per session.
 pub const SCROLLBACK: usize = 2000;
 
-mod signals;
-
 mod inspect;
-
+mod signals;
 mod snapshot;
-
 mod terminal;
 
 pub use inspect::{has_busy_line, title_state, TitleState};
-
-pub use terminal::Screen;
-
 pub use signals::{Signals, StatusSignal};
+pub use terminal::Screen;
 use signals::{held_probes, Listener};

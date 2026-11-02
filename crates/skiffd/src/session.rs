@@ -28,18 +28,18 @@ use crate::{
     workspace::{SavedSession, Workspace},
 };
 
-mod away;
 mod attention;
+mod away;
 mod coordinator;
 mod foreground;
 mod groups;
 mod input;
+mod launch;
+mod lifecycle;
 mod output;
 mod persistence;
 mod registry;
 mod status;
-mod launch;
-mod lifecycle;
 pub mod reload;
 use groups::prune;
 use attention::{end_reports, live, topic};
