@@ -114,9 +114,9 @@ body.ledger-keys .cell.focused .cell-head { background: var(--bg-panel); }
   .lg-row.enter, .lg-row.flash { animation: none; }
 }
 
-/* Skipper's row: one amber count while ledger tasks need the person. */
-.skiff-agent-row .ledger-count { flex-shrink: 0; font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); color: var(--state-waiting); }
-.skiff-agent-row .ledger-count::before {
+/* Skipper's row and a project Skipper's row: one amber count while ledger tasks need the person. */
+:is(.skiff-agent-row, .project-skipper-row) .ledger-count { flex-shrink: 0; font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); color: var(--state-waiting); }
+:is(.skiff-agent-row, .project-skipper-row) .ledger-count::before {
   content: ""; display: inline-block; width: calc(6 * var(--u)); height: calc(6 * var(--u)); margin-right: calc(5 * var(--u));
   border-radius: 50%; background: var(--state-waiting); vertical-align: 1px;
 }

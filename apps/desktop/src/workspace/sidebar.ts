@@ -581,8 +581,15 @@ function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
   const vars = { scope: scopeName(scope), skipper: name, title: title || t(`state.${s.state}`), watch: watch.text };
   row.setAttribute("aria-label", watch.text ? t("sidebar.skipperLabelWatch", vars) : t("sidebar.skipperLabel", vars));
   row.append(h("span", "chev-space"), skipperFace(scope, 20), agentIcon(s), ...underWay(s), h("span", "skiff-agent-name", name), h("span", "title", title));
-  const roll = rollCounts(need, working);
+  // Its tasks an agent is on: the blue count. The bell is for a waiting session only.
+  const roll = rollCounts(0, working);
   if (roll) row.append(roll);
+  // One amber count, only while its ledger tasks need the person, as on the Skiff agent's row.
+  if (need) {
+    const c = h("span", "ledger-count", String(need));
+    c.title = tn("ledger.tasksNeedYou", need);
+    row.append(c);
+  }
   row.append(unreadMark(row, s));
   row.addEventListener("mousedown", (e) => {
     if (e.button === 0) row.focus();
