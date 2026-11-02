@@ -2188,6 +2188,77 @@ What is left:
 The operator closed the manual two-machine runs on 2026-10-29. They are not
 a requirement.
 
+## OSC 7501 program status (#209): `program_status@1`
+
+A program reports its own state to the terminal with OSC 7501, the Program
+Status Protocol (rev 0.4). skiffd reads these reports and puts them into the
+session data. Claude Code, Codex, Grok and Antigravity send them.
+
+### The capability
+
+- skiffd's `pong` gains `features: ["program_status@1"]`. The field is
+  additive. An older skiffd sends no list.
+- The local adapter offers `program_status@1` only when its skiffd names
+  the feature. It rides on the inventory and its updates; it grants no
+  request.
+- The app gates every part of the UI for a report on `hostCan("program_status")`.
+  A remote Host on an older skiffd shows no report.
+
+### The data
+
+`SessionInfo.program_status` (and `InventorySession.program_status`):
+`{ state, kind?, msg?, title?, progress?, app?, stalled?, ended?, children? }`.
+
+- `state`: `idle`, `working`, `blocked`, `done` or `error`. Strings, so a
+  client reads a value a newer daemon adds.
+- `kind`: what a `blocked` program waits for: `permission`, `question` or `auth`.
+- `msg` and `title`: plain text, with no control characters. Never markup.
+- `stalled`: `working` with no output for 5 minutes. A hint only.
+- `ended`: the program left. Only a `done` or `error` is kept so.
+- `children`: the records under the root, by id: `{ id, state, kind?, msg?, title?, progress? }`.
+
+### What decides the state
+
+- While a live root record exists, it decides: `working` is working,
+  `blocked` is waiting, `idle`, `done` and `error` are idle. The screen
+  rules, the title rules, the bell and the idle timer wait.
+- `done` and `error` end a turn: `TurnEnded`, and the pane is unread.
+  `idle` ends none.
+- **Process group.** The records belong to the process group in front of
+  the PTY when they came. A report under another group starts new records.
+  Another group in front ends the old records.
+- **Grace.** Under a `working` report, the agent's own approval prompt
+  makes the session waiting when it stays on screen 2 s past the last
+  report. It goes back to working when the prompt goes.
+- **The shell's prompt.** A report while the shell's prompt is in front is
+  ignored.
+- **Updates.** A change to `msg`, `title` or `progress` alone, or a child's,
+  sends at most one `SessionUpdated` a second. The last one always goes.
+
+### done and error after the program leaves
+
+The spec lets `done` and `error` stay after the program exits. skiffd keeps
+them for the person, not as a state:
+
+- When the program exits, the shell's prompt comes back, or another program
+  comes in front, the records go.
+- A root `done` or `error` stays in `program_status` with `ended: true`. It
+  decides nothing.
+- It goes when the pane is seen, when a new report comes, or when new work
+  starts.
+- `unread` follows the turn-end rules, as before.
+
+### Edge cases
+
+- **Probe.** skiffd answers `OSC 7501 ; ?` itself, before a client sees the
+  bytes, so its reply comes before the client's DA1 answer. A probe in a
+  synchronized update (`?2026`) is answered while the update holds it.
+- **Queries.** The answers a client sends to the queries it answers (DA,
+  DSR, colors, size, XTVERSION, DECRQSS) are not counted as typing.
+- **tmux.** Not supported for the probe: the reply cannot pass back through
+  tmux. tmux 3.3+ with `allow-passthrough` unwraps reports to plain OSC
+  7501, and skiffd reads those as the tmux client's.
+
 ## M0 demo and handoff
 
 M0 has zero visible behavior changes: desktop source, daemon source, protocol,
