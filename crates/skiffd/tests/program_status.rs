@@ -253,7 +253,7 @@ async fn until(
 
 /// The program sends the probe and DA1 in one write, as Claude Code does. A
 /// client answers DA1 the moment it sees the output; the daemon's reply to
-/// the probe must still reach the program first, and count as no input.
+/// the probe must still reach the program first. Neither reply is input.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_probe_reply_comes_before_a_clients_da1_reply() {
     let pool = pool();
@@ -298,8 +298,8 @@ async fn the_probe_reply_comes_before_a_clients_da1_reply() {
     );
     assert_eq!(
         pool.get(&info.id).unwrap().info().input_gen,
-        1,
-        "the probe reply counted as input"
+        0,
+        "a reply counted as input"
     );
     pool.kill(&info.id).unwrap();
 }
