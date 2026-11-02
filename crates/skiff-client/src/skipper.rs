@@ -12,11 +12,11 @@
 //!
 //! This module is the public compatibility facade; its implementation lives in child modules.
 
-mod identity;
 mod folder;
+mod host;
+mod identity;
 mod project;
 mod watch;
-mod host;
 
 pub use identity::{choose, continue_line, fleet_name, fleet_scope, name, project_name, scope_fleet, with_model, DEFAULT_NAME, FLEET};
 pub use folder::{apply, cache_dir, configured, default_folder, ensure, folder, home, make_folder, no_folder, refuse_live_folder, setup, skill_home, sync_skill, AGENTS_FILE};
