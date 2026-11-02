@@ -133,6 +133,16 @@ export function createLaunchMenu(o: Opts) {
     if (!menu.hidden && !menu.contains(e.target as Node) && e.target !== anchor && !anchor?.contains(e.target as Node)) close(false);
   });
 
+  /** The layouts for a new group in `w`, a session per pane, as menu entries. */
+  function groups(p: Project, w: Worktree): MenuEntry[] {
+    return o.splits().map((s, i) => {
+      const g = document.createElement("span");
+      g.className = "lm-glyph";
+      g.append(s.glyph);
+      return { glyph: g, label: s.name, run: () => o.split(p, w, i) };
+    });
+  }
+
   /** The same choices as entries of another menu: the project menu of a project with one worktree. */
   function entries(p: Project, w: Worktree): MenuEntry[] {
     const sk = o.skipper(p);
@@ -140,18 +150,9 @@ export function createLaunchMenu(o: Opts) {
       { head: startIn(w) },
       ...(sk ? [{ icon: "tools-sparkles", label: sk.label, hint: launchDigit(0), disabled: sk.disabled, run: sk.run }] : []),
       ...o.choices().map((a, i) => ({ glyph: launchIcon(a), label: a?.id ?? t("menu.shell"), hint: launchDigit(i + (sk ? 1 : 0)), run: () => o.start(p, w, a) })),
-      {
-        icon: "code-group",
-        label: t("select.newGroup"),
-        sub: o.splits().map((s, i) => {
-          const g = document.createElement("span");
-          g.className = "lm-glyph";
-          g.append(s.glyph);
-          return { glyph: g, label: s.name, run: () => o.split(p, w, i) };
-        }),
-      },
+      { icon: "code-group", label: t("select.newGroup"), sub: groups(p, w) },
     ];
   }
 
-  return { open, close, entries };
+  return { open, close, entries, groups };
 }
