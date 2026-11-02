@@ -354,6 +354,8 @@ fn free(p: &Path) -> Option<u64> {
     // SAFETY: statvfs fills the struct it is given.
     unsafe {
         let mut s: libc::statvfs = std::mem::zeroed();
+        // The field types differ by platform (u32 or u64), so a cast is needless on one.
+        #[allow(clippy::unnecessary_cast)]
         (libc::statvfs(c.as_ptr(), &mut s) == 0).then(|| s.f_bavail as u64 * s.f_frsize as u64)
     }
 }
