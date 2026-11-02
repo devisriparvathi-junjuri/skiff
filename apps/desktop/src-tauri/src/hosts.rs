@@ -1107,6 +1107,28 @@ pub(crate) async fn accept_host_identity(app: State<'_, App>, id: String) -> Res
 mod tests {
     use super::*;
 
+    #[test]
+    fn page_host_dtos_keep_their_json_contracts() {
+        let form: HostForm = serde_json::from_value(serde_json::json!({
+            "destination": "devbox"
+        }))
+        .unwrap();
+        assert_eq!(form.name, "");
+        assert_eq!(form.user, "");
+        assert_eq!(form.port, "");
+
+        let list = host_list(
+            Hosts { selected: Some("h_devbox".into()), hosts: vec![KnownHost::new("devbox".into())] },
+            Some("h_devbox".into()),
+            None,
+        );
+        let json = serde_json::to_value(list).unwrap();
+        assert_eq!(json["selected"], "h_devbox");
+        assert_eq!(json["clipboard"], false);
+        assert!(json["hosts"][0].get("clipboard").is_none(), "per-Host clipboard permission is not page data");
+        assert!(json["hosts"][0].get("auto_update").is_some());
+    }
+
     fn dev() -> SshTarget {
         SshTarget::new("devbox", "/s.sock")
     }

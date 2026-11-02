@@ -178,7 +178,7 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "92aee52e69ef340f92d80dcc608ee24755872ecaa07141be9f8587ca7a85d09e"
+    "sha256": "dd2c652aabdcf25ebf8adb35a786bb4f09e17177b5f88febed16b1695196d0dc"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
