@@ -1,3 +1,5 @@
+//! Uids and the work-folder layout under the results folder.
+
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};

@@ -1,3 +1,5 @@
+//! The ledger's SQLite schema: opening a ledger, and the migrations that bring an older one up to date.
+
 use std::path::Path;
 
 use anyhow::{Context, Result};

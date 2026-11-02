@@ -1,3 +1,5 @@
+//! The write side: inserts, the owner and the caller's authority, sends, state changes, closing, reopening and pruning.
+
 use super::*;
 
 /// A row for [`insert`].

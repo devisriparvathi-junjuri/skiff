@@ -1,3 +1,5 @@
+//! The read side: the queries, liveness, the work hierarchy, the list views and the table rendering.
+
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};

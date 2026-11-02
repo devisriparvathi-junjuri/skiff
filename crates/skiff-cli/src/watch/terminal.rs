@@ -1,3 +1,5 @@
+//! Reading an agent's screen: its front, a busy line, the input box, and the desktop notification.
+
 use std::process::Stdio;
 
 use alacritty_terminal::{

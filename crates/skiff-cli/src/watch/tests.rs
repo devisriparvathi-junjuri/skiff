@@ -1,3 +1,5 @@
+//! The watcher's tests, on fake session lists and ledger rows; `row` also serves `sessions`' tests.
+
 use super::*;
 
 #[test]

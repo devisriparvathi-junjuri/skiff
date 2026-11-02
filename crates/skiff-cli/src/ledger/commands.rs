@@ -1,3 +1,5 @@
+//! One `skiff ledger` command, matched and sequenced over the read and write sides.
+
 use super::*;
 
 pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {

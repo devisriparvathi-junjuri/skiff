@@ -1,3 +1,5 @@
+//! The long-running process: the lock, the build handover, the event loop, the ledger reads, routing and delivery.
+
 use super::*;
 
 pub(super) async fn run(socket: &Path, o: Options) -> Result<i32> {

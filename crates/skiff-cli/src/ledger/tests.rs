@@ -1,3 +1,5 @@
+//! The ledger's tests, on private ledgers in a scratch folder.
+
 use super::*;
 
 #[test]

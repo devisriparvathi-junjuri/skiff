@@ -1,3 +1,5 @@
+//! The watch vocabulary: the options, what a pane is doing now, the facts told, each pane's memory and the wake lines.
+
 use skiff_core::session::{SessionInfo, SessionState};
 
 use crate::print;

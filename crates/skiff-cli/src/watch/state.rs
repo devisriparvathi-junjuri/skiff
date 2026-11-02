@@ -1,3 +1,5 @@
+//! The watcher state machine: panes grouped by task, held lines, plans, the failure, and the registration with skiffd.
+
 use super::*;
 
 #[derive(Default)]
