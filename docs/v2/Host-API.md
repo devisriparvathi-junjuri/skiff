@@ -2223,7 +2223,18 @@ session data. Claude Code, Codex, Grok and Antigravity send them.
   `blocked` is waiting, `idle`, `done` and `error` are idle. The screen
   rules, the title rules, the bell and the idle timer wait.
 - `done` and `error` end a turn: `TurnEnded`, and the pane is unread.
-  `idle` ends none.
+- `idle` ends a turn only for a program that has never said `done` or
+  `error` (OpenCode 2.2.5 ends turns with `idle`). Then `working` back to
+  `idle` ends one when all of these are true:
+  - the user typed since the program was last idle: its own startup work
+    is no turn;
+  - the working stretch lasted at least 1.5 s and printed.
+
+  So a prompt turned down is no result: `blocked` straight to `idle`, or
+  `blocked` to a short `working` and then `idle`.
+
+  Once a program says `done` or `error`, `idle` never ends its turns. This
+  is kept per program: the records' process group.
 - **Process group.** The records belong to the process group in front of
   the PTY when they came. A report under another group starts new records.
   Another group in front ends the old records.
