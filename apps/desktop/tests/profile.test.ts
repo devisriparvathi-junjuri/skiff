@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { workspaceHarness } from "./workspaceHarness.ts";
 
 // SPLIT-SCAFFOLD: characterization coverage for the profile split.
-const seams = "\nexports.__splitScaffold = { checkDisk, recents, remember, saveAsNow, treeView, workspaceMenu };";
+const seams = "\nexports.__splitScaffold = { checkDisk, recents, remember, saveAsNow, treeView: state.treeView, workspaceMenu };";
 
 test("profile keeps valid recents in newest-first order", () => {
   const h = workspaceHarness(seams);

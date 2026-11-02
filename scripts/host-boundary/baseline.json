@@ -909,7 +909,24 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "915c25cf11a020fdf1f86d322000968fcdc5a097a05713df337de3967360b410"
+    "sha256": "77da616c0ce6a8bc2a5210a148d97b496f1b2035b2651cb19362a0aa3796d08f"
+  },
+  "apps/desktop/src/workspace/profile/membership.ts": {
+    "ownership": "client policy: exact existing adapter only",
+    "reasons": [
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/ui/contextMenu.ts",
+      "local provider: apps/desktop/src/workspace/profile/state.ts"
+    ],
+    "sha256": "5522b8a11c665bbbecd7f07487fea07d1cc1c142f8f2363516b42f9b96db3ebe"
+  },
+  "apps/desktop/src/workspace/profile/state.ts": {
+    "ownership": "client policy: exact existing adapter only",
+    "reasons": [
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/workspace/tree.ts"
+    ],
+    "sha256": "a68ac248e76396d547db8a949f31ef08385920241033f08c3147daaa8acb07ed"
   },
   "apps/desktop/src/workspace/projectClose.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

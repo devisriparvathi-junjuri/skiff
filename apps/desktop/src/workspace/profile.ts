@@ -29,277 +29,33 @@ import { ctxMenu } from "../ui/contextMenu";
 import { dialogFrame } from "../ui/dialogParts";
 import { button, h, setHidden } from "../ui/dom";
 import type { MenuEntry } from "../ui/menu";
-import { fleetKey, projectKey, treeSections, useTreeView } from "./tree";
+import { treeSections, useTreeView } from "./tree";
 import { selectProject } from "./view";
 import { t, tn, upper } from "../i18n";
-
-/** The profile as `workspace_read` gives it and `workspace_write` takes it. */
-export interface Profile {
-  name: string;
-  /** Project folders. */
-  projects: string[];
-  /** Fleet names. */
-  fleets: string[];
-  folded_projects: string[];
-  folded_fleets: string[];
-  /** The folder of the last project the user picked here. */
-  selected: string | null;
-}
-
-interface Doc {
-  path: string | null;
-  profile: Profile;
-  /** `canon` of the profile last read or saved. */
-  base: string;
-  /** The revision last read or written. null: no file yet. */
-  revision: string | null;
-  /** The file on disk: as read, changed by something else, or gone or unreadable. */
-  disk: "ok" | "changed" | "missing";
-  /** The person chose Keep current while the disk differs: that counts as an edit. */
-  kept: boolean;
-  /** The notice for this disk state was answered. A new change shows it again. */
-  answered: boolean;
-}
+import { createMembership } from "./profile/membership";
+import { canon, createWorkspaceState, emptyProfile, trimPath } from "./profile/state";
+import type { Doc, Profile } from "./profile/state";
+export type { Profile } from "./profile/state";
 
 const EXT = "skiffw";
 const LAST_KEY = "skiff.workspace.last";
 const RECENT_KEY = "skiff.workspace.recent";
 const RECENT_MAX = 8;
 
-let doc: Doc | null = null;
-/** Rows the screen opened in this workspace. Not saved, not an edit. */
-const autoOpened = new Set<string>();
-/** A save is writing. Edits wait: a fold or pick now would miss the file. */
-let saving = false;
+const state = createWorkspaceState();
+const membership = createMembership(state, { announce, changed, showView });
+const clone = (p: Profile): Profile => JSON.parse(JSON.stringify(p));
 /** A transition or save runs. A second request is dropped, so one prompt and one write at a time. */
 let busy = false;
-/** Above 0 while the app, not the user, moves the selection. */
-let quiet = 0;
-/** Off until the launch has opened its workspace: the first restore is no edit. */
-let ready = false;
-/** The Ledger shows every row, whatever the workspace. Never saved. */
-let allWork = false;
-
-const trimPath = (p: string) => (p.length > 1 ? p.replace(/\/+$/, "") : p);
-const uniq = (xs: string[]) => [...new Set(xs)].sort();
-
-/** The profile as a value: order and repeats do not count. */
-function canon(p: Profile): string {
-  return JSON.stringify([
-    p.name.trim(),
-    uniq(p.projects.map(trimPath)),
-    uniq(p.fleets),
-    uniq(p.folded_projects.map(trimPath)),
-    uniq(p.folded_fleets),
-    p.selected ? trimPath(p.selected) : null,
-  ]);
-}
-
-const emptyProfile = (): Profile => ({ name: "", projects: [], fleets: [], folded_projects: [], folded_fleets: [], selected: null });
-const clone = (p: Profile): Profile => JSON.parse(JSON.stringify(p));
-
-export const workspaceOpen = () => doc !== null;
-export const workspaceName = () => (doc ? doc.profile.name.trim() || t("workspace.untitled") : t("workspace.allProjects"));
-
-export function workspaceEdited(): boolean {
-  return !!doc && (canon(doc.profile) !== doc.base || (doc.kept && doc.disk !== "ok"));
-}
-
-// ── What shows ─────────────────────────────────────────────────────────────
-
-/** The project is in the open workspace, by itself or by its fleet. Always true in All projects. */
-export function shows(p: Project): boolean {
-  if (!doc) return true;
-  return doc.profile.projects.some((x) => trimPath(x) === trimPath(p.path)) || (!!p.fleet && doc.profile.fleets.includes(p.fleet));
-}
-
-const shownProjects = () => S.projects.filter(shows);
-
-/**
- * The project names whose work the Ledger shows, or null for every row.
- * A row with no project shows in every workspace.
- */
-export function ledgerScope(): { label: string; names: Set<string> } | null {
-  if (!doc || allWork) return null;
-  return { label: workspaceName(), names: new Set(shownProjects().map((p) => p.name)) };
-}
-
-export const ledgerAllWork = () => allWork;
-
-/** All work, or back to the workspace's work. No edit, no prompt. */
-export function setLedgerAllWork(on: boolean) {
-  if (allWork === on) return;
-  allWork = on;
-  announce(on ? t("workspace.ledgerAll") : t("workspace.ledgerScoped", { name: workspaceName() }));
-  render();
-}
-
-/** A reference with nothing to point at. It stays in the file until the user repairs or removes it. */
-interface Missing {
-  kind: "project" | "fleet";
-  ref: string;
-  why: string;
-}
-
-function missing(): Missing[] {
-  if (!doc) return [];
-  const out: Missing[] = [];
-  for (const path of doc.profile.projects) {
-    if (S.projects.some((p) => trimPath(p.path) === trimPath(path))) continue;
-    const closed = S.closedProjects.find((p) => trimPath(p.path) === trimPath(path));
-    out.push({ kind: "project", ref: path, why: closed ? t("workspace.whyClosed", { name: closed.name }) : t("workspace.whyNoProject") });
-  }
-  const fleets = new Set(S.projects.map((p) => p.fleet).filter((f): f is string => !!f));
-  for (const f of doc.profile.fleets) if (!fleets.has(f)) out.push({ kind: "fleet", ref: f, why: t("workspace.whyNoFleet") });
-  return out;
-}
-
-// ── Folds and picks ────────────────────────────────────────────────────────
-
-const pathOf = (name: string) => {
-  const p = S.projects.find((x) => x.name === name);
-  return p ? trimPath(p.path) : null;
-};
-
-/** A tree key, as the file names it: a project by folder, a fleet by name. */
-function refOf(key: string): { list: "folded_projects" | "folded_fleets"; ref: string } | null {
-  if (key.startsWith("project:")) {
-    const ref = pathOf(key.slice("project:".length));
-    return ref ? { list: "folded_projects", ref } : null;
-  }
-  if (key.startsWith("fleet:")) return { list: "folded_fleets", ref: key.slice("fleet:".length) };
-  return null;
-}
-
-const treeView = {
-  shows,
-  isFolded(key: string) {
-    const r = doc && refOf(key);
-    return !!r && !autoOpened.has(key) && doc!.profile[r.list].some((x) => x === r.ref);
-  },
-  fold(key: string, fold: boolean) {
-    const r = doc && refOf(key);
-    if (!r || saving) return;
-    autoOpened.delete(key);
-    const list = doc!.profile[r.list].filter((x) => x !== r.ref);
-    if (fold) list.push(r.ref);
-    doc!.profile[r.list] = list;
-    changed();
-  },
-  autoOpen(key: string) {
-    autoOpened.add(key);
-  },
-  keys() {
-    if (!doc) return [];
-    const out: string[] = [];
-    for (const p of S.projects) if (treeView.isFolded(projectKey(p.name))) out.push(projectKey(p.name));
-    for (const f of doc.profile.folded_fleets) if (treeView.isFolded(fleetKey(f))) out.push(fleetKey(f));
-    return out;
-  },
-};
-
-/** The user picked a project. In a workspace that includes it, that is an edit. */
-export function noteSelected(name: string) {
-  if (!doc || !ready || quiet || saving) return;
-  const p = S.projects.find((x) => x.name === name);
-  if (!p || !shows(p)) return;
-  const path = trimPath(p.path);
-  if (doc.profile.selected === path) return;
-  doc.profile.selected = path;
-  changed();
-}
-
-function quietly(f: () => void) {
-  quiet++;
-  try {
-    f();
-  } finally {
-    quiet--;
-  }
-}
-
-// ── Add and remove ─────────────────────────────────────────────────────────
-
-const fleetNames = () => [...new Set(S.projects.map((p) => p.fleet).filter((f): f is string => !!f))];
-const listed = (p: Project) => !!doc && doc.profile.projects.some((x) => trimPath(x) === trimPath(p.path));
-
-/** Puts a project or fleet in the open workspace, or takes it out. An edit, like a change in the Edit dialog. */
-function setIncluded(kind: "project" | "fleet", ref: string, on: boolean) {
-  if (!doc || saving) return;
-  const d = doc;
-  const shownBefore = new Set(S.projects.filter(shows).map((p) => trimPath(p.path)));
-  if (kind === "project") {
-    const rest = d.profile.projects.filter((x) => trimPath(x) !== trimPath(ref));
-    d.profile.projects = on ? [...rest, trimPath(ref)] : rest;
-  } else {
-    const rest = d.profile.fleets.filter((x) => x !== ref);
-    d.profile.fleets = on ? [...rest, ref] : rest;
-  }
-  // A project that left the view takes its fold and pick with it.
-  const left = (x: string) => shownBefore.has(trimPath(x)) && !S.projects.some((p) => trimPath(p.path) === trimPath(x) && shows(p));
-  d.profile.folded_projects = d.profile.folded_projects.filter((x) => !left(x));
-  if (d.profile.selected && left(d.profile.selected)) d.profile.selected = null;
-  if (kind === "fleet" && !on) d.profile.folded_fleets = d.profile.folded_fleets.filter((x) => x !== ref);
-  const workspace = workspaceName();
-  if (kind === "fleet") announce(t(on ? "workspace.fleetAdded" : "workspace.fleetRemoved", { fleet: ref, workspace }));
-  else {
-    const project = S.projects.find((p) => trimPath(p.path) === trimPath(ref))?.name ?? ref;
-    announce(t(on ? "workspace.projectAdded" : "workspace.projectRemoved", { project, workspace }));
-  }
-  changed();
-  if (!on) showView(false);
-}
-
-/** A project Skiff just added: in a workspace, it goes in too, so it shows where the person added it. */
-export function includeAdded(p: Project) {
-  if (doc && !shows(p)) setIncluded("project", p.path, true);
-}
-
-/** A project that goes to a fleet the workspace does not name, or to none, stays in by its folder. Call it before the change. */
-export function keepInView(p: Project, fleet: string | null) {
-  if (doc && shows(p) && !listed(p) && !(fleet && doc.profile.fleets.includes(fleet))) setIncluded("project", p.path, true);
-}
-
-/** A renamed fleet stays in the workspace, folded or open as it was. */
-export function renameWorkspaceFleet(from: string, to: string) {
-  if (!doc || saving || from === to) return;
-  const d = doc.profile;
-  if (!d.fleets.includes(from) && !d.folded_fleets.includes(from)) return;
-  const swap = (xs: string[]) => [...new Set(xs.map((x) => (x === from ? to : x)))];
-  d.fleets = swap(d.fleets);
-  d.folded_fleets = swap(d.folded_fleets);
-  changed();
-}
-
-/** The + over Projects: in a workspace, the projects and fleets it does not show yet, then Add project. */
-export function projectsPlus(at: HTMLElement, addProject: () => void) {
-  if (!doc) return addProject();
-  const r = at.getBoundingClientRect();
-  const fleets = fleetNames().filter((f) => !doc!.profile.fleets.includes(f));
-  const hidden = S.projects.filter((p) => !shows(p));
-  const entries: MenuEntry[] = [];
-  if (fleets.length || hidden.length) entries.push({ head: upper(t("workspace.headAdd")) });
-  for (const f of fleets) entries.push({ icon: "code-group", label: t("menu.fleet", { name: f }), run: () => setIncluded("fleet", f, true) });
-  for (const p of hidden) entries.push({ label: p.fleet ? t("workspace.projectInFleet", { name: p.name, fleet: p.fleet }) : p.name, run: () => setIncluded("project", p.path, true) });
-  if (entries.length) entries.push({ head: upper(t("workspace.headSkiff")) });
-  entries.push({ icon: "indicators-plus", label: t("cmd.addProject"), run: addProject });
-  ctxMenu.open(r.left, r.bottom, workspaceName(), entries);
-}
-
-/** The workspace items in a project's menu. None in All projects. */
-export function projectWorkspaceEntries(p: Project): MenuEntry[] {
-  if (!doc) return [];
-  if (listed(p)) return [{ icon: "code-ungroup", label: t("workspace.removeProject"), run: () => setIncluded("project", p.path, false) }];
-  // In by its fleet only: the fleet's menu takes it out.
-  return [{ icon: "code-ungroup", label: t("workspace.inByFleet", { fleet: p.fleet ?? "" }), disabled: true }];
-}
-
-/** The workspace items in a fleet's menu. None in All projects. */
-export function fleetWorkspaceEntries(name: string): MenuEntry[] {
-  if (!doc) return [];
-  if (doc.profile.fleets.includes(name)) return [{ icon: "code-ungroup", label: t("workspace.removeFleet"), run: () => setIncluded("fleet", name, false) }];
-  return [{ icon: "indicators-plus", label: t("workspace.addFleet"), run: () => setIncluded("fleet", name, true) }];
-}
+export const workspaceOpen = state.workspaceOpen;
+export const workspaceName = state.workspaceName;
+export const workspaceEdited = state.workspaceEdited;
+export const shows = state.shows;
+export const ledgerScope = state.ledgerScope;
+export const ledgerAllWork = state.ledgerAllWork;
+export const setLedgerAllWork = state.setLedgerAllWork;
+export const noteSelected = state.noteSelected;
+export const { includeAdded, keepInView, renameWorkspaceFleet, projectsPlus, projectWorkspaceEntries, fleetWorkspaceEntries } = membership;
 
 // ── Notices ────────────────────────────────────────────────────────────────
 
@@ -320,6 +76,8 @@ function changed() {
   wasEdited = now;
   render();
 }
+
+state.setHooks({ announce, changed });
 
 // ── Files ──────────────────────────────────────────────────────────────────
 
@@ -363,12 +121,12 @@ const fileName = (path: string) => path.split("/").pop() ?? path;
 
 /** Makes the read file the document, Clean, and shows it. */
 function commit(l: Loaded | null, focus = true) {
-  doc = l
+  state.doc = l
     ? { path: l.path, profile: l.profile, base: canon(l.profile), revision: l.revision, disk: "ok", kept: false, answered: false }
     : null;
-  autoOpened.clear();
-  allWork = false;
-  useTreeView(doc ? treeView : null);
+  state.autoOpened.clear();
+  state.allWork = false;
+  useTreeView(state.doc ? state.treeView : null);
   if (l) remember(l.path);
   wasEdited = workspaceEdited();
   showView(focus);
@@ -376,10 +134,10 @@ function commit(l: Loaded | null, focus = true) {
 
 /** A new Untitled workspace: empty, Clean, no file. */
 function commitUntitled() {
-  doc = { path: null, profile: emptyProfile(), base: canon(emptyProfile()), revision: null, disk: "ok", kept: false, answered: false };
-  autoOpened.clear();
-  allWork = false;
-  useTreeView(treeView);
+  state.doc = { path: null, profile: emptyProfile(), base: canon(emptyProfile()), revision: null, disk: "ok", kept: false, answered: false };
+  state.autoOpened.clear();
+  state.allWork = false;
+  useTreeView(state.treeView);
   store(LAST_KEY, null);
   wasEdited = false;
   showView();
@@ -388,13 +146,13 @@ function commitUntitled() {
 /** After a switch: the saved pick if it shows, else the first project that shows, else none. The keys go to the sidebar's current row. */
 function showView(focus = true) {
   const shown = treeSections().flatMap((s) => s.projects);
-  const want = doc?.profile.selected ? shown.find((p) => trimPath(p.path) === trimPath(doc!.profile.selected!)) : undefined;
+  const want = state.doc?.profile.selected ? shown.find((p) => trimPath(p.path) === trimPath(state.doc!.profile.selected!)) : undefined;
   const target = want ?? (S.selectedProject && shown.some((p) => p.name === S.selectedProject) ? undefined : shown[0]);
-  quietly(() => {
+  state.quietly(() => {
     if (target) selectProject(target.name);
     render();
   });
-  announce(doc ? t("workspace.openedSay", { name: workspaceName() }) : t("workspace.allProjects"));
+  announce(state.doc ? t("workspace.openedSay", { name: workspaceName() }) : t("workspace.allProjects"));
   if (focus) requestAnimationFrame(() => home()?.focus());
 }
 
@@ -404,10 +162,10 @@ async function read(path: string): Promise<Loaded> {
 
 /** Writes the document to `path`. `expect`: the revision there now, null for no file. */
 async function write(path: string, expect: string | null): Promise<boolean> {
-  if (!doc) return false;
-  const d = doc;
+  if (!state.doc) return false;
+  const d = state.doc;
   const snap = clone(d.profile);
-  saving = true;
+  state.saving = true;
   render();
   announce(t("workspace.savingSay"));
   try {
@@ -428,28 +186,28 @@ async function write(path: string, expect: string | null): Promise<boolean> {
     showError(t("workspace.notSaved", { error: text.replace(/^conflict: /, "") }));
     return false;
   } finally {
-    saving = false;
+    state.saving = false;
     changed();
   }
 }
 
 /** Save: to the file, else Save As. A file that changed on disk or is gone goes to Save As too. */
 async function saveNow(): Promise<boolean> {
-  if (!doc) return false;
-  if (!doc.path || doc.disk !== "ok") return saveAsNow();
-  const path = doc.path;
-  const ok = await write(path, doc.revision);
+  if (!state.doc) return false;
+  if (!state.doc.path || state.doc.disk !== "ok") return saveAsNow();
+  const path = state.doc.path;
+  const ok = await write(path, state.doc.revision);
   // The file changed under the save: keep it, and offer another file.
-  if (!ok && doc.disk !== "ok") return saveAsNow();
+  if (!ok && state.doc.disk !== "ok") return saveAsNow();
   return ok;
 }
 
 async function saveAsNow(): Promise<boolean> {
-  if (!doc) return false;
+  if (!state.doc) return false;
   const name = workspaceName().replace(/[/\\]/g, "-");
   const picked = await saveDialog({
     title: t("workspace.saveAsTitle"),
-    defaultPath: doc.path ?? `${name}.${EXT}`,
+    defaultPath: state.doc.path ?? `${name}.${EXT}`,
     filters: [{ name: t("workspace.fileType"), extensions: [EXT] }],
   }).catch((e) => {
     showError(e);
@@ -457,12 +215,12 @@ async function saveAsNow(): Promise<boolean> {
   });
   if (!picked) return false;
   const path = picked.endsWith(`.${EXT}`) ? picked : `${picked}.${EXT}`;
-  if (path === doc.path) {
-    if (doc.disk !== "ok") {
+  if (path === state.doc.path) {
+    if (state.doc.disk !== "ok") {
       showError(t("workspace.changedOrGone", { file: fileName(path) }));
       return false;
     }
-    return write(path, doc.revision);
+    return write(path, state.doc.revision);
   }
   let expect: string | null;
   try {
@@ -507,7 +265,7 @@ export function leave(what: string, go: () => Promise<boolean>): Promise<boolean
   const restore = () => requestAnimationFrame(() => (back?.isConnected ? back : home())?.focus());
   return exclusive(async () => {
     if (workspaceEdited()) {
-      const where = doc!.path ?? t("workspace.notSavedYet");
+      const where = state.doc!.path ?? t("workspace.notSavedYet");
       const c = await choose({
         title: t("workspace.saveTitle", { name: workspaceName() }),
         body: t("workspace.saveBody", { where, what }),
@@ -567,7 +325,7 @@ export async function openWorkspace(path?: string) {
 
 /** Close workspace: back to All projects. */
 export function closeWorkspace() {
-  if (!doc) return;
+  if (!state.doc) return;
   void leave(t("workspace.leaveClose"), async () => {
     commit(null);
     store(LAST_KEY, null);
@@ -599,8 +357,8 @@ export function quitApp() {
 // ── Outside changes ────────────────────────────────────────────────────────
 
 async function checkDisk() {
-  if (!doc?.path || saving || busy) return;
-  const d = doc;
+  if (!state.doc?.path || state.saving || busy) return;
+  const d = state.doc;
   let now: Doc["disk"];
   try {
     const rev = await invoke<string | null>("workspace_revision", { path: d.path });
@@ -608,7 +366,7 @@ async function checkDisk() {
   } catch {
     now = "missing";
   }
-  if (doc !== d || saving || now === d.disk) return;
+  if (state.doc !== d || state.saving || now === d.disk) return;
   d.disk = now;
   d.answered = false;
   if (now === "changed") announce(t("workspace.changedSay", { file: fileName(d.path!) }));
@@ -619,10 +377,10 @@ async function checkDisk() {
 /** Reload from disk: read and check first, then ask before edits go. */
 async function reload() {
   await exclusive(async () => {
-    if (!doc?.path) return false;
+    if (!state.doc?.path) return false;
     let l: Loaded;
     try {
-      l = await read(doc.path);
+      l = await read(state.doc.path);
     } catch (e) {
       showError(t("workspace.cannotReload", { error: String(e) }));
       return false;
@@ -630,7 +388,7 @@ async function reload() {
     if (workspaceEdited()) {
       const c = await choose({
         title: t("workspace.reloadTitle", { name: workspaceName() }),
-        body: t("workspace.reloadBody", { path: doc.path }),
+        body: t("workspace.reloadBody", { path: state.doc.path }),
         choices: [{ id: "reload", label: t("workspace.reload"), tone: "danger" }],
       });
       if (c !== "reload") return false;
@@ -642,9 +400,9 @@ async function reload() {
 
 /** Keep current: the view stays. While the disk differs, it counts as an edit. */
 function keepCurrent() {
-  if (!doc) return;
-  doc.kept = true;
-  doc.answered = true;
+  if (!state.doc) return;
+  state.doc.kept = true;
+  state.doc.answered = true;
   changed();
   requestAnimationFrame(() => home()?.focus());
 }
@@ -653,8 +411,8 @@ function keepCurrent() {
 
 /** Name, projects, fleets, and a repair or remove for each missing reference. Apply changes the profile in memory. */
 export function editWorkspace() {
-  if (!doc || saving) return;
-  const d = doc;
+  if (!state.doc || state.saving) return;
+  const d = state.doc;
   const back = document.activeElement as HTMLElement | null;
   const { overlay, panel } = dialogFrame("confirm-panel ws-edit", "dialog", t("workspace.editLabel", { name: workspaceName() }));
   const title = h("div", "confirm-title", t("workspace.editTitle"));
@@ -768,8 +526,8 @@ export function editWorkspace() {
   body.append(head);
   if (!S.projects.length) body.append(h("div", "ws-note", t("workspace.noProjects")));
   body.append(tree);
-  const repairs = new Map<Missing, HTMLSelectElement>();
-  const lost = missing();
+  const repairs = new Map<ReturnType<typeof state.missing>[number], HTMLSelectElement>();
+  const lost = state.missing();
   if (lost.length) {
     body.append(h("div", "ws-sec", t("workspace.missing")));
     for (const m of lost) {
@@ -803,7 +561,7 @@ export function editWorkspace() {
     (back?.isConnected ? back : home())?.focus();
   }
   function submit() {
-    if (doc !== d || saving) return close();
+    if (state.doc !== d || state.saving) return close();
     const next = clone(d.profile);
     next.name = name.value.trim();
     const shownBefore = new Set(S.projects.filter(shows).map((p) => trimPath(p.path)));
@@ -911,7 +669,7 @@ const home = () => document.querySelector<HTMLElement>('#sidebar-scroll [tabinde
 
 const recentEntries = (): MenuEntry[] =>
   recents().map((path) => ({
-    label: path === doc?.path ? t("workspace.recentOpen", { file: fileName(path) }) : fileName(path),
+    label: path === state.doc?.path ? t("workspace.recentOpen", { file: fileName(path) }) : fileName(path),
     run: () => void openWorkspace(path),
   }));
 
@@ -925,7 +683,7 @@ export function recentWorkspacesMenu() {
 
 /** What the open workspace needs a look for, for the File menu: a disk change, and missing references. */
 export function workspaceNotice(): { disk: "changed" | "missing" | null; missing: number } {
-  return { disk: doc && doc.disk !== "ok" && !doc.answered ? doc.disk : null, missing: missing().length };
+  return { disk: state.doc && state.doc.disk !== "ok" && !state.doc.answered ? state.doc.disk : null, missing: state.missing().length };
 }
 
 export const reloadWorkspace = () => void reload();
@@ -938,11 +696,11 @@ function workspaceMenu(at: HTMLElement) {
   const back = () => (at.isConnected && !at.hidden ? at : home())?.focus();
   const wrap = (es: MenuEntry[]): MenuEntry[] =>
     es.map((e) => ("head" in e || "sep" in e ? e : { ...e, run: e.run && (() => (back(), e.run!())), sub: e.sub && wrap(e.sub) }));
-  ctxMenu.open(r.left, r.top, doc?.path ?? workspaceName(), wrap(menuEntries()), () => requestAnimationFrame(back));
+  ctxMenu.open(r.left, r.top, state.doc?.path ?? workspaceName(), wrap(menuEntries()), () => requestAnimationFrame(back));
 }
 
 function menuEntries(): MenuEntry[] {
-  const on = !!doc;
+  const on = !!state.doc;
   const recent = recentEntries();
   const n = workspaceNotice();
   const notice: MenuEntry[] = [];
@@ -962,15 +720,15 @@ function menuEntries(): MenuEntry[] {
     { label: t("workspace.save"), run: saveWorkspace, disabled: !on },
     { label: t("workspace.saveAs"), run: saveWorkspaceAs, disabled: !on },
     { icon: "code-ungroup", label: t("workspace.closeToAll"), run: closeWorkspace, disabled: !on },
-    { label: allWork ? t("workspace.ledgerShowWorkspace") : t("workspace.ledgerShowAll"), run: () => setLedgerAllWork(!allWork), disabled: !on },
+    { label: state.allWork ? t("workspace.ledgerShowWorkspace") : t("workspace.ledgerShowAll"), run: () => setLedgerAllWork(!state.allWork), disabled: !on },
   ];
 }
 
 /** The one short mark beside the name: what needs a look first. */
 function markOf(lost: number): { text: string; cls: string; say: string } | null {
-  if (saving) return { text: t("workspace.markSaving"), cls: "", say: t("workspace.saySaving") };
-  if (doc && doc.disk !== "ok" && !doc.answered) {
-    const changedOnDisk = doc.disk === "changed";
+  if (state.saving) return { text: t("workspace.markSaving"), cls: "", say: t("workspace.saySaving") };
+  if (state.doc && state.doc.disk !== "ok" && !state.doc.answered) {
+    const changedOnDisk = state.doc.disk === "changed";
     return {
       text: t(changedOnDisk ? "workspace.changedOnDisk" : "workspace.fileMissing"),
       cls: "edited",
@@ -979,7 +737,7 @@ function markOf(lost: number): { text: string; cls: string; say: string } | null
   }
   if (workspaceEdited()) return { text: t("workspace.markEdited"), cls: "edited", say: t("workspace.sayEdited") };
   if (lost) return { text: tn("workspace.markMissing", lost), cls: "", say: tn("workspace.sayMissing", lost) };
-  return doc ? { text: "", cls: "", say: t("workspace.saySaved") } : null;
+  return state.doc ? { text: "", cls: "", say: t("workspace.saySaved") } : null;
 }
 
 /**
@@ -996,19 +754,19 @@ export function renderWorkspaceStatus() {
   }
   const el = document.getElementById("ws-status");
   if (!el) return;
-  setHidden(el, !doc);
-  if (!doc) return;
-  const lost = missing();
-  const state = markOf(lost.length);
+  setHidden(el, !state.doc);
+  if (!state.doc) return;
+  const lost = state.missing();
+  const mark = markOf(lost.length);
   const name = workspaceName();
   const why = lost.map((m) => t(m.kind === "project" ? "workspace.missingProject" : "workspace.missingFleet", { ref: m.ref, why: m.why }));
-  const sig = JSON.stringify([name, doc.path, state, why]);
+  const sig = JSON.stringify([name, state.doc.path, mark, why]);
   if (el.dataset.sig === sig) return;
   el.dataset.sig = sig;
   el.replaceChildren(h("span", "ws-status-name", name));
-  if (state?.text) el.append(h("span", `ws-status-mark ${state.cls}`.trim(), state.text));
-  el.title = [doc.path ?? t("workspace.notSavedYet"), ...why].join("\n");
-  el.setAttribute("aria-label", state ? t("workspace.statusLabelSay", { name, state: state.say }) : t("workspace.statusLabel", { name }));
+  if (mark?.text) el.append(h("span", `ws-status-mark ${mark.cls}`.trim(), mark.text));
+  el.title = [state.doc.path ?? t("workspace.notSavedYet"), ...why].join("\n");
+  el.setAttribute("aria-label", mark ? t("workspace.statusLabelSay", { name, state: mark.say }) : t("workspace.statusLabel", { name }));
   if (!el.dataset.wired) {
     el.dataset.wired = "1";
     el.addEventListener("click", () => workspaceMenu(el));
@@ -1035,7 +793,7 @@ export async function startWorkspaceQuitGuard() {
 export async function startWorkspaces() {
   void listen<string>("skiff:open-workspace", (e) => {
     // Before the start is done, the start takes it from the pending list.
-    if (!ready) return;
+    if (!state.ready) return;
     void invoke("workspace_took", { path: e.payload }).catch(() => null);
     void openWorkspace(e.payload);
   });
@@ -1059,7 +817,7 @@ export async function startWorkspaces() {
       showError(t("workspace.cannotOpenStart", { error: String(e) }), known ? { label: t("workspace.removeRecent"), run: async () => forget(path) } : undefined);
     }
   }
-  ready = true;
+  state.ready = true;
   render();
   // A file the OS sent while the first one opened.
   const late = await invoke<string | null>("workspace_launch_file").catch(() => null);

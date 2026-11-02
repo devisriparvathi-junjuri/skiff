@@ -130,6 +130,16 @@ export function workspaceHarness(expose = "") {
       default: throw new Error(`Unexpected command: ${command}`);
     }
   };
+  const tree = {
+    fleetKey: (name: string) => `fleet:${name}`, projectKey: (name: string) => `project:${name}`,
+    useTreeView() {}, treeSections: () => [{ projects: S.projects.filter((p) => profile.shows(p)) }],
+  };
+  const profileState = moduleFromSource("../src/workspace/profile/state.ts", {
+    "../../app/renderRequest": { render() {} }, "../../app/state": { S }, "../tree": tree,
+  }, {}, "");
+  const profileMembership = moduleFromSource("../src/workspace/profile/membership.ts", {
+    "../../app/state": { S }, "../../ui/contextMenu": { ctxMenu: { open(_x: number, _y: number, _title: string, _entries: unknown, done: () => void) { menus.push(done); } } },
+  }, {}, "");
   const imports = {
     "@tauri-apps/api/core": { invoke },
     "@tauri-apps/api/event": { listen: async (name: string, run: () => void) => { events.set(name, run); return () => {}; } },
@@ -143,11 +153,10 @@ export function workspaceHarness(expose = "") {
       const b = h("button", cls, text); b.addEventListener("click", run); return b;
     } },
     "../ui/dialogParts": { dialogFrame: () => ({ overlay: h("div"), panel: h("div") }) },
-    "./tree": {
-      fleetKey: (name: string) => `fleet:${name}`, projectKey: (name: string) => `project:${name}`,
-      useTreeView() {}, treeSections: () => [{ projects: S.projects.filter((p) => profile.shows(p)) }],
-    },
+    "./tree": tree,
     "./view": { selectProject: (name: string) => { S.selectedProject = name; } },
+    "./profile/state": profileState,
+    "./profile/membership": profileMembership,
   };
   profile = moduleFromSource("../src/workspace/profile.ts", imports, {
     document, requestAnimationFrame: (run: () => void) => run(),
