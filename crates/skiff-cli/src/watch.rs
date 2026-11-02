@@ -32,15 +32,9 @@ use std::{
     collections::{HashMap, HashSet},
     fs::File,
     path::{Path, PathBuf},
-    process::Stdio,
     time::Duration,
 };
 
-use alacritty_terminal::{
-    grid::Dimensions,
-    index::{Column, Line},
-    term::cell::Flags,
-};
 use anyhow::{bail, Context, Result};
 use skiff_client::Client;
 use skiff_core::{
@@ -52,7 +46,7 @@ use tokio::{
     time::{interval, sleep, Instant, MissedTickBehavior},
 };
 
-use crate::{ledger, peek, print, resolve, sessions};
+use crate::{ledger, print, resolve, sessions};
 
 /// How often the ledger and the session list are read again without an event.
 const TICK: Duration = Duration::from_secs(2);
@@ -61,7 +55,9 @@ mod terminal;
 mod model;
 mod state;
 pub use model::{wake_line, Options};
-pub use terminal::{busy_line, front, input_box, input_box_rows, read_front, rows_of, Front};
+pub use terminal::{input_box_rows, read_front, rows_of, Front};
+#[cfg(test)]
+use terminal::{busy_line, front, input_box};
 use terminal::desktop_notify;
 use model::{Fact, Now, Pane, Wake};
 use state::*;
