@@ -30,14 +30,18 @@ use crate::connection::{blocking, err, App};
 
 pub(crate) use skiff_client::host::known::{forward_dir, load, path, Hosts, KnownHost};
 
+mod form;
 mod list;
 mod provision;
 mod store;
+
+use form::*;
 use list::*;
 use provision::*;
-pub(crate) use provision::{found_socket, update_on_connect, version_warning, Arrival};
-pub(crate) use list::{note, note_login, watch, HostList};
 use store::*;
+pub(crate) use form::HostForm;
+pub(crate) use list::{note, note_login, watch, HostList};
+pub(crate) use provision::{found_socket, update_on_connect, version_warning, Arrival};
 pub(crate) use store::{Known, selected, remote, pin_first, accept_identity};
 
 #[tauri::command]
@@ -61,10 +65,6 @@ pub(crate) async fn host_clipboard(app: State<'_, App>) -> Result<bool, String> 
     let Some(live) = app.live_identity() else { return Ok(false) };
     blocking(move || clipboard_allowed(&path(), &target, &live)).await
 }
-
-mod form;
-use form::*;
-pub(crate) use form::HostForm;
 
 /// Adds a remote Host and answers its id. It does not connect.
 #[tauri::command]

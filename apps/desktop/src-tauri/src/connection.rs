@@ -6,14 +6,15 @@ use tauri::{async_runtime::JoinHandle, State};
 use tokio::sync::Mutex;
 use crate::{input::Input, reload::{self, NoPlan, Plan}, streaming::Flow};
 
+mod data_plane;
 mod process;
 mod remote;
-mod data_plane;
+
+use data_plane::*;
 use process::*;
 use remote::*;
-use data_plane::*;
-pub(crate) use process::{bundled, daemon_binary, data_binary};
 pub(crate) use data_plane::{DataPlaneStatus, data_failure, data_read, data_status, data_write, ensure_host, keep_revision, project_write};
+pub(crate) use process::{bundled, daemon_binary, data_binary};
 
 #[derive(Default)]
 pub(crate) struct App {
