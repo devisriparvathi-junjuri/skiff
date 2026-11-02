@@ -513,7 +513,7 @@ pub(super) fn spec(command: &str, name: &str, dir: PathBuf) -> SessionSpec {
 }
 
 #[cfg(test)]
-mod an_older_skiffd_cannot_start_a_project_skipper_tests {
+mod tests {
     use super::*;
 
     /// A project Skipper needs a skiffd that marks it. The check is by
