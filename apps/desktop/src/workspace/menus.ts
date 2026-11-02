@@ -320,16 +320,32 @@ export function projectMenu(p: Project, x: number, y: number) {
   // One worktree: its start choices show here, as on a worktree's +. More: pick the worktree first.
   // A Host that starts no sessions shows New session, off.
   const bare = bareWorktree(p);
+  const off = !!p.error || !p.worktrees.length || !starts;
   const start: MenuEntry[] = bare && !p.error && starts
     ? launchMenu.entries(p, bare)
-    : [{ icon: "indicators-plus", label: t("menu.newSessionIn"), disabled: !!p.error || !p.worktrees.length || !starts, sub: p.worktrees.map((w) => ({
+    : [{ icon: "indicators-plus", label: t("menu.newSessionIn"), disabled: off, sub: p.worktrees.map((w) => ({
         icon: "code-git-branch",
         label: branchName(w),
-        run: () => {
-          const plus = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === w.path);
-          launchMenu.open(plus ?? { x, y }, p, w);
-        },
+        run: () => launchMenu.open(plusOf(w) ?? { x, y }, p, w),
       })) }];
+  // New group stands on its own. One worktree: its layouts. More: the
+  // worktree, then its layouts at that worktree's +, since a flyout goes one
+  // level deep. The start choices of one worktree carry it already.
+  const group: MenuEntry | false = !(bare && !p.error && starts) && {
+    icon: "code-group",
+    label: t("select.newGroup"),
+    disabled: off,
+    sub: bare
+      ? launchMenu.groups(p, bare)
+      : p.worktrees.map((w) => ({
+          icon: "code-git-branch",
+          label: branchName(w),
+          run: () => {
+            const r = plusOf(w)?.getBoundingClientRect();
+            ctxMenu.open(r ? r.right : x, r ? r.top : y, branchName(w), launchMenu.groups(p, w));
+          },
+        })),
+  };
   // How the project looks. Icon and Background are sections: a flyout goes one level deep.
   const appearance = tidy([
     edits && { icon: "tools-sparkles", label: t("menu.color"), hint: keyLabel("project-color"), run: run["project-color"] },
@@ -351,6 +367,7 @@ export function projectMenu(p: Project, x: number, y: number) {
     ...(carried ? [] : skipper),
     { sep: true },
     ...start,
+    group,
     !!bare && { sep: true },
     // A plain folder has no git: no worktrees.
     hostCan("worktrees") && !isFolder(p) && { icon: "code-git-branch", label: t("cmd.newWorktree"), hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
@@ -381,13 +398,21 @@ function tidy(entries: (MenuEntry | false)[]): MenuEntry[] {
   return out;
 }
 
+/** The + on a worktree's row in the sidebar, if it shows. */
+function plusOf(w: Worktree): HTMLElement | undefined {
+  return [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === w.path);
+}
+
 /** A right-click on a worktree's branch row. */
 export function worktreeMenu(p: Project, w: Worktree, x: number, y: number) {
-  const plus = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === w.path);
+  const plus = plusOf(w);
   // A remote Host's path: start a session there or copy it, never open it on this Mac.
   const local = !isRemote();
+  const off = !!p.error || !hostCan("session_lifecycle");
   const entries: (MenuEntry | false)[] = [
-    { icon: "indicators-plus", label: t("cmd.newSession"), hint: keyLabel("new-session"), disabled: !!p.error || !hostCan("session_lifecycle"), run: () => launchMenu.open(plus ?? { x, y }, p, w) },
+    { icon: "indicators-plus", label: t("cmd.newSession"), hint: keyLabel("new-session"), disabled: off, run: () => launchMenu.open(plus ?? { x, y }, p, w) },
+    // A new group stands on its own, beside New session: its layouts.
+    { icon: "code-group", label: t("select.newGroup"), disabled: off, sub: launchMenu.groups(p, w) },
     showsChanges(p) && hasChanges(w) && { icon: "code-git-branch", label: t("menu.reviewChanges"), run: () => reviewChanges(w) },
     local && { icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), run: () => void openPath(w.path).catch(showError) },
     { icon: "code-copy", label: t("menu.copyPath"), run: () => void navigator.clipboard.writeText(w.path).catch(showError) },
