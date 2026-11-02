@@ -1,4 +1,8 @@
-use super::{fold, is_frame, is_home, kept_name, now_secs, walk, Checkout, Kind, Node, Usage, Verdict, Work, HOLD_LOOSE, HOLD_WORK};
+use super::{
+    checkout::{now_secs, Checkout},
+    model::{Kind, Node, Usage, Verdict, Work, HOLD_LOOSE, HOLD_WORK},
+    tree::{fold, is_frame, is_home, kept_name, walk},
+};
 
 use std::{
     collections::{HashMap, HashSet},

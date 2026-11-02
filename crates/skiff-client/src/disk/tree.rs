@@ -1,4 +1,7 @@
-use super::{checkout, mtime, Kind, Node, Verdict, FOLD_FILES, KEEP};
+use super::{
+    checkout::{checkout, mtime},
+    model::{Kind, Node, Verdict, FOLD_FILES, KEEP},
+};
 
 use std::path::{Path, PathBuf};
 
