@@ -2152,6 +2152,63 @@ mod tests {
         assert!(prints("\x1b[3G✻".as_bytes()));
     }
 
+    // SPLIT-SCAFFOLD
+    #[test]
+    fn a_status_result_orders_state_turn_and_update_events() {
+        use skiff_core::{
+            protocol::Event,
+            session::{SessionSpec, SessionState},
+        };
+        let pool = super::SessionPool::new();
+        let info = pool
+            .create(SessionSpec {
+                command: Some("/bin/sleep".into()),
+                args: vec!["30".into()],
+                ..Default::default()
+            })
+            .unwrap();
+        let session = pool.get(&info.id).unwrap();
+        pool.set_front(&session, Front::Program);
+        pool.apply_status(
+            &session,
+            vec![super::StatusSignal::Report(b"state=working".to_vec())],
+        );
+        let mut events = pool.events.subscribe();
+        pool.apply_status(
+            &session,
+            vec![super::StatusSignal::Report(b"state=done".to_vec())],
+        );
+        let events: Vec<_> = std::iter::from_fn(|| events.try_recv().ok()).collect();
+        assert!(matches!(events.as_slice(), [
+            Event::State { state: SessionState::Idle, .. },
+            Event::TurnEnded { .. },
+            Event::SessionUpdated { .. },
+        ]));
+        pool.kill(&info.id).unwrap();
+    }
+
+    // SPLIT-SCAFFOLD
+    #[test]
+    fn shell_front_ignores_status_reports() {
+        use skiff_core::session::SessionSpec;
+        let pool = super::SessionPool::new();
+        let info = pool
+            .create(SessionSpec {
+                command: Some("/bin/sh".into()),
+                args: vec!["-c".into(), "sleep 30".into()],
+                ..Default::default()
+            })
+            .unwrap();
+        let session = pool.get(&info.id).unwrap();
+        pool.set_front(&session, Front::Shell);
+        pool.apply_status(
+            &session,
+            vec![super::StatusSignal::Report(b"state=working:app=codex".to_vec())],
+        );
+        assert!(session.info().program_status.is_none());
+        pool.kill(&info.id).unwrap();
+    }
+
     /// While an agent reports with OSC 7501, its reports decide the state:
     /// not its approval prompt, its title, its bell or the quiet time. With
     /// no report left, those rules decide again.
