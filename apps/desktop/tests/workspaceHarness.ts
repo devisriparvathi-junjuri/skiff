@@ -101,6 +101,7 @@ export function workspaceHarness() {
     closedProjects: [], selectedProject: null as string | null,
   };
   const calls = { approvedExits: 0, saves: 0, guarded: false, failSave: false };
+  const menus: (() => void)[] = [];
   const window = {
     onCloseRequested: async (run: (e: { preventDefault(): void }) => void) => {
       events.set("window-close", () => run({ preventDefault() {} }));
@@ -126,6 +127,24 @@ export function workspaceHarness() {
       default: throw new Error(`Unexpected command: ${command}`);
     }
   };
+  const tree = {
+    fleetKey: (name: string) => `fleet:${name}`, projectKey: (name: string) => `project:${name}`,
+    useTreeView() {}, treeSections: () => [{ projects: S.projects.filter((p) => profile.shows(p)) }],
+  };
+  const profileState = moduleFromSource("../src/workspace/profile/state.ts", {
+    "../../app/renderRequest": { render() {} }, "../../app/state": { S }, "../tree": tree,
+  }, {}, "");
+  const profileMembership = moduleFromSource("../src/workspace/profile/membership.ts", {
+    "../../app/state": { S }, "../../ui/contextMenu": { ctxMenu: { open(_x: number, _y: number, _title: string, _entries: unknown, done: () => void) { menus.push(done); } } },
+  }, {}, "");
+  const profileStorage = moduleFromSource("../src/workspace/profile/storage.ts", {
+    "@tauri-apps/api/core": { invoke }, "./state": profileState,
+  }, { localStorage: { getItem: (key: string) => stored.get(key) ?? null,
+    setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) } }, "");
+  const profileDialogs = moduleFromSource("../src/workspace/profile/dialogs.ts", {
+    "../../ui/dialogParts": { dialogFrame: () => ({ overlay: h("div"), panel: h("div") }) },
+    "../../ui/dom": { h, button: (cls: string, text: string, run: () => void) => { const b = h("button", cls, text); b.addEventListener("click", run); return b; } },
+  }, { document, HTMLButtonElement: Element }, "");
   const imports = {
     "@tauri-apps/api/core": { invoke },
     "@tauri-apps/api/event": { listen: async (name: string, run: () => void) => { events.set(name, run); return () => {}; } },
@@ -134,15 +153,17 @@ export function workspaceHarness() {
     "../app/state": { S },
     "../app/renderRequest": { render() {} },
     "../ui/alerts": { showError() {} },
+    "../ui/contextMenu": { ctxMenu: { open(_x: number, _y: number, _title: string, _entries: unknown, done: () => void) { menus.push(done); } } },
     "../ui/dom": { h, button: (cls: string, text: string, run: () => void) => {
       const b = h("button", cls, text); b.addEventListener("click", run); return b;
     } },
     "../ui/dialogParts": { dialogFrame: () => ({ overlay: h("div"), panel: h("div") }) },
-    "./tree": {
-      fleetKey: (name: string) => `fleet:${name}`, projectKey: (name: string) => `project:${name}`,
-      useTreeView() {}, treeSections: () => [{ projects: S.projects.filter((p) => profile.shows(p)) }],
-    },
+    "./tree": tree,
     "./view": { selectProject: (name: string) => { S.selectedProject = name; } },
+    "./profile/state": profileState,
+    "./profile/membership": profileMembership,
+    "./profile/storage": profileStorage,
+    "./profile/dialogs": profileDialogs,
   };
   profile = moduleFromSource("../src/workspace/profile.ts", imports, {
     document, requestAnimationFrame: (run: () => void) => run(),

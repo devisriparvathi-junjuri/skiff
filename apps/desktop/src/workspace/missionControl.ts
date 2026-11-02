@@ -53,13 +53,14 @@ import { accent, place } from "../app/stateQueries";
 import { ctxMenu } from "../ui/contextMenu";
 import { h } from "../ui/dom";
 import { type Entry, ledgerRows, ledgerTitle, needWord, taskState } from "./ledger";
-import { agentName, fuzzy, taskTitle } from "./model";
+import { fuzzy, taskTitle } from "./model";
 import { skipperFace } from "./skipperFace";
 import { closeMission, goToSession } from "./missionMotion";
 import * as G from "./missionLayout";
 import { worktreeLines } from "./sidebarLines";
 import { projectBadge, treeSections } from "./tree";
 import { type PluralKey, t, tn, upper } from "../i18n";
+import { matchText, noteSince, sinceText } from "./missionControl/model";
 
 /** Rows of text in the panel's screen. */
 const ROWS = 12;
@@ -236,12 +237,6 @@ export function toggleRunning() {
 
 // ---- The model: the graph from the sessions, the projects and the ledger ----
 
-/** What the search matches: project, agent, title, task and state, as the palette does. Other: its folder. */
-function matchText(s: SessionInfo, p: Project | null, row: Entry | undefined): string {
-  const where = p ? p.name : `other ${s.cwd}`;
-  return `${where} ${agentName(s)} ${taskTitle(s)} ${row ? ledgerTitle(row) : ""} ${s.state}`;
-}
-
 /** A project's sessions in tree order, less its Skipper, which has a card of its own. */
 function projectSessions(p: Project | null): SessionInfo[] {
   const seen = new Set<string>();
@@ -351,24 +346,6 @@ function model(): Model {
 
 let m: Model = { g: { admiral: null, fleets: [], projects: [] }, sess: new Map(), projects: new Map(), members: new Map(), rows: new Map(), strs: [], found: null };
 let placed: G.Placed = { cards: new Map(), clusters: new Map(), plans: [], order: new Map(), offs: {} };
-
-// ---- Time in state ----
-
-/** When each session was last seen in its state. The first sight takes the last output, or now for a working one. */
-const since = new Map<string, { state: string; at: number }>();
-function noteSince(s: SessionInfo, now: number) {
-  const was = since.get(s.id);
-  if (!was) since.set(s.id, { state: s.state, at: s.state === "working" ? now : s.last_output_at || now });
-  else if (was.state !== s.state) since.set(s.id, { state: s.state, at: now });
-}
-const sinceText = (s: SessionInfo, now: number) => {
-  // G.ago's steps, in the catalog's words: "now", "4m", "2h", "3d".
-  const m = Math.floor(Math.max(0, now - (since.get(s.id)?.at ?? now)) / 60000);
-  if (m < 1) return t("activity.now");
-  if (m < 60) return t("activity.minutes", { n: m });
-  if (m < 1440) return t("activity.hours", { n: Math.round(m / 60) });
-  return t("activity.days", { n: Math.round(m / 1440) });
-};
 
 // ---- Cards and clusters ----
 
