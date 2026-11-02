@@ -122,6 +122,11 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 /* A project Skipper's head: "Skipper · gesher", with the project's icon or letters before the project. */
 .cell:not(.focused) .cell-head .title { color: var(--text-3); font-weight: 500; }
 .cell-head .head-gap { flex-grow: 1; }
+/* What the program reports (OSC 7501): what it waits for, and its progress along the lower edge. */
+.cell-head { position: relative; }
+.cell-head .status-note { flex-shrink: 1; }
+.cell-head.st-waiting .status-note { color: var(--state-waiting-text); }
+.cell-head .head-progress { position: absolute; left: 0; right: 0; bottom: 0; }
 .cell-head .copy-notice { margin-left: auto; color: var(--state-done); font-size: calc(11 * var(--zoom, 1)); font-weight: 600; }
 .head-btn { width: var(--row); align-self: stretch; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--text-3); }
 /* The focused pane shows its buttons, and so does a hovered head (a class set in

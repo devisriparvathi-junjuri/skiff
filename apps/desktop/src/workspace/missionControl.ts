@@ -40,6 +40,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Project, SessionInfo } from "../platform/types";
 import { agentIcon } from "../appearance/agentIcon";
 import { stateIcon } from "../appearance/stateIcon";
+import { childrenNote, stateLabel, statusNote } from "./programStatus";
 import { DEFAULT_THEME, isLight } from "../appearance/colors";
 import { themeIdFor, xtermTheme } from "../appearance/themes";
 import { type Action, actionFor, keyLabel } from "../app/keys";
@@ -410,9 +411,16 @@ function metaOf(s: SessionInfo): HTMLElement {
     if (c.handoffs) el.append(" · ", tn("mission.handoffs", c.handoffs));
     return el;
   }
+  // What the program reports: what it waits for, how its turn ended, its subtasks.
+  const note = [statusNote(s), childrenNote(s)].filter(Boolean).join(" · ");
   const r = m.rows.get(s.id);
   if (r) {
     el.append(ledgerTitle(r), " ", h("span", "mono", r.uid));
+    if (note) el.append(" · ", note);
+    return el;
+  }
+  if (note) {
+    el.textContent = note;
     return el;
   }
   if (s.role === "shell" && s.foreground_program && s.state === "working") el.textContent = s.foreground_program;
@@ -537,7 +545,7 @@ function draw() {
     const pc = inCluster ? accent(p) : "var(--accent)";
     const label = inCluster ? null : cardName(s);
     putCard(id, r, cardParts(s, label, now, numbered.indexOf(id) + 1), cls, pc, dimmed(s));
-    const label2 = t("mission.tileLabel", { title: cardName(s), state: t(`state.${s.state}`) });
+    const label2 = t("mission.tileLabel", { title: cardName(s), state: stateLabel(s) });
     if (cards.get(id)!.getAttribute("aria-label") !== label2) cards.get(id)!.setAttribute("aria-label", label2);
   }
   for (const [key, c] of placed.clusters) {
@@ -921,7 +929,7 @@ function drawPanel() {
   } else {
     const p = place(s)?.project ?? null;
     const title = s.coordinator || !!s.skipper ? cardName(s) : p ? `${p.name} · ${cardName(s)}` : cardName(s);
-    head.append(stateIcon(s), h("span", "title", title), h("span", `state${s.state === "waiting" ? " w" : ""}`, `${stateWord(s)} · ${sinceText(s, Date.now())}`), fold);
+    head.append(stateIcon(s), h("span", "title", title), h("span", `state${s.state === "waiting" ? " w" : ""}`, [stateWord(s), statusNote(s), childrenNote(s), sinceText(s, Date.now())].filter(Boolean).join(" · ")), fold);
     if (screenFor !== s.id) {
       screenFor = s.id;
       screen.textContent = "";
