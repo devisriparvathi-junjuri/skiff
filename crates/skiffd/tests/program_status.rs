@@ -465,6 +465,35 @@ async fn the_probe_reply_comes_before_a_clients_da1_reply() {
     pool.kill(&info.id).unwrap();
 }
 
+/// A program that dies mid-frame leaves a synchronized update open. Its
+/// timeout ends it with no more output: the report, the title and the
+/// text apply.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_frame_left_open_applies_at_its_timeout() {
+    let pool = pool();
+    let info = pool
+        .create(SessionSpec {
+            command: Some("env".into()),
+            args: vec![
+                "sh".into(),
+                "-c".into(),
+                r#"sleep 0.3; printf '\033[?2026h\033]0;Frozen\007\033]7501;state=working\007left open'; sleep 10"#.into(),
+            ],
+            cols: 80,
+            rows: 24,
+            ..Default::default()
+        })
+        .unwrap();
+    let on = until(&pool, &info.id, 4, "the frame never applied", |i| {
+        i.program_status.is_some() && i.title.as_deref() == Some("Frozen")
+    })
+    .await;
+    assert_eq!(on.state, SessionState::Working);
+    let text = pool.tail_text(&info.id, 5).unwrap();
+    assert!(text.concat().contains("left open"), "{text:?}");
+    pool.kill(&info.id).unwrap();
+}
+
 /// A report ends with the program that sent it: here a command whose
 /// output carries one, at a shell. The prompt's return drops it, and a
 /// report printed at the prompt itself is not taken.
