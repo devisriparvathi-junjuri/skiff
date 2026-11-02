@@ -2019,6 +2019,41 @@ pub(crate) mod tests {
         lines.iter().map(|l| (l.to_string(), l.to_string())).collect()
     }
 
+    // SPLIT-SCAFFOLD
+    #[test]
+    fn now_of_covers_session_states_and_exit() {
+        assert_eq!(Now::of(None, false), Now::Gone);
+        assert_eq!(Now::of(Some(&info("a", "working", false)), false), Now::Working);
+        assert_eq!(Now::of(Some(&info("a", "waiting", false)), false), Now::Waiting);
+        assert_eq!(Now::of(Some(&info("a", "idle", false)), true), Now::Idle { unread: true });
+    }
+
+    // SPLIT-SCAFFOLD
+    #[test]
+    fn watching_registration_shape_stays_stable() {
+        let w = Watcher::default();
+        assert!(w.follows.is_none() && w.failure.is_none());
+    }
+
+    // SPLIT-SCAFFOLD
+    #[test]
+    fn input_rows_keep_wide_and_dim_cells() {
+        let rows = vec![("─".repeat(20), "─".repeat(20)), ("❯ 修正".into(), "❯".into()), ("─".repeat(20), "─".repeat(20))];
+        assert_eq!(input_box(&rows, "claude"), Some(false));
+    }
+
+    // SPLIT-SCAFFOLD
+    #[test]
+    fn refusal_keeps_held_wakes_and_follows() {
+        let mut w = Watcher::default();
+        w.follows = Some(vec!["pane".into()]);
+        w.held.push(Wake { fact: Fact::Idle, pane: "pane".into(), name: "pane".into(), id: "pane".into(), task: None, failed: false });
+        let line = wake_line(&w.held);
+        w.delivered(Delivery::Refused, &line);
+        assert_eq!(w.follows, Some(vec!["pane".into()]));
+        assert_eq!(w.held.len(), 1);
+    }
+
     #[test]
     fn finds_an_empty_box_and_a_draft() {
         let rule = "─".repeat(40);
