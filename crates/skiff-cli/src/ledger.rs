@@ -1719,6 +1719,114 @@ mod tests {
     }
 
     #[test]
+    fn supported_ledger_schemas_keep_their_columns_and_version() {
+        let columns = [
+            "id", "uid", "kind", "parent", "pane_id", "pane_gen", "project", "task", "sent_at", "state", "result_path", "ref", "updated_at", "type", "socket", "reported_at", "title", "closed_at", "gone_at", "owner", "reopened_at", "work_dir", "flushed_at",
+        ];
+        let fixtures = [
+            (3, TASKS.replace(",\n  socket      TEXT,\n  reported_at TEXT,\n  title       TEXT,\n  closed_at   TEXT,\n  gone_at     TEXT,\n  owner       TEXT NOT NULL DEFAULT 'grand',\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
+            (4, TASKS.replace(",\n  reported_at TEXT,\n  title       TEXT,\n  closed_at   TEXT,\n  gone_at     TEXT,\n  owner       TEXT NOT NULL DEFAULT 'grand',\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
+            (6, TASKS.replace(",\n  closed_at   TEXT,\n  gone_at     TEXT,\n  owner       TEXT NOT NULL DEFAULT 'grand',\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
+            (8, TASKS.replace("('task', 'plan', 'handoff')", "('task', 'plan')").replace(",\n  owner       TEXT NOT NULL DEFAULT 'grand',\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
+            (9, TASKS.replace(",\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
+            (10, TASKS.replace(",\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
+        ];
+        for (version, schema) in fixtures {
+            let dir = scratch(&format!("schema-v{version}"));
+            let file = dir.join("ledger.db");
+            let db = Connection::open(&file).unwrap();
+            db.execute_batch(&format!("{schema}; PRAGMA user_version = {version};")).unwrap();
+            drop(db);
+            let db = open_at(&file).unwrap();
+            let got: Vec<String> = db
+                .prepare("SELECT name FROM pragma_table_info('tasks') ORDER BY cid")
+                .unwrap()
+                .query_map([], |r| r.get(0))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect();
+            assert_eq!(got, columns);
+            assert_eq!(db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0)).unwrap(), VERSION);
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+    }
+
+    // SPLIT-SCAFFOLD
+    #[test]
+    fn work_folder_paths_cover_each_owner_and_container() {
+        let dir = scratch("path-matrix");
+        let file = dir.join("ledger.db");
+        let mut db = open_at(&file).unwrap();
+        let (_, grand, _, _) = insert(&mut db, &file, task("Grand task")).unwrap();
+        let (_, project, _, _) = insert(&mut db, &file, New { owner: "web".into(), title: Some("Project title".into()), ..task("project task") }).unwrap();
+        let (_, fleet, _, _) = insert(&mut db, &file, New { owner: "fleet:Harbor".into(), ..task("fleet task") }).unwrap();
+        let (_, plan, _, _) = insert(&mut db, &file, New { plan: true, pane_id: None, title: Some("Plan title".into()), ..task("plan task") }).unwrap();
+        let (_, child, _, _) = insert(&mut db, &file, New { parent: Some(plan.clone()), ..task("plan child") }).unwrap();
+        let (_, handoff, _, _) = insert(&mut db, &file, New { handoff: true, project: "web".into(), title: Some("Hand off".into()), ..task("handoff task") }).unwrap();
+        let (_, handoff_child, _, _) = insert(&mut db, &file, New { parent: Some(handoff.clone()), owner: "web".into(), ..task("handoff child") }).unwrap();
+        let root = dir.join("results");
+        assert_eq!(one(&db, &grand).unwrap().work_dir, Some(root.join(format!("{grand}-grand-task")).display().to_string()));
+        assert_eq!(one(&db, &project).unwrap().work_dir, Some(dir.join("projects/web/results").join(format!("{project}-project-title")).display().to_string()));
+        assert_eq!(one(&db, &fleet).unwrap().work_dir, Some(dir.join("fleets/Harbor/results").join(format!("{fleet}-fleet-task")).display().to_string()));
+        let plan_dir = root.join(format!("{plan}-plan-title"));
+        assert_eq!(one(&db, &child).unwrap().work_dir, Some(plan_dir.join(format!("{child}-plan-child")).display().to_string()));
+        let handoff_dir = dir.join("projects/web/results").join(format!("{handoff}-hand-off"));
+        assert_eq!(one(&db, &handoff_child).unwrap().work_dir, Some(handoff_dir.join(format!("{handoff_child}-handoff-child")).display().to_string()));
+        let old = Row { work_dir: None, result_path: Some(dir.join("results/old-plan/plan.md").display().to_string()), ..one(&db, &plan).unwrap() };
+        assert_eq!(container_folder(&root, &old), dir.join("results/old-plan"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // SPLIT-SCAFFOLD
+    #[test]
+    fn ls_json_order_and_table_columns_are_pinned() {
+        let dir = scratch("presentation");
+        let file = dir.join("ledger.db");
+        let mut db = open_at(&file).unwrap();
+        let (_, first, _, _) = insert(&mut db, &file, New { reference: Some("T-1".into()), task_type: Some("build".into()), ..task("first") }).unwrap();
+        let (_, second, _, _) = insert(&mut db, &file, New { owner: "web".into(), socket: Some("/tmp/other.sock".into()), ..task("second") }).unwrap();
+        let mut rows = rows(&db, "", None).unwrap();
+        rows.iter_mut().find(|r| r.uid == second).unwrap().elsewhere = true;
+        skiff_client::ledger::buckets(&mut rows);
+        let rows = tree(rows);
+        let json = serde_json::to_string_pretty(&rows.iter().map(|(r, _)| r).collect::<Vec<_>>()).unwrap();
+        assert!(json.find(&first).unwrap() < json.find(&second).unwrap());
+        assert!(rows.iter().any(|(r, _)| r.reference.is_some()));
+        assert!(rows.iter().any(|(r, _)| r.task_type.is_some()));
+        assert!(rows.iter().any(|(r, _)| r.elsewhere));
+        assert!(rows.iter().any(|(r, _)| r.owner != GRAND));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // SPLIT-SCAFFOLD
+    #[tokio::test]
+    async fn only_writes_auto_close_the_ledger() {
+        let dir = scratch("command-boundary");
+        let file = dir.join("ledger.db");
+        let mut db = open_at(&file).unwrap();
+        let (_, uid, _, _) = insert(&mut db, &file, New { state: "done".into(), ..task("done") }).unwrap();
+        drop(db);
+        let prior = std::env::var_os("SKIFF_LEDGER");
+        unsafe { std::env::set_var("SKIFF_LEDGER", &file) };
+        let socket = Path::new("/tmp/no-ledger-daemon.sock");
+        for cmd in [
+            LedgerCmd::Ls { state: None, all: false, closed: false, unreported: false, json: true },
+            LedgerCmd::Show { id: uid.clone(), json: true },
+            LedgerCmd::Dir { id: uid.clone() },
+        ] {
+            assert_eq!(run(socket, cmd, true).await.unwrap(), 0);
+            assert!(one(&open_at(&file).unwrap(), &uid).unwrap().closed_at.is_none());
+        }
+        assert_eq!(run(socket, LedgerCmd::Report { ids: vec![uid.clone()], all: false }, true).await.unwrap(), 0);
+        assert!(one(&open_at(&file).unwrap(), &uid).unwrap().closed_at.is_some());
+        match prior {
+            Some(value) => unsafe { std::env::set_var("SKIFF_LEDGER", value) },
+            None => unsafe { std::env::remove_var("SKIFF_LEDGER") },
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn reads_only_open_rows_and_stores_the_type() {
         let dir = scratch("open");
         let file = dir.join("ledger.db");
