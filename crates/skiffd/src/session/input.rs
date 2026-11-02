@@ -1,5 +1,7 @@
 use super::*;
 
+use super::output::now_us;
+
 impl Session {
     /// Queues input for the writer thread, in order.
     pub(super) fn send(&self, id: &str, items: Vec<Input>) -> Result<()> {
