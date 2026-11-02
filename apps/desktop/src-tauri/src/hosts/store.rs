@@ -38,7 +38,7 @@ pub(super) fn save(path: &Path, hosts: &Hosts) -> anyhow::Result<()> {
 
 /// What this app run knows on top of `hosts.toml`: the skiffd socket the last
 /// probe found there.
-pub(crate) trait Known {
+pub(super) trait Known {
     fn target(&self) -> SshTarget;
 }
 
@@ -69,7 +69,7 @@ pub(super) fn known<'a>(hosts: &'a mut Hosts, id: &str) -> anyhow::Result<&'a mu
 
 /// The Host a selection's target logs in to, for a change made from a
 /// live connection.
-pub(super) fn known_login<'a>(hosts: &'a mut Hosts, t: &SshTarget) -> anyhow::Result<&'a mut KnownHost> {
+fn known_login<'a>(hosts: &'a mut Hosts, t: &SshTarget) -> anyhow::Result<&'a mut KnownHost> {
     hosts.hosts.iter_mut().find(|h| h.logs_in_as(t)).ok_or_else(|| anyhow::anyhow!("{} is not a known Host", t.destination))
 }
 
@@ -112,7 +112,7 @@ pub(crate) fn pin_first(file: &Path, target: &SshTarget, host_id: &HostId) -> an
 
 /// Makes `host_id` the identity Host `id` must report, as the person
 /// accepted it. The clipboard permission of the old identity goes.
-pub(crate) fn accept_identity(file: &Path, id: &str, host_id: &HostId) -> anyhow::Result<Hosts> {
+pub(super) fn accept_identity(file: &Path, id: &str, host_id: &HostId) -> anyhow::Result<Hosts> {
     update(file, |hosts| {
         let h = known(hosts, id)?;
         h.host_id = Some(host_id.as_str().to_string());

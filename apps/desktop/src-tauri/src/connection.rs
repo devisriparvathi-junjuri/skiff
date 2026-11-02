@@ -13,8 +13,8 @@ mod remote;
 use data_plane::*;
 use process::*;
 use remote::*;
-pub(crate) use data_plane::{DataPlaneStatus, data_failure, data_read, data_status, data_write, ensure_host, keep_revision, project_write};
-pub(crate) use process::{bundled, daemon_binary, data_binary};
+pub(crate) use data_plane::{data_read, data_write, ensure_host, keep_revision, project_write, DataPlaneStatus};
+pub(crate) use process::{bundled, daemon_binary};
 
 #[derive(Default)]
 pub(crate) struct App {

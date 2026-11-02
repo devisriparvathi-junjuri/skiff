@@ -54,7 +54,7 @@ pub(super) fn copy_out(src: &std::path::Path, dir: &std::path::Path) -> anyhow::
 /// Starts `cmd` apart from this app: its own process group, no stdin, and
 /// its errors in `log`. The log before it is kept as `.1`: it saw what the
 /// new one restores, or why the last one stopped.
-pub(super) fn spawn_detached(mut cmd: std::process::Command, log: PathBuf) -> anyhow::Result<std::process::Child> {
+fn spawn_detached(mut cmd: std::process::Command, log: PathBuf) -> anyhow::Result<std::process::Child> {
     if let Some(dir) = log.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -80,7 +80,7 @@ pub(super) fn spawn_daemon(_local: &ProcessControl) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) fn data_binary() -> PathBuf {
+pub(super) fn data_binary() -> PathBuf {
     bundled("skiff-host", Some("SKIFF_HOST_BIN"))
 }
 

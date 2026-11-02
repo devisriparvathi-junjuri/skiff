@@ -55,7 +55,7 @@ pub(super) async fn install_run(id: &str, step: skiff_client::host::install::Ste
 /// The page shows each step of an install or update on this event, as
 /// `{ id, kind, ... }` ([`skiff_client::host::install::Progress`]), while
 /// the dialog waits.
-pub(crate) const HOST_STEP: &str = "skiff:host-step";
+pub(super) const HOST_STEP: &str = "skiff:host-step";
 
 /// Sends each step of the Host `id` to the page.
 pub(super) fn steps(handle: tauri::AppHandle, id: &str) -> impl Fn(skiff_client::host::install::Progress) + Send + Sync {
@@ -85,7 +85,7 @@ pub(super) async fn cancellable<T>(id: &str, work: impl std::future::Future<Outp
 
 /// The folder of this app's executable, where a dev build's own skiffd,
 /// skiff-host and skiff are.
-pub(super) fn beside_exe() -> Result<std::path::PathBuf, String> {
+fn beside_exe() -> Result<std::path::PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     Ok(exe.parent().ok_or("This build has no folder.")?.to_path_buf())
 }
@@ -112,7 +112,7 @@ pub(super) fn other_build(p: &skiff_client::host::check::Probe) -> bool {
 /// build's own binaries for a server with this computer's OS and arch, else
 /// the signed release bundle of this app's version. A dev build with no
 /// such release tries its own binaries on a server with this computer's OS.
-pub(super) async fn bundle_for(os: &str, arch: &str) -> Result<skiff_client::host::install::Bundle, String> {
+async fn bundle_for(os: &str, arch: &str) -> Result<skiff_client::host::install::Bundle, String> {
     use skiff_client::host::install;
     if own_build(Some((os, arch))).is_some() {
         return install::dev_bundle(VERSION, arch, &beside_exe()?).await;
@@ -165,7 +165,7 @@ pub(super) async fn update_managed(h: &KnownHost, end_sessions: bool, reinstall:
 }
 
 /// The Skiff row's words when skiffd cannot hand its sessions over.
-pub(super) fn no_handover(_name: &str, from: &str, sessions: &[String]) -> String {
+fn no_handover(_name: &str, from: &str, sessions: &[String]) -> String {
     let n = sessions.len();
     format!("Update available: Skiff {from} to {VERSION}. It ends {n} {}.", if n == 1 { "session" } else { "sessions" })
 }
@@ -177,7 +177,7 @@ pub(crate) struct Arrival {
     /// Skiff installed the Skiff there.
     pub(crate) managed: bool,
     /// The version this connect updated from.
-    pub(crate) updated_from: Option<String>,
+    pub(super) updated_from: Option<String>,
     /// The Skiff version of the managed install, as this app counts
     /// versions: what the check list's Skiff row compares. Never skiffd's
     /// own crate version. None: not managed, or not known.

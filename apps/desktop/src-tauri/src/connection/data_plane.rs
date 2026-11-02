@@ -49,7 +49,7 @@ pub(super) async fn restart_data_service(app: &App, _local: &ProcessControl, sel
 /// version, or this version from another build or from a build that did not
 /// name its build. A newer version is never replaced, nor is any when this
 /// app's `skiff-host` cannot be read.
-pub(super) async fn stale_service(theirs: &str) -> bool {
+async fn stale_service(theirs: &str) -> bool {
     let (theirs, bin) = (theirs.to_string(), data_binary());
     tauri::async_runtime::spawn_blocking(move || skiff_client::host::data::stale_service(&theirs, skiff_core::VERSION, &bin)).await.unwrap_or(false)
 }
@@ -93,7 +93,7 @@ where
 /// A data-plane read error as the page shows it. An unreadable reply from
 /// this computer's `skiff-host` marks it for a replace at the next
 /// connection, once per run.
-pub(super) fn read_err(app: &App, e: skiff_host_api::Error) -> String {
+fn read_err(app: &App, e: skiff_host_api::Error) -> String {
     let skiff_host_api::Error::MalformedContract { .. } = e else { return data_err(e) };
     match app.selection().ssh_target().map(|t| t.destination.clone()) {
         Some(d) => format!("Skiff cannot read the replies from the projects service on {d}. Update Skiff… in Settings › Hosts updates it."),
@@ -173,7 +173,7 @@ pub(crate) struct DataPlaneStatus {
     pub(super) message: Option<String>,
 }
 
-pub(crate) async fn data_status(app: &App) -> DataPlaneStatus {
+pub(super) async fn data_status(app: &App) -> DataPlaneStatus {
     let live = app.live_session().await;
     let mut status = DataPlaneStatus {
         ready: false,
@@ -201,7 +201,7 @@ pub(crate) async fn data_status(app: &App) -> DataPlaneStatus {
 }
 
 /// Why the data plane is out of reach, in words that name no local path.
-pub(crate) fn data_failure(e: &anyhow::Error, selection: &HostSelection) -> String {
+pub(super) fn data_failure(e: &anyhow::Error, selection: &HostSelection) -> String {
     let host = selection.ssh_target().map(|t| t.destination.clone());
     let on = host.as_deref().map(|d| format!(" on {d}")).unwrap_or_default();
     if let Some(e) = e.downcast_ref::<skiff_client::host::ssh::SshError>() {
@@ -229,7 +229,7 @@ pub(crate) fn data_failure(e: &anyhow::Error, selection: &HostSelection) -> Stri
 }
 
 /// A data-plane reply error as the page shows it.
-pub(crate) fn data_err(e: skiff_host_api::Error) -> String {
+pub(super) fn data_err(e: skiff_host_api::Error) -> String {
     skiff_client::host::data::message(e)
 }
 

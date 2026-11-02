@@ -39,7 +39,7 @@ impl HostForm {
 }
 
 /// The alias, or the host part of `user@host`.
-pub(super) fn default_name(destination: &str) -> String {
+fn default_name(destination: &str) -> String {
     destination.rsplit('@').next().unwrap_or(destination).to_string()
 }
 

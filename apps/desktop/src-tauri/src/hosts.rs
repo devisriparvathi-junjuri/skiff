@@ -42,7 +42,7 @@ use store::*;
 pub(crate) use form::HostForm;
 pub(crate) use list::{note, note_login, watch, HostList};
 pub(crate) use provision::{found_socket, update_on_connect, version_warning, Arrival};
-pub(crate) use store::{Known, selected, remote, pin_first, accept_identity};
+pub(crate) use store::{pin_first, remote, selected};
 
 #[tauri::command]
 pub(crate) async fn list_hosts(app: State<'_, App>) -> Result<HostList, String> {

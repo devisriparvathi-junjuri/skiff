@@ -55,7 +55,7 @@ pub(super) async fn connect_remote(app: &App, selection: &HostSelection, guard: 
 
 /// A refused channel names two causes. The probe looks at the socket: when
 /// one is there, the sshd blocks the forward. Any other error stays.
-pub(super) async fn refine_refused(e: anyhow::Error, selection: &HostSelection) -> anyhow::Error {
+async fn refine_refused(e: anyhow::Error, selection: &HostSelection) -> anyhow::Error {
     use skiff_client::host::{check, ssh::SshError};
     let (Some(SshError::NoSkiffd { .. }), Some(t)) = (e.downcast_ref::<SshError>(), selection.ssh_target()) else { return e };
     let options = skiff_client::host::ssh::SshOptions::default();
@@ -71,7 +71,7 @@ pub(super) async fn refine_refused(e: anyhow::Error, selection: &HostSelection) 
 /// The warning and the message for a failed remote connection. Only known
 /// causes are named; anything else gets one plain line with what to check.
 /// `None` warning: a wait between tries, which keeps the last cause.
-pub(crate) fn remote_failure(e: &anyhow::Error, destination: &str) -> (Option<Warning>, String) {
+pub(super) fn remote_failure(e: &anyhow::Error, destination: &str) -> (Option<Warning>, String) {
     use skiff_client::host::ssh::SshError;
     let warn = |kind: &'static str, message: String| (Some(Warning { kind, message: message.clone(), sessions: None }), message);
     if let Some(e) = e.downcast_ref::<SshError>() {
