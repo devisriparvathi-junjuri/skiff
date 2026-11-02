@@ -177,7 +177,15 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "a049f3e9b94e8067456ba3ce4171be27eb3755ae1e04a75a0e060bc774f5a4a5"
+    "sha256": "93d05081e74b2cb08be4dce0d84912f3e3f5ab16941de0553a6c49fc7655afb7"
+  },
+  "apps/desktop/src-tauri/src/hosts/form.rs": {
+    "ownership": "client policy: this client's own SSH install and update jobs, with its own exe folder and build id (#166); legacy local adapter otherwise",
+    "reasons": [
+      "local provider: apps/desktop/src-tauri/src/hosts.rs",
+      "local provider: apps/desktop/src-tauri/src/lib.rs"
+    ],
+    "sha256": "7233bff84aec011520156aff1a30076ac821c5e27cfeb6da27b1baf162cf2653"
   },
   "apps/desktop/src-tauri/src/hosts/list.rs": {
     "ownership": "client policy: this client's own SSH install and update jobs, with its own exe folder and build id (#166); legacy local adapter otherwise",
