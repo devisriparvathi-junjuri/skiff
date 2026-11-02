@@ -83,7 +83,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "6963d8a42a32c6f8f68bbfd3afd9007beae27c4ebbe6d7a7eb45881f31fe2dc2"
+    "sha256": "ecd111597704836f1408342c1debb8c3d3893a57cf8cfaf2003c78ca69308124"
   },
   "apps/desktop/src-tauri/src/connection/data_plane.rs": {
     "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter; remote refused-channel probe (read-only, skiff-client check) to name its cause; This Mac's capability list adds agent_config@1, skipper_config@1, skipper@1, skipper_file@1, skipper_run@1 and session_agents@1, which this app's local adapter serves; AppImage copy-out (#183): this app's own skiffd and skiff-host, copied to this computer's data folder",
@@ -91,7 +91,7 @@
       "net",
       "skiff_core"
     ],
-    "sha256": "742e0a66c08bf029377ec106797247782d32363536126aeb3f38792890d3ef8e"
+    "sha256": "e0e31fe20d590909fa8e3ce92eb138acc5161b4f4adad527d3db1bf0c9ce1786"
   },
   "apps/desktop/src-tauri/src/connection/process.rs": {
     "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter; remote refused-channel probe (read-only, skiff-client check) to name its cause; This Mac's capability list adds agent_config@1, skipper_config@1, skipper@1, skipper_file@1, skipper_run@1 and session_agents@1, which this app's local adapter serves; AppImage copy-out (#183): this app's own skiffd and skiff-host, copied to this computer's data folder",
@@ -103,7 +103,7 @@
       "process",
       "skiff_core"
     ],
-    "sha256": "5b5563e35813b1221928b3a67849756861108fc0672d5a4c91134c4773a1f9c2"
+    "sha256": "3e703579d252ff664dd4339d375787c3db2b127bb87c6edddd6613459c6e57ea"
   },
   "apps/desktop/src-tauri/src/connection/remote.rs": {
     "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter; remote refused-channel probe (read-only, skiff-client check) to name its cause; This Mac's capability list adds agent_config@1, skipper_config@1, skipper@1, skipper_file@1, skipper_run@1 and session_agents@1, which this app's local adapter serves; AppImage copy-out (#183): this app's own skiffd and skiff-host, copied to this computer's data folder",
@@ -112,7 +112,7 @@
       "local provider: apps/desktop/src-tauri/src/hosts.rs",
       "local provider: apps/desktop/src-tauri/src/lib.rs"
     ],
-    "sha256": "2004c0299d1990fcc1e4c8250014e45c3255254cc5d4494d881bb5a4494f88bd"
+    "sha256": "e7e8ec48d7a871141df3cdadb543528881d0a7f5ca71afde3c828ba48c38d65d"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
@@ -204,7 +204,7 @@
       "read_to_string",
       "skiff_agent"
     ],
-    "sha256": "ceb78c87dd63740edcdc5a6fd92dc837a7ea1817e60a3cb842b47b25eae6d31d"
+    "sha256": "a94e3e0ed9d8ca9f23d0d12ea7fa39a9dffc16d33c469ae9408210a279fc41f7"
   },
   "apps/desktop/src-tauri/src/hosts/form.rs": {
     "ownership": "client policy: this client's own SSH install and update jobs, with its own exe folder and build id (#166); legacy local adapter otherwise",
@@ -212,7 +212,7 @@
       "local provider: apps/desktop/src-tauri/src/hosts.rs",
       "local provider: apps/desktop/src-tauri/src/lib.rs"
     ],
-    "sha256": "7233bff84aec011520156aff1a30076ac821c5e27cfeb6da27b1baf162cf2653"
+    "sha256": "6ac7a0c5cc8c8fe4c62d9de18343a5a039b7984f881be5cd056eebf7fb35af91"
   },
   "apps/desktop/src-tauri/src/hosts/list.rs": {
     "ownership": "client policy: this client's own SSH install and update jobs, with its own exe folder and build id (#166); legacy local adapter otherwise",
@@ -221,7 +221,7 @@
       "libc",
       "read_to_string"
     ],
-    "sha256": "f5aecaa726deca2471af3aa579f9f3c0934a50bb505b211f82e2d130dffc25a3"
+    "sha256": "396a53c413669c06c8fd22e9035fb96f053c1375c0a882a90a0cbabcfa1b7e43"
   },
   "apps/desktop/src-tauri/src/hosts/provision.rs": {
     "ownership": "client policy: this client's own SSH install and update jobs, with its own exe folder and build id (#166); legacy local adapter otherwise",
@@ -229,7 +229,7 @@
       "env",
       "skiff_core"
     ],
-    "sha256": "3138a0d6ea68b954a229c3ad4f0fdf14d92aee3fc73295d6a5a14ebb68b9f409"
+    "sha256": "5754306d4a9b744df5bd0b7a093027b84de2efe4b940db4ab0d1afba97c3b5f0"
   },
   "apps/desktop/src-tauri/src/hosts/store.rs": {
     "ownership": "client policy: this client's own SSH install and update jobs, with its own exe folder and build id (#166); legacy local adapter otherwise",
@@ -237,7 +237,7 @@
       "fs",
       "process"
     ],
-    "sha256": "485880c9fd54b05e8123d458c18dff33113b8f9e24b54916351f9af72a926395"
+    "sha256": "4c880c1ee96600f59ca2dbe864debb1d6e3b258decc7db54da354ba735bf6e44"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
@@ -954,7 +954,7 @@
     "reasons": [
       "local provider: apps/desktop/src/workspace/ledger.ts"
     ],
-    "sha256": "e23eff5f074bf899ac3b17d6244730a1e51c2d27c5207f52267256de0106b8de"
+    "sha256": "409006a66d83290a3fadf1e771ce72998ff16dde87d3f7e6168e8569afe5b43c"
   },
   "apps/desktop/src/workspace/missionMotion.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -975,7 +975,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "a7de4f2e469f9f96e5e8d494d72e7facda6372c9a10130789046d76f6c16d4c1"
+    "sha256": "1effc8de68aab909c0462a09adffb7414b3c24795f46ed183b4fb39efe6c0be6"
   },
   "apps/desktop/src/workspace/profile/membership.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -984,7 +984,7 @@
       "local provider: apps/desktop/src/ui/contextMenu.ts",
       "local provider: apps/desktop/src/workspace/profile/state.ts"
     ],
-    "sha256": "5522b8a11c665bbbecd7f07487fea07d1cc1c142f8f2363516b42f9b96db3ebe"
+    "sha256": "4a6894314597a359c34f66d7ec66f72d2e337d26e6984e7ad45e4be7b2ea9be6"
   },
   "apps/desktop/src/workspace/profile/state.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -992,7 +992,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/workspace/tree.ts"
     ],
-    "sha256": "a68ac248e76396d547db8a949f31ef08385920241033f08c3147daaa8acb07ed"
+    "sha256": "4d5a0b7fe7f7481b43e93e866bb7eaa044bb8264ed6e50500b3519f292044dd5"
   },
   "apps/desktop/src/workspace/profile/storage.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -1000,7 +1000,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "9ec84faba9923f85390a9c0f0bd992530227c91f435a4d9392b23d87dcb292e1"
+    "sha256": "1d12a6b7e61a4830015f083b8c9175caac5bb0b202313e23a02c0b62655f8ac5"
   },
   "apps/desktop/src/workspace/projectClose.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
