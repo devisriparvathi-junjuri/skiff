@@ -1,3 +1,5 @@
+//! Input to a session: the writer thread, typed keys against terminal replies, paste and submit.
+
 use super::*;
 
 use super::output::now_us;

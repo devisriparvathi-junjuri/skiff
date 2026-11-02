@@ -1,3 +1,5 @@
+//! The emulator itself: feeding bytes, synchronized updates, resize, and the postcard save and restore.
+
 use super::*;
 
 pub struct Screen {

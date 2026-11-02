@@ -1,3 +1,5 @@
+//! Output from a session: batching, the screen scan, the probe reply and the deadlines of both.
+
 use super::*;
 
 /// Unix time in microseconds, for the latency trace.

@@ -1,3 +1,5 @@
+//! Reading the screen for an agent's prompt, its busy line, the input box and the title state.
+
 use super::*;
 
 impl Screen {

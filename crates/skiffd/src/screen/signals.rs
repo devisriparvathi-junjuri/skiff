@@ -1,3 +1,5 @@
+//! What the emulator heard in one read: resets, titles, the bell, queries, status reports and held probes.
+
 use std::sync::{Arc, Mutex};
 
 use alacritty_terminal::event::{Event as TermEvent, EventListener};

@@ -1,3 +1,5 @@
+//! The screen redrawn as ANSI bytes for a client that attaches late.
+
 use super::*;
 
 impl Screen {
