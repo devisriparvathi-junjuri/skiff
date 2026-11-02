@@ -808,6 +808,36 @@ mod tests {
         assert!(s.feed(b"\x1b]75011;x\x07\x1b]0;t\x07").status.is_empty());
     }
 
+    // SPLIT-SCAFFOLD
+    #[test]
+    fn signals_then_keeps_the_cap_and_event_order() {
+        use super::StatusSignal::{Report, Reset};
+        let first = Signals {
+            bell: true,
+            title: Some(Some("before".into())),
+            status: std::iter::once(Reset)
+                .chain((0..63).map(|n| Report(vec![n])))
+                .collect(),
+            queries: u32::MAX,
+            probes: 1,
+        };
+        let later = Signals {
+            bell: false,
+            title: Some(None),
+            status: vec![Report(b"dropped".to_vec()), Reset],
+            queries: 1,
+            probes: u32::MAX,
+        };
+        let signals = first.then(later);
+        assert!(signals.bell);
+        assert_eq!(signals.title, Some(None));
+        assert_eq!(signals.status.len(), MAX_STATUS);
+        assert_eq!(signals.status[0], Reset);
+        assert_eq!(signals.status[1], Report(vec![0]));
+        assert_eq!(signals.status.last(), Some(&Report(vec![62])));
+        assert_eq!((signals.queries, signals.probes), (u32::MAX, u32::MAX));
+    }
+
     /// A screen of 60 columns that ends with these rows.
     fn screen_with(rows: &[&str]) -> Screen {
         let mut s = Screen::new(60, 16);
@@ -828,6 +858,18 @@ mod tests {
         assert_eq!(ask.tail_text(Some("claude"), 1), [" Esc to cancel · Tab to amend"]);
         // A shell keeps everything.
         assert_eq!(claude.tail_text(None, 1), ["  ? for shortcuts"]);
+    }
+
+    // SPLIT-SCAFFOLD
+    #[test]
+    fn tail_text_reads_scrollback_and_the_alternate_screen() {
+        let mut screen = Screen::new(30, 3);
+        screen.feed(b"first\r\nsecond\r\nthird\r\nfourth");
+        assert_eq!(screen.tail_text(None, 4), ["first", "second", "third", "fourth"]);
+        screen.feed(b"\x1b[?1049halt-one\r\nalt-two");
+        assert_eq!(screen.tail_text(None, 2), ["      alt-one", "alt-two"]);
+        screen.feed(b"\x1b[?1049l");
+        assert_eq!(screen.tail_text(None, 4), ["first", "second", "third", "fourth"]);
     }
 
     // The rows below come from real screens: Claude Code 2.1.287, Codex
@@ -1002,6 +1044,16 @@ mod tests {
         let snap = String::from_utf8(back.snapshot()).unwrap();
         assert!(snap.contains("p-1\r\np-2") && !snap.contains("ALT"), "{snap:?}");
         assert!(snap.contains("\x1b[=1;1u") && snap.contains("\x1b[?2004h\x1b[?1002h"), "{snap:?}");
+    }
+
+    #[test]
+    fn postcard_fixture_restores_a_saved_screen() {
+        // Pre-refactor postcard image of a 2-by-1 screen containing `A` and
+        // a parser stopped after ESC [. It pins SaveRef/SaveOwned field order.
+        const FIXTURE: &[u8] = &[0, 1, 2, 1, 65, 0, 16, 0, 17, 0, 0, 1, 32, 0, 16, 0, 17, 0, 0, 1, 0, 1, 1, 2, 1, 0, 208, 15, 0, 1, 1, 32, 0, 16, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 32, 0, 16, 0, 17, 0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 32, 0, 16, 0, 17, 0, 0, 1, 32, 0, 16, 0, 17, 0, 0, 0, 0, 1, 1, 2, 1, 0, 0, 0, 0, 1, 32, 0, 16, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 32, 0, 16, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 129, 129, 10, 0, 2, 141, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 65, 0, 0, 0];
+        let mut restored = Screen::restore(FIXTURE).unwrap();
+        restored.feed(b"31mB");
+        assert!(String::from_utf8(restored.snapshot()).unwrap().contains("A\x1b[0;31mB"));
     }
 
     #[test]
