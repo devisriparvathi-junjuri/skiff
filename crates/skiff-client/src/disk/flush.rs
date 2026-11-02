@@ -14,7 +14,7 @@ use crate::ledger;
 #[cfg(test)]
 use super::{
     checkout::plain_config,
-    model::{Kind, Work},
+    model::Kind,
     tree::fold,
 };
 #[cfg(test)]
@@ -280,76 +280,6 @@ mod tests {
         let v = &vs[0];
         assert!(vs.iter().all(|x| x == v), "{path}: mixed {vs:?}");
         (v.kind, v.why)
-    }
-
-    #[test]
-    // SPLIT-SCAFFOLD
-    fn disk_tree_json_keeps_public_values_and_omits_empty_fields() {
-        assert_eq!(serde_json::to_value([Kind::Use, Kind::Held, Kind::Prot, Kind::Stale]).unwrap(), serde_json::json!(["use", "held", "prot", "stale"]));
-        let empty = Node {
-            name: "empty".into(),
-            path: "empty".into(),
-            bytes: 0,
-            files: 0,
-            mtime: NOW,
-            state: None,
-            children: vec![],
-            dir: false,
-            frame: false,
-            work: None,
-            checkout: None,
-            abs: PathBuf::new(),
-        };
-        assert_eq!(
-            serde_json::to_value(&empty).unwrap(),
-            serde_json::json!({"name": "empty", "path": "empty", "bytes": 0, "files": 0, "mtime": NOW}),
-        );
-        let full = Node {
-            state: Some(Verdict { kind: Kind::Stale, why: "done", label: "Task".into(), changed: Some(NOW) }),
-            children: vec![empty],
-            dir: true,
-            frame: true,
-            work: Some(Work { uid: "a1".into(), kind: "task".into(), title: "Task".into() }),
-            ..Node {
-                name: "full/".into(),
-                path: "full".into(),
-                bytes: 1,
-                files: 1,
-                mtime: NOW,
-                state: None,
-                children: vec![],
-                dir: false,
-                frame: false,
-                work: None,
-                checkout: None,
-                abs: PathBuf::new(),
-            }
-        };
-        assert_eq!(
-            serde_json::to_value(&full).unwrap(),
-            serde_json::json!({
-                "name": "full/", "path": "full", "bytes": 1, "files": 1, "mtime": NOW,
-                "state": {"kind": "stale", "why": "done", "label": "Task", "changed": NOW},
-                "children": [{"name": "empty", "path": "empty", "bytes": 0, "files": 0, "mtime": NOW}],
-                "dir": true, "frame": true, "work": {"uid": "a1", "kind": "task", "title": "Task"},
-            }),
-        );
-    }
-
-    #[test]
-    // SPLIT-SCAFFOLD
-    fn a_requested_non_stale_expected_cannot_delete_its_file() {
-        let dir = scratch("requested-held");
-        let ledger_file = ledger(&dir, &[]);
-        let file = dir.join("results/fresh.md");
-        write(&file, "fresh", 60);
-        let usage = at(&dir, &ledger_file, &[]);
-        assert_eq!(state_of(&usage, "results/fresh.md"), (Kind::Held, "changed"));
-        let expected = expected_of(find(&usage.tree, "results/fresh.md").unwrap());
-        let out = flush_at(&dir, &dir.join("cache"), &ledger_file, Some(&[]), Path::new(SOCK), &[expected], NOW);
-        assert_eq!((out.files, out.kept), (0, 1));
-        assert!(file.exists());
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
