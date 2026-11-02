@@ -176,6 +176,7 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                 pid: Some(std::process::id()),
                 debug: Some(cfg!(debug_assertions)),
                 identity: crate::identity::get(),
+                features: vec![skiff_core::protocol::FEATURE_PROGRAM_STATUS.into()],
             },
             // Writes before this one on the connection are queued already;
             // the reload drains them. It answers only when it fails: success

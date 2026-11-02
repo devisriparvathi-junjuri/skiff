@@ -1341,6 +1341,7 @@ export const es = {
   "hostCaps.session_lifecycle": "sesiones nuevas, terminadas o renombradas",
   "hostCaps.session_groups": "grupos",
   "hostCaps.session_agents": "una lista de agentes",
+  "hostCaps.program_status": "lo que los agentes informan de su estado",
   "hostCaps.daemon_metrics": "métricas del daemon",
   "hostCaps.projects": "proyectos",
   "hostCaps.git_status": "cambios de Git",

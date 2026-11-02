@@ -13,6 +13,7 @@ type HostCap =
   | "session_lifecycle"
   | "session_groups"
   | "session_agents"
+  | "program_status"
   | "daemon_metrics"
   | "projects"
   | "git_status"
@@ -39,6 +40,7 @@ const MAJOR: Record<HostCap, number> = {
   session_lifecycle: 1,
   session_groups: 1,
   session_agents: 1,
+  program_status: 1,
   daemon_metrics: 1,
   projects: 1,
   git_status: 1,
@@ -69,6 +71,7 @@ const OFFERS: Record<HostCap, MessageKey> = {
   session_lifecycle: "hostCaps.session_lifecycle",
   session_groups: "hostCaps.session_groups",
   session_agents: "hostCaps.session_agents",
+  program_status: "hostCaps.program_status",
   daemon_metrics: "hostCaps.daemon_metrics",
   projects: "hostCaps.projects",
   git_status: "hostCaps.git_status",

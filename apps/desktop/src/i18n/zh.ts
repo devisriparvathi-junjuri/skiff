@@ -1286,6 +1286,7 @@ export const zh = {
   "hostCaps.session_lifecycle": "新建、结束或重命名会话",
   "hostCaps.session_groups": "组",
   "hostCaps.session_agents": "代理列表",
+  "hostCaps.program_status": "代理报告的自身状态",
   "hostCaps.daemon_metrics": "守护进程指标",
   "hostCaps.projects": "项目",
   "hostCaps.git_status": "Git 更改",

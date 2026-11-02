@@ -47,6 +47,7 @@ async fn production_client_keeps_ping_wire_input_order_and_snapshot_bytes() {
                 pid: None,
                 debug: None,
                 identity: None,
+                features: vec![],
             },
         });
         let mut bytes = serde_json::to_vec(&reply).unwrap();

@@ -398,7 +398,7 @@ pub(crate) mod tests {
         std::fs::write(&bin, "#!/bin/sh\necho '{\"version\":\"0.6.19\",\"handover\":[]}'\n").unwrap();
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let info = |version: &str| DaemonInfo { version: version.into(), protocol: skiff_core::PROTOCOL, reload_state: Some(2), pid: Some(1), debug: Some(true), identity: None };
+        let info = |version: &str| DaemonInfo { version: version.into(), protocol: skiff_core::PROTOCOL, reload_state: Some(2), pid: Some(1), debug: Some(true), identity: None, features: vec![] };
         let rt = tokio::runtime::Runtime::new().unwrap();
         // The same version is stale too: whatever its build, it stays.
         for running in ["0.6.19", "0.6.20"] {
