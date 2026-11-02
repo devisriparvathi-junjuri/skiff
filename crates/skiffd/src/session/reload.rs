@@ -435,6 +435,9 @@ impl SessionPool {
             group: AtomicU32::new(m.group),
             belled: AtomicBool::new(m.belled),
             records: Mutex::new(m.records),
+            // Answers to queries before the reload count as input, as before.
+            queries: AtomicU32::new(0),
+            queried_at: AtomicU64::new(0),
             screen: Mutex::new(ScreenState {
                 screen,
                 pending: Vec::new(),

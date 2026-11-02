@@ -44,6 +44,15 @@ pub use params::{Params, ParamsIter};
 const MAX_INTERMEDIATES: usize = 2;
 const MAX_OSC_PARAMS: usize = 16;
 const MAX_OSC_RAW: usize = 1024;
+/// skiff: the most an OSC body may hold with `std`, where it would otherwise
+/// grow without limit. xterm.js drops a payload over the same size. A longer
+/// body is dropped whole: its bytes up to the terminator are discarded and
+/// nothing is dispatched.
+#[cfg(feature = "std")]
+const MAX_OSC_RAW_STD: usize = 10_000_000;
+/// skiff: `osc_num_params` while the OSC body is too long. It is never a real
+/// count, and it keeps the saved parser's layout for a reload.
+const OSC_DROPPED: usize = MAX_OSC_PARAMS + 1;
 
 /// Parser for raw _VTE_ protocol which delegates actions to a [`Perform`]
 ///
@@ -529,8 +538,8 @@ impl<const OSC_RAW_BUF_SIZE: usize> Parser<OSC_RAW_BUF_SIZE> {
             // First param is special - 0 to current byte index.
             0 => self.osc_params[param_idx] = (0, idx),
 
-            // Only process up to MAX_OSC_PARAMS.
-            MAX_OSC_PARAMS => return,
+            // Only process up to MAX_OSC_PARAMS. skiff: or none, once dropped.
+            MAX_OSC_PARAMS | OSC_DROPPED => return,
 
             // All other params depend on previous indexing.
             _ => {
@@ -551,12 +560,27 @@ impl<const OSC_RAW_BUF_SIZE: usize> Parser<OSC_RAW_BUF_SIZE> {
                 return;
             }
         }
+        // skiff: a body over the limit is dropped, and memory goes with it.
+        #[cfg(feature = "std")]
+        {
+            if self.osc_num_params == OSC_DROPPED {
+                return;
+            }
+            if self.osc_raw.len() >= MAX_OSC_RAW_STD {
+                self.osc_raw = Vec::new();
+                self.osc_num_params = OSC_DROPPED;
+                return;
+            }
+        }
         self.osc_raw.push(byte);
     }
 
     fn osc_end<P: Perform>(&mut self, performer: &mut P, byte: u8) {
         self.action_osc_put_param();
-        self.osc_dispatch(performer, byte);
+        // skiff: a dropped body is not dispatched.
+        if self.osc_num_params != OSC_DROPPED {
+            self.osc_dispatch(performer, byte);
+        }
         self.osc_raw.clear();
         self.osc_num_params = 0;
     }
@@ -1051,6 +1075,28 @@ mod tests {
             },
             _ => panic!("expected osc sequence"),
         }
+    }
+
+    // skiff: with `std`, a body over the limit is dropped whole, without
+    // being kept in memory, and the next sequence parses as before.
+    #[cfg(feature = "std")]
+    #[test]
+    fn drops_an_osc_body_over_the_limit() {
+        let mut dispatcher = Dispatcher::default();
+        let mut parser = Parser::new();
+        parser.advance(&mut dispatcher, b"\x1b]52;c;");
+        let chunk = [b'a'; 1 << 20];
+        for _ in 0..(MAX_OSC_RAW_STD >> 20) + 2 {
+            parser.advance(&mut dispatcher, &chunk);
+        }
+        assert!(parser.osc_raw.capacity() < MAX_OSC_RAW_STD, "the dropped body is still held");
+        parser.advance(&mut dispatcher, b";more\x07\x1b]0;title\x1b\\");
+        assert_eq!(dispatcher.dispatched.len(), 2, "{:?}", dispatcher.dispatched);
+        match &dispatcher.dispatched[0] {
+            Sequence::Osc(params, _) => assert_eq!(params, &[b"0".to_vec(), b"title".to_vec()]),
+            other => panic!("expected the title, got {other:?}"),
+        }
+        assert!(matches!(dispatcher.dispatched[1], Sequence::Esc(..)), "{:?}", dispatcher.dispatched[1]);
     }
 
     #[test]

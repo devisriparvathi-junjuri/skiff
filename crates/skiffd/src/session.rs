@@ -112,6 +112,13 @@ const MAX_CHUNK: usize = 64 * 1024;
 /// redraw. It does not mark the session working.
 const ECHO_MS: u64 = 250;
 
+/// A client's answer to a query counts as one this long after the query.
+/// Without a client nothing answers, and keys typed later are keys.
+const REPLY_WINDOW_MS: u64 = 5000;
+
+/// Queries kept unanswered at most.
+const MAX_QUERIES: u32 = 64;
+
 /// The screen text is checked at most this often. Each check walks every cell,
 /// and what it feeds (idle detection, the approval prompt) works in seconds.
 const SCAN: Duration = Duration::from_millis(100);
@@ -162,6 +169,10 @@ pub struct Session {
     /// What the program in front reported with OSC 7501. Locked before `info`
     /// when both are.
     records: Mutex<Records>,
+    /// Queries the program sent and no client answered yet, and when the
+    /// last one came (Unix ms). See [`replies`].
+    queries: AtomicU32,
+    queried_at: AtomicU64,
     /// Emulator plus unsent bytes. One lock, so a snapshot and the live
     /// stream never overlap or leave a gap.
     screen: Mutex<ScreenState>,
@@ -290,9 +301,9 @@ impl Session {
         (st.screen.snapshot(), self.output.subscribe())
     }
 
-    /// Writes the daemon's own answer to a query from the program. It is not
-    /// the user's input: it opens no echo window, answers no bell and counts
-    /// no input.
+    /// Writes an answer to a query from the program: the daemon's own, or a
+    /// client's (see [`Self::take_replies`]). It is not the user's input: it
+    /// opens no echo window, answers no bell and counts no input.
     fn reply(&self, data: &[u8]) {
         self.queued.fetch_add(1, Ordering::AcqRel);
         if self.input.send(Input::Reply(data.to_vec())).is_err() {
@@ -304,6 +315,23 @@ impl Session {
     /// decides the state over the screen rules and the idle timer.
     fn claimed(&self) -> bool {
         self.info.lock().unwrap().program_status.is_some()
+    }
+
+    /// Takes `data` from a client as its answer to the program's queries:
+    /// a query is open and `data` holds only replies. An answer is no input
+    /// from the user: it opens no echo window, answers no bell and counts no
+    /// input, so a `skiff send` that checks for typing is not refused by it.
+    fn take_replies(&self, data: &[u8]) -> bool {
+        let open = self.queries.load(Ordering::Relaxed);
+        if open == 0
+            || now_ms().saturating_sub(self.queried_at.load(Ordering::Relaxed)) > REPLY_WINDOW_MS
+        {
+            return false;
+        }
+        let Some(n) = replies(data) else { return false };
+        self.queries
+            .store(open.saturating_sub(n), Ordering::Relaxed);
+        true
     }
 
     /// True shortly after input: output now is the program answering a key.
@@ -762,6 +790,8 @@ impl SessionPool {
             group: AtomicU32::new(0),
             belled: AtomicBool::new(false),
             records: Mutex::new(Records::default()),
+            queries: AtomicU32::new(0),
+            queried_at: AtomicU64::new(0),
             screen: Mutex::new(ScreenState {
                 screen: Screen::new(spec.cols, spec.rows),
                 pending: Vec::new(),
@@ -842,13 +872,26 @@ impl SessionPool {
 
     /// One read's worth of output: the screen, the bell, the state, the title.
     fn on_output(&self, session: &Arc<Session>, sid: &str, chunk: &[u8]) {
-        session.last_output.store(now_ms(), Ordering::Relaxed);
+        let now = now_ms();
+        session.last_output.store(now, Ordering::Relaxed);
         {
             let mut info = session.info.lock().unwrap();
             info.output_bytes = info.output_bytes.saturating_add(chunk.len() as u64);
+            // So a copy of the info, as the updates send, has it too.
+            info.last_output_at = now;
         }
         let (mut signals, scan, echo) = session.push_output(chunk);
         self.apply_status(session, std::mem::take(&mut signals.status));
+        if signals.queries > 0 {
+            let open = session
+                .queries
+                .load(Ordering::Relaxed)
+                .saturating_add(signals.queries);
+            session
+                .queries
+                .store(open.min(MAX_QUERIES), Ordering::Relaxed);
+            session.queried_at.store(now_ms(), Ordering::Relaxed);
+        }
         // A bell that answers a key is no call: the user is at the
         // keys. The BEL that ends a title sequence is not a bell.
         if signals.bell && !echo {
@@ -1214,6 +1257,10 @@ impl SessionPool {
     pub fn write(&self, id: &str, data: &[u8]) -> Result<()> {
         let _change = self.change()?;
         let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
+        if session.take_replies(data) {
+            session.reply(data);
+            return Ok(());
+        }
         {
             // The info lock orders this write against a submit's check.
             let mut info = session.info.lock().unwrap();
@@ -1519,7 +1566,7 @@ impl SessionPool {
 pub(crate) enum Input {
     Bytes(Vec<u8>),
     Pause(Duration),
-    /// The daemon's answer to a query, not typed: no latency trace.
+    /// An answer to a query, not typed: no latency trace.
     Reply(Vec<u8>),
 }
 
@@ -1606,6 +1653,66 @@ fn prints(bytes: &[u8]) -> bool {
     false
 }
 
+/// How many replies to terminal queries `data` holds, when it holds nothing
+/// else: DA1 and DA2 (`CSI ? … c`, `CSI > … c`), status and cursor reports
+/// (`CSI … n`, `CSI row ; col R`), mode reports (`CSI … $ y`), kitty
+/// keyboard flags (`CSI ? … u`), window reports (`CSI … t`), and OSC or DCS
+/// strings (colors, DECRQSS). No key sends any of these but the cursor
+/// report, which Ctrl+F3 also sends; so a reply counts only while a query is
+/// open, see [`Session::take_replies`].
+fn replies(data: &[u8]) -> Option<u32> {
+    let mut i = 0;
+    let mut n = 0u32;
+    while i < data.len() {
+        if data[i] != 0x1b {
+            return None;
+        }
+        match *data.get(i + 1)? {
+            b'[' => {
+                let start = i + 2;
+                let mut j = start;
+                while j < data.len() && (0x30..=0x3f).contains(&data[j]) {
+                    j += 1;
+                }
+                let params = &data[start..j];
+                let inter = j;
+                while j < data.len() && (0x20..=0x2f).contains(&data[j]) {
+                    j += 1;
+                }
+                let inter = &data[inter..j];
+                let digits = params.iter().all(|b| b.is_ascii_digit() || *b == b';');
+                let ok = match (*data.get(j)?, inter) {
+                    (b'c', []) => matches!(params.first(), Some(b'?' | b'>')),
+                    (b'u', []) => params.first() == Some(&b'?'),
+                    (b'n' | b't', []) => digits && !params.is_empty(),
+                    (b'R', []) => digits && params.contains(&b';'),
+                    (b'y', b"$") => !params.is_empty(),
+                    _ => false,
+                };
+                if !ok {
+                    return None;
+                }
+                i = j + 1;
+            }
+            b']' | b'P' => {
+                let osc = data[i + 1] == b']';
+                let mut j = i + 2;
+                loop {
+                    match *data.get(j)? {
+                        0x07 if osc => break j += 1,
+                        0x1b if data.get(j + 1) == Some(&b'\\') => break j += 2,
+                        _ => j += 1,
+                    }
+                }
+                i = j;
+            }
+            _ => return None,
+        }
+        n += 1;
+    }
+    (n > 0).then_some(n)
+}
+
 /// `data` between bracketed paste marks. An end mark inside the data would
 /// end the paste early and let the rest run as keys, so it is taken out.
 fn bracketed(data: &[u8]) -> Vec<u8> {
@@ -1636,7 +1743,7 @@ fn default_shell() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{prints, topic, Front, Screen, ScreenState, HOLD, QUIET, SCAN};
+    use super::{prints, replies, topic, Front, Screen, ScreenState, HOLD, QUIET, SCAN};
     use std::time::Instant;
 
     fn state() -> ScreenState {
@@ -1692,6 +1799,72 @@ mod tests {
         assert_eq!(st.flush_due(), Some(first + HOLD));
         st.unscanned = true;
         assert_eq!(st.scan_due(), Some(st.last_scan + SCAN));
+    }
+
+    #[test]
+    fn replies_are_told_from_keys() {
+        assert_eq!(replies(b"\x1b[?1;2c"), Some(1));
+        assert_eq!(replies(b"\x1b[>0;276;0c\x1b[0n\x1b[12;40R"), Some(3));
+        assert_eq!(
+            replies(b"\x1b]11;rgb:1e1e/1e1e/1e1e\x1b\\\x1b]10;rgb:d4d4/d4d4/d4d4\x07"),
+            Some(2)
+        );
+        assert_eq!(
+            replies(b"\x1bP1$r0m\x1b\\\x1b[?2004;1$y\x1b[?5u\x1b[8;24;80t"),
+            Some(4)
+        );
+        // Keys, a paste, Alt+[, and a reply with a key after it are not replies.
+        for keys in [
+            &b"y"[..],
+            b"\r",
+            b"\x1b",
+            b"\x1b[A",
+            b"\x1b[1;5A",
+            b"\x1b[13;2u",
+            b"\x1b[15~",
+            b"\x1b[",
+            b"\x1b[200~\x1b[?1;2c\x1b[201~",
+            b"\x1b[?1;2cy",
+            b"\x1b]11;rgb:0/0/0",
+            b"",
+        ] {
+            assert_eq!(replies(keys), None, "{keys:?}");
+        }
+    }
+
+    /// A client's answer to the program's query is not the user's input:
+    /// it neither answers a bell nor counts as typing. Without an open
+    /// query the same bytes count as keys.
+    #[test]
+    fn a_reply_to_a_query_is_no_input() {
+        use skiff_core::session::{SessionSpec, SessionState};
+        let pool = super::SessionPool::new();
+        let info = pool
+            .create(SessionSpec {
+                command: Some("/bin/sleep".into()),
+                args: vec!["30".into()],
+                ..Default::default()
+            })
+            .unwrap();
+        let session = pool.get(&info.id).unwrap();
+        // A program rings, then asks for DA1 and the cursor.
+        pool.on_output(&session, &info.id, b"\x07");
+        assert_eq!(session.info().state, SessionState::Waiting);
+        pool.on_output(&session, &info.id, b"\x1b[c\x1b[6n");
+        pool.write(&info.id, b"\x1b[?1;2c").unwrap();
+        pool.write(&info.id, b"\x1b[3;1R").unwrap();
+        let now = session.info();
+        assert_eq!(
+            (now.state, now.input_gen),
+            (SessionState::Waiting, 0),
+            "a reply counted as input"
+        );
+        assert!(!session.echoing(), "a reply opened the echo window");
+        // Both are answered: the same bytes now are keys.
+        pool.write(&info.id, b"\x1b[3;1R").unwrap();
+        let now = session.info();
+        assert_eq!((now.state, now.input_gen), (SessionState::Working, 1));
+        pool.kill(&info.id).unwrap();
     }
 
     #[test]
@@ -1808,6 +1981,40 @@ mod tests {
         pool.set_front(&session, Front::Shell);
         assert!(session.info().program_status.is_none());
         std::thread::sleep(Duration::from_millis(10));
+        pool.kill(&info.id).unwrap();
+    }
+
+    /// An update sent from the info under its lock (here the shell back in
+    /// front) carries the time of the last output, not the session's start.
+    #[test]
+    fn an_update_carries_the_last_output_time() {
+        use skiff_core::{protocol::Event, session::SessionSpec};
+        let pool = super::SessionPool::new();
+        let info = pool
+            .create(SessionSpec {
+                command: Some("/bin/sleep".into()),
+                args: vec!["30".into()],
+                ..Default::default()
+            })
+            .unwrap();
+        let session = pool.get(&info.id).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        pool.on_output(&session, &info.id, b"x");
+        let mut events = pool.events.subscribe();
+        pool.set_front(&session, Front::Shell);
+        let sent = std::iter::from_fn(|| events.try_recv().ok())
+            .find_map(|e| match e {
+                Event::SessionUpdated { session } => Some(session),
+                _ => None,
+            })
+            .expect("no update");
+        assert!(
+            sent.last_output_at > info.started_at,
+            "{} <= {}",
+            sent.last_output_at,
+            info.started_at
+        );
+        assert_eq!(sent.last_output_at, session.info().last_output_at);
         pool.kill(&info.id).unwrap();
     }
 

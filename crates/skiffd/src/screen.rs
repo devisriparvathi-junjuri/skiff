@@ -33,6 +33,9 @@ pub struct Signals {
     pub title: Option<Option<String>>,
     /// OSC 7501 bodies and full resets, in the order they came.
     pub status: Vec<StatusSignal>,
+    /// Queries the program sent that a terminal answers (DA1, DSR, colors).
+    /// A client answers them; see `session::replies`.
+    pub queries: u32,
 }
 
 /// What the program status records hear from the emulator.
@@ -64,6 +67,9 @@ impl EventListener for Listener {
             TermEvent::Reset if s.status.last() != Some(&StatusSignal::Reset) => {
                 s.status.push(StatusSignal::Reset)
             }
+            TermEvent::PtyWrite(_)
+            | TermEvent::ColorRequest(..)
+            | TermEvent::TextAreaSizeRequest(_) => s.queries = s.queries.saturating_add(1),
             _ => {}
         }
     }

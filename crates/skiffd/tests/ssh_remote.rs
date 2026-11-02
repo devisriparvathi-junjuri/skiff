@@ -601,6 +601,15 @@ async fn a_host_key_is_trusted_once_and_a_key_is_installed_once() {
 #[tokio::test]
 async fn skiff_installs_once_into_the_home_and_its_skiffd_answers() {
     use skiff_client::host::{check, install};
+    // On macOS server.sh starts skiffd through launchd, the real one for
+    // this account and under the real labels: no stand-in home keeps that
+    // to the test, and a loaded agent left by another run takes its place.
+    // This test is the fallback path, which only Linux takes; the launchd
+    // path has its own test with a stand-in launchctl (host::install).
+    if cfg!(target_os = "macos") {
+        eprintln!("skipped: the install would load agents into this account's launchd");
+        return;
+    }
     let Some(mut f) = fixture("n") else { return };
     let d = f.dir.clone();
     for sub in ["home", "run", "beside", "path"] {
