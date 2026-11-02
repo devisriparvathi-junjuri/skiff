@@ -245,18 +245,6 @@ mod tests {
         assert_eq!(claude.tail_text(None, 1), ["  ? for shortcuts"]);
     }
 
-    // SPLIT-SCAFFOLD
-    #[test]
-    fn tail_text_reads_scrollback_and_the_alternate_screen() {
-        let mut screen = Screen::new(30, 3);
-        screen.feed(b"first\r\nsecond\r\nthird\r\nfourth");
-        assert_eq!(screen.tail_text(None, 4), ["first", "second", "third", "fourth"]);
-        screen.feed(b"\x1b[?1049halt-one\r\nalt-two");
-        assert_eq!(screen.tail_text(None, 2), ["      alt-one", "alt-two"]);
-        screen.feed(b"\x1b[?1049l");
-        assert_eq!(screen.tail_text(None, 4), ["first", "second", "third", "fourth"]);
-    }
-
     // The rows below come from real screens: Claude Code 2.1.287, Codex
     // 0.159.3, OpenCode 1.18.34, Antigravity CLI 1.2.14 and Grok 1.0.46.
     #[test]

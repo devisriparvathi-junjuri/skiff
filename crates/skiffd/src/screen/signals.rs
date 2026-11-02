@@ -91,38 +91,3 @@ impl EventListener for Listener {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // SPLIT-SCAFFOLD
-    #[test]
-    fn signals_then_keeps_the_cap_and_event_order() {
-        use super::StatusSignal::{Report, Reset};
-        let first = Signals {
-            bell: true,
-            title: Some(Some("before".into())),
-            status: std::iter::once(Reset)
-                .chain((0..63).map(|n| Report(vec![n])))
-                .collect(),
-            queries: u32::MAX,
-            probes: 1,
-        };
-        let later = Signals {
-            bell: false,
-            title: Some(None),
-            status: vec![Report(b"dropped".to_vec()), Reset],
-            queries: 1,
-            probes: u32::MAX,
-        };
-        let signals = first.then(later);
-        assert!(signals.bell);
-        assert_eq!(signals.title, Some(None));
-        assert_eq!(signals.status.len(), MAX_STATUS);
-        assert_eq!(signals.status[0], Reset);
-        assert_eq!(signals.status[1], Report(vec![0]));
-        assert_eq!(signals.status.last(), Some(&Report(vec![62])));
-        assert_eq!((signals.queries, signals.probes), (u32::MAX, u32::MAX));
-    }
-}
