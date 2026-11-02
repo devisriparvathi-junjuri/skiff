@@ -282,6 +282,62 @@ pub fn ends_turn(old: Option<State>, new: Option<State>) -> bool {
     matches!(new, Some(State::Done | State::Error)) && old != new
 }
 
+/// What a program's reports say about its turns beyond each report. Some
+/// programs never say `done` (OpenCode 2.2.5 ends a turn with `idle`), so
+/// for them a turn's end is read from `working` going back to `idle`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Turns {
+    /// The program said `done` or `error` once: only those end its turns.
+    done_capable: bool,
+    /// The input count when the program last went idle, or first reported.
+    idle_input: Option<u64>,
+    /// The current working stretch: when it began (Unix ms) and the output
+    /// count then.
+    working: Option<(u64, u64)>,
+}
+
+impl Turns {
+    /// Steps from the root state `old` to `new` at `now` (Unix ms), with
+    /// the session's input and output counts. True when that ends a turn:
+    /// a `done` or `error` (see [`ends_turn`]); or, for a program that has
+    /// never said either, `working` back to `idle` when the stretch
+    /// - lasted at least [`crate::session::MIN_TURN_MS`] and printed, and
+    /// - followed the user's input since the program was last idle.
+    ///
+    /// A prompt turned down (`blocked` to `idle`, or back through a short
+    /// `working`) and the program's own startup work are no turn.
+    pub fn step(
+        &mut self,
+        old: Option<State>,
+        new: Option<State>,
+        now: u64,
+        input: u64,
+        output: u64,
+    ) -> bool {
+        let idle_input = *self.idle_input.get_or_insert(input);
+        if matches!(new, Some(State::Done | State::Error)) {
+            self.done_capable = true;
+        }
+        let mut ended = ends_turn(old, new);
+        if old == Some(State::Working) && new == Some(State::Idle) && !self.done_capable {
+            ended = self.working.is_some_and(|(at, out)| {
+                now.saturating_sub(at) >= crate::session::MIN_TURN_MS
+                    && output > out
+                    && input > idle_input
+            });
+        }
+        if new == Some(State::Working) && old != new {
+            self.working = Some((now, output));
+        } else if new != Some(State::Working) {
+            self.working = None;
+        }
+        if new == Some(State::Idle) {
+            self.idle_input = Some(input);
+        }
+        ended
+    }
+}
+
 /// A session's records, least recently updated first.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Records {
@@ -291,6 +347,9 @@ pub struct Records {
     /// not known. Reports from another group are another program's.
     #[serde(default)]
     pub group: u32,
+    /// What its reports said about its turns. Goes with its program.
+    #[serde(default)]
+    pub turns: Turns,
 }
 
 impl Records {
@@ -369,6 +428,7 @@ impl Records {
                 ..r.view()
             });
         self.clear();
+        self.turns = Turns::default();
         kept
     }
 
@@ -580,5 +640,72 @@ mod tests {
         assert!(Records::minor_change(&view, &a));
         a.state = "idle".into();
         assert!(!Records::minor_change(&view, &a));
+    }
+
+    /// A program that never says done ends a turn with idle, when the user
+    /// started it and it worked long enough to print. Not its startup, not
+    /// a prompt turned down, and never once it has said done.
+    #[test]
+    fn idle_ends_a_turn_only_for_a_program_that_never_says_done() {
+        use State::*;
+        let (i, w, b, d) = (Some(Idle), Some(Working), Some(Blocked), Some(Done));
+        // (old, new, ms, input, output) in order; the turn ends it tells.
+        let run = |steps: &[(Option<State>, Option<State>, u64, u64, u64)]| {
+            let mut t = Turns::default();
+            steps
+                .iter()
+                .map(|&(o, n, at, inp, out)| t.step(o, n, at, inp, out))
+                .collect::<Vec<_>>()
+        };
+        // Started by the user, 2 s of output: a turn.
+        assert_eq!(
+            run(&[(None, i, 0, 5, 0), (i, w, 100, 6, 10), (w, i, 2100, 6, 900)]),
+            [false, false, true]
+        );
+        // Its own startup work, with no input since it first reported.
+        assert_eq!(
+            run(&[(None, i, 0, 5, 0), (i, w, 100, 5, 10), (w, i, 2600, 5, 900)]),
+            [false, false, false]
+        );
+        // Too short, or nothing printed.
+        assert_eq!(
+            run(&[(None, i, 0, 5, 0), (i, w, 100, 6, 10), (w, i, 900, 6, 900)])[2],
+            false
+        );
+        assert_eq!(
+            run(&[(None, i, 0, 5, 0), (i, w, 100, 6, 10), (w, i, 2100, 6, 10)])[2],
+            false
+        );
+        // A first turn denied: straight to idle, or through a short working.
+        assert_eq!(
+            run(&[
+                (None, i, 0, 5, 0),
+                (i, w, 100, 6, 10),
+                (w, b, 2100, 6, 500),
+                (b, i, 4000, 7, 600)
+            ])[3],
+            false
+        );
+        assert_eq!(
+            run(&[
+                (None, i, 0, 5, 0),
+                (i, w, 100, 6, 10),
+                (w, b, 2100, 6, 500),
+                (b, w, 4000, 7, 600),
+                (w, i, 4010, 7, 620)
+            ])[4],
+            false
+        );
+        // Once it said done, idle ends no turn again.
+        assert_eq!(
+            run(&[
+                (None, i, 0, 5, 0),
+                (i, w, 100, 6, 10),
+                (w, d, 2100, 6, 900),
+                (d, w, 3000, 7, 900),
+                (w, i, 6000, 7, 2000)
+            ]),
+            [false, false, true, false, false]
+        );
     }
 }

@@ -51,13 +51,19 @@ struct Heard {
     titles: Vec<String>,
 }
 
-fn replay(reads: &[Vec<u8>]) -> Heard {
+/// Replays `reads` as the pool reads reports. Time and output are counted
+/// in bytes fed (1 ms a byte), so a turn's length does not depend on how
+/// the bytes were split. The user types before each working stretch but the
+/// first `untyped` ones: a program's own startup work.
+fn replay(reads: &[Vec<u8>], untyped: usize) -> Heard {
     let mut screen = Screen::new(120, 40);
     let mut records = Records::default();
     let mut state = SessionState::Working;
     let mut heard = Heard::default();
+    let (mut fed, mut input, mut stretches) = (0u64, 0u64, 0usize);
     for read in reads {
         let signals = screen.feed(read);
+        fed += read.len() as u64;
         if let Some(Some(t)) = signals.title {
             heard.titles.push(t);
         }
@@ -74,9 +80,12 @@ fn replay(reads: &[Vec<u8>]) -> Heard {
             }
             let new = records.root().cloned();
             if new != old {
-                heard.turns +=
-                    program_status::ends_turn(old.map(|r| r.state), new.as_ref().map(|r| r.state))
-                        as usize;
+                let (o, n) = (old.map(|r| r.state), new.as_ref().map(|r| r.state));
+                if n == Some(State::Working) && o != n {
+                    stretches += 1;
+                    input += (stretches > untyped) as u64;
+                }
+                heard.turns += records.turns.step(o, n, fed, input, fed) as usize;
                 state = program_status::session_state(new.as_ref().map(|r| r.state), state);
                 heard.states.push(state);
                 heard.apps.push(new.as_ref().and_then(|r| r.app.clone()));
@@ -105,6 +114,9 @@ fn rechunk(reads: &[Vec<u8>], mut seed: u64) -> Vec<Vec<u8>> {
 
 fn same_in_any_reads(name: &str) -> Heard {
     let reads = fixture(name);
+    // Codex works once on its own as it starts, before the first prompt.
+    let untyped = name.starts_with("codex") as usize;
+    let replay = |reads: &[Vec<u8>]| replay(reads, untyped);
     let heard = replay(&reads);
     let untitled = |h: Heard| Heard {
         titles: Vec::new(),
@@ -544,9 +556,9 @@ async fn the_shell_prompt_drops_the_report() {
 /// OpenCode 2.2.5 reports whether or not its probe is answered. A turn is
 /// `working`, with a child record for its session that it clears at the
 /// end, and the root goes back to `idle`: it sends no `done` or `error`,
-/// so no turn end is read from its reports, and no `clear` as it quits.
+/// and no `clear` as it quits. So its `idle` after a turn ends the turn.
 #[test]
-fn opencode_reports_in_both_modes_and_ends_turns_with_idle() {
+fn opencode_reports_in_both_modes_and_its_idle_ends_a_turn() {
     use SessionState as S;
     use State as P;
     for name in [
@@ -572,6 +584,7 @@ fn opencode_reports_in_both_modes_and_ends_turns_with_idle() {
         );
         assert!(heard.apps.iter().all(|a| a.as_deref() == Some("opencode")));
         assert_eq!(heard.states, [S::Idle, S::Working, S::Working, S::Idle]);
-        assert_eq!(heard.turns, 0, "{name}");
+        // It never says done: its idle after a turn the user started ends it.
+        assert_eq!(heard.turns, 1, "{name}");
     }
 }

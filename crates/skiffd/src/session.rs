@@ -72,7 +72,7 @@ pub const IDLE_AFTER: Duration = Duration::from_secs(3);
 
 /// A stretch of work shorter than this is no turn: a status line that
 /// redraws, a notice. Its end leaves nothing to read.
-const MIN_TURN_MS: u64 = 1500;
+pub(crate) const MIN_TURN_MS: u64 = 1500;
 
 /// A terminal title only the wrapper shell sets, right before it execs the
 /// fallback shell in place of an agent that just exited. Seeing it means the
@@ -1104,7 +1104,7 @@ impl SessionPool {
         let group = session.foreground_group().unwrap_or(0);
         let mut records = session.records.lock().unwrap();
         if group != 0 && records.group != 0 && records.group != group {
-            records.clear();
+            *records = Records::default();
         }
         let old = records.root().map(|r| r.state);
         for signal in signals {
@@ -1130,6 +1130,11 @@ impl SessionPool {
                     .clone()
                     .filter(|p| p.ended && old.is_none() && records.is_empty())
             });
+            // A turn ends with done or error, or for a program that never
+            // says them, with idle after a turn the user started.
+            let ended = records
+                .turns
+                .step(old, claim, now_ms(), info.input_gen, info.output_bytes);
             drop(records);
             if info.state == SessionState::Done || info.program_status == view {
                 return;
@@ -1148,7 +1153,6 @@ impl SessionPool {
             if claim.is_some() {
                 session.belled.store(false, Ordering::Relaxed);
             }
-            let ended = program_status::ends_turn(old, claim);
             if ended {
                 info.unread = true;
                 session.fresh.store(false, Ordering::Relaxed);
@@ -2002,8 +2006,8 @@ fn default_shell() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        now_ms, prints, replies, topic, Front, Screen, ScreenState, GRACE_MS, HOLD, QUIET, SCAN,
-        STALL_MS,
+        now_ms, prints, replies, topic, Front, Screen, ScreenState, GRACE_MS, HOLD, MIN_TURN_MS,
+        QUIET, SCAN, STALL_MS,
     };
     use std::time::Instant;
 
@@ -2250,6 +2254,54 @@ mod tests {
         pool.seen(&info.id).unwrap();
         assert!(session.info().program_status.is_none());
         std::thread::sleep(Duration::from_millis(10));
+        pool.kill(&info.id).unwrap();
+    }
+
+    /// A program that never says done (OpenCode) ends a turn the user
+    /// started with idle: the pane is unread. Its startup is no turn.
+    #[test]
+    fn idle_after_a_typed_turn_ends_it_for_a_program_that_never_says_done() {
+        use skiff_core::{
+            protocol::Event,
+            session::{SessionSpec, SessionState},
+        };
+        let pool = super::SessionPool::new();
+        let info = pool
+            .create(SessionSpec {
+                command: Some("/bin/sleep".into()),
+                args: vec!["30".into()],
+                cols: 80,
+                rows: 24,
+                ..Default::default()
+            })
+            .unwrap();
+        let session = pool.get(&info.id).unwrap();
+        pool.set_front(&session, Front::Agent("opencode"));
+        let feed = |bytes: &[u8]| {
+            std::thread::sleep(SCAN);
+            pool.on_output(&session, &info.id, bytes);
+            session.info()
+        };
+        let mut events = pool.events.subscribe();
+        // Its startup: idle, then work nobody asked for.
+        feed(b"\x1b]7501;state=idle:app=opencode\x07");
+        feed(b"\x1b]7501;state=working:app=opencode\x07starting");
+        std::thread::sleep(std::time::Duration::from_millis(MIN_TURN_MS));
+        assert!(
+            !feed(b"\x1b]7501;state=idle:app=opencode\x07").unread,
+            "its startup was a turn"
+        );
+        // A turn the user typed.
+        pool.write(&info.id, b"say hi\r").unwrap();
+        feed(b"\x1b]7501;state=working:app=opencode\x07");
+        std::thread::sleep(std::time::Duration::from_millis(MIN_TURN_MS));
+        feed(b"Hi! How can I help?\r\n");
+        let done = feed(b"\x1b]7501;state=idle:app=opencode\x07");
+        assert_eq!((done.state, done.unread), (SessionState::Idle, true));
+        let ended = std::iter::from_fn(|| events.try_recv().ok())
+            .filter(|e| matches!(e, Event::TurnEnded { .. }))
+            .count();
+        assert_eq!(ended, 1);
         pool.kill(&info.id).unwrap();
     }
 
