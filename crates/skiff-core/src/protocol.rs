@@ -212,6 +212,9 @@ pub struct Envelope {
     pub request: Request,
 }
 
+/// The daemon reads OSC 7501 and fills [`crate::session::SessionInfo::program_status`].
+pub const FEATURE_PROGRAM_STATUS: &str = "program_status@1";
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
@@ -236,6 +239,11 @@ pub enum Response {
         /// Host's id.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         identity: Option<Identity>,
+        /// What this daemon serves beyond its protocol, as `name@major`,
+        /// such as [`FEATURE_PROGRAM_STATUS`]. Empty from daemons that
+        /// predate the field.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        features: Vec<String>,
     },
     Sessions {
         sessions: Vec<SessionInfo>,
@@ -409,7 +417,7 @@ mod tests {
         let ServerMessage::Reply(Reply { response: Response::Pong { identity, .. }, .. }) = serde_json::from_str(old).unwrap() else { panic!() };
         assert_eq!(identity, None);
         let id = Identity { host_id: "h".into(), instance_id: "i".into(), os: "macos".into(), account: "uid:501".into() };
-        let pong = Response::Pong { version: "v".into(), protocol: 27, reload_state: None, pid: None, debug: None, identity: Some(id.clone()) };
+        let pong = Response::Pong { version: "v".into(), protocol: 27, reload_state: None, pid: None, debug: None, identity: Some(id.clone()), features: vec![] };
         let json = serde_json::to_value(&pong).unwrap();
         assert_eq!(json["identity"], serde_json::json!({"host_id":"h","instance_id":"i","os":"macos","account":"uid:501"}));
         let Response::Pong { identity, .. } = serde_json::from_value(json).unwrap() else { panic!() };

@@ -7,7 +7,10 @@ use std::{
 
 use anyhow::{bail, Result};
 use skiff_client::Client;
-use skiff_core::{protocol::Event, session::SessionState};
+use skiff_core::{
+    protocol::Event,
+    session::{SessionInfo, SessionState},
+};
 use tokio::{
     sync::broadcast::error::{RecvError, TryRecvError},
     time::Instant,
@@ -22,6 +25,9 @@ pub enum Target {
     Done,
     /// Idle, waiting or done.
     AnyNotWorking,
+    /// The turn ended, a result to read: the program reported done or error
+    /// (OSC 7501), or the pane's turn ended and is unread.
+    Turn,
 }
 
 impl Target {
@@ -31,8 +37,26 @@ impl Target {
             Target::Waiting => s == SessionState::Waiting,
             Target::Done => s == SessionState::Done,
             Target::AnyNotWorking => s != SessionState::Working,
+            // A state alone is no turn's end; see [`Now::Turned`].
+            Target::Turn => false,
         }
     }
+
+    fn hits(self, n: &Now) -> bool {
+        match *n {
+            Now::State(s) => self.hit(s),
+            Now::Turned { .. } => matches!(self, Target::Turn),
+            Now::Gone => false,
+        }
+    }
+}
+
+/// The session's turn already ended and is not read: it is idle and unread,
+/// or its program reported done or error. `Some(failed)`.
+fn turned(s: &SessionInfo) -> Option<bool> {
+    let reported = s.program_status.as_ref().map(|p| p.state.as_str());
+    let ended = matches!(reported, Some("done" | "error")) || s.unread;
+    (s.state == SessionState::Idle && ended).then_some(reported == Some("error"))
 }
 
 /// The timeout of a wait an agent runs when it names none, and the most it
@@ -72,13 +96,16 @@ async fn busy(c: &Client, id: &str) -> Result<bool> {
 #[derive(Clone, Copy, PartialEq)]
 enum Now {
     State(SessionState),
+    /// Its turn ended. `failed`: the program reported an error.
+    Turned { failed: bool },
     /// Closed, or killed.
     Gone,
 }
 
 /// Exit codes: 0 when every session got there, 1 on timeout, 2 when a
 /// session went away or exited before it got there, 3 when a session is
-/// waiting. Only a person answers an approval, so unless the target is
+/// waiting, 4 with `--for turn` when a turn ended in an error the program
+/// reported. Only a person answers an approval, so unless the target is
 /// `waiting`, a waiting session ends the wait at once.
 ///
 /// With `any`, the first session to get there ends the wait with 0, and
@@ -106,8 +133,18 @@ pub async fn wait(c: &Client, args: &[String], target: Target, any: bool, timeou
             names.insert(s.id.clone(), resolve::display_name(s).to_string());
         }
     }
-    let mut now: HashMap<String, Now> =
-        all.iter().filter(|s| ids.contains(&s.id)).map(|s| (s.id.clone(), Now::State(s.state))).collect();
+    let for_turn = matches!(target, Target::Turn);
+    let mut now: HashMap<String, Now> = all
+        .iter()
+        .filter(|s| ids.contains(&s.id))
+        .map(|s| {
+            let n = match turned(s) {
+                Some(failed) if for_turn => Now::Turned { failed },
+                _ => Now::State(s.state),
+            };
+            (s.id.clone(), n)
+        })
+        .collect();
     let stop_on_waiting = !matches!(target, Target::Waiting);
     let needs_person = |id: &String| -> i32 {
         eprintln!("skiff: {}", sessions::waiting_msg(&names[id], id));
@@ -140,9 +177,9 @@ pub async fn wait(c: &Client, args: &[String], target: Target, any: bool, timeou
     // A session settles when it reaches the target, or can no longer reach it.
     let settled = |n: &Now| match *n {
         Now::State(s) => target.hit(s) || s == SessionState::Done,
-        Now::Gone => true,
+        Now::Turned { .. } | Now::Gone => true,
     };
-    let hit = |n: &Now| matches!(*n, Now::State(s) if target.hit(s));
+    let hit = |n: &Now| target.hits(n);
     let finished = |now: &HashMap<String, Now>| {
         (any && ids.iter().any(|id| hit(&now[id]))) || ids.iter().all(|id| settled(&now[id]))
     };
@@ -189,6 +226,17 @@ pub async fn wait(c: &Client, args: &[String], target: Target, any: bool, timeou
             Ok(Event::State { session, state }) => (session, Now::State(state)),
             Ok(Event::Exit { session, .. }) => (session, Now::State(SessionState::Done)),
             Ok(Event::SessionRemoved { session }) => (session, Now::Gone),
+            // The report that ended the turn comes in the update after it:
+            // read it from the session.
+            Ok(Event::TurnEnded { session }) if for_turn && ids.contains(&session) => {
+                let all = c.list_sessions().await?;
+                let failed = all
+                    .iter()
+                    .find(|s| s.id == session)
+                    .and_then(|s| s.program_status.as_ref())
+                    .is_some_and(|p| p.state == "error");
+                (session, Now::Turned { failed })
+            }
             Ok(_) => continue,
             Err(RecvError::Lagged(_)) => {
                 // Missed events: read the states again.
@@ -202,7 +250,10 @@ pub async fn wait(c: &Client, args: &[String], target: Target, any: bool, timeou
                 for id in &ids {
                     let cur = now.get_mut(id).expect("listed");
                     if !settled(cur) {
-                        *cur = all.iter().find(|s| &s.id == id).map_or(Now::Gone, |s| Now::State(s.state));
+                        *cur = all.iter().find(|s| &s.id == id).map_or(Now::Gone, |s| match turned(s) {
+                            Some(failed) if for_turn => Now::Turned { failed },
+                            _ => Now::State(s.state),
+                        });
                         held.remove(id);
                         if check_busy && *cur == Now::State(SessionState::Idle) && busy(c, id).await? {
                             *cur = Now::State(SessionState::Working);
@@ -231,15 +282,12 @@ pub async fn wait(c: &Client, args: &[String], target: Target, any: bool, timeou
     }
 
     if any {
-        let first = ids.iter().find_map(|id| match now[id] {
-            Now::State(s) if target.hit(s) => Some((id, s)),
-            _ => None,
-        });
-        if let Some((id, s)) = first {
+        let first = ids.iter().find(|id| hit(&now[*id]));
+        if let Some(id) = first {
             // The full id, so a script can pass it on as it is.
-            let row = vec![id.clone(), names[id].clone(), sessions::state(s).to_string()];
+            let row = vec![id.clone(), names[id].clone(), word(now[id]).to_string()];
             print::table(&["", "", ""], &[row]);
-            return Ok(0);
+            return Ok(if now[id] == (Now::Turned { failed: true }) { 4 } else { 0 });
         }
     }
     let mut code = 0;
@@ -247,17 +295,14 @@ pub async fn wait(c: &Client, args: &[String], target: Target, any: bool, timeou
         .iter()
         .map(|id| {
             let n = now[id];
-            let state = match n {
-                Now::State(s) => sessions::state(s),
-                Now::Gone => "gone",
-            };
             let c = match n {
-                Now::State(s) if target.hit(s) => 0,
+                Now::Turned { failed: true } => 4,
+                _ if hit(&n) => 0,
                 _ if !settled(&n) => 1,
                 _ => 2,
             };
             code = code.max(c);
-            vec![print::short_id(id).to_string(), names[id].clone(), state.to_string()]
+            vec![print::short_id(id).to_string(), names[id].clone(), word(n).to_string()]
         })
         .collect();
     // With `any`, a session that went away first does not count while
@@ -272,9 +317,40 @@ pub async fn wait(c: &Client, args: &[String], target: Target, any: bool, timeou
     Ok(code)
 }
 
+/// What a session's line says.
+fn word(n: Now) -> &'static str {
+    match n {
+        Now::State(s) => sessions::state(s),
+        Now::Turned { failed: false } => "turn ended",
+        Now::Turned { failed: true } => "failed",
+        Now::Gone => "gone",
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::timeout_for;
+    use super::{timeout_for, turned};
+    use skiff_core::session::SessionInfo;
+
+    #[test]
+    fn a_turn_ends_with_a_result_or_an_unread_idle() {
+        let s = |state: &str, unread: bool, status: Option<&str>| -> SessionInfo {
+            let mut v = serde_json::json!({
+                "id": "a", "label": "a", "role": "agent", "cwd": "/", "command": "claude", "args": [],
+                "state": state, "cols": 80, "rows": 24, "pid": null, "exit_code": null, "unread": unread,
+            });
+            if let Some(st) = status {
+                v["program_status"] = serde_json::json!({ "state": st });
+            }
+            serde_json::from_value(v).unwrap()
+        };
+        assert_eq!(turned(&s("idle", false, None)), None, "quiet is no turn's end");
+        assert_eq!(turned(&s("idle", true, None)), Some(false));
+        assert_eq!(turned(&s("idle", false, Some("done"))), Some(false));
+        assert_eq!(turned(&s("idle", false, Some("error"))), Some(true));
+        assert_eq!(turned(&s("idle", false, Some("idle"))), None);
+        assert_eq!(turned(&s("working", true, Some("working"))), None);
+    }
 
     #[test]
     fn an_agent_gets_a_default_and_a_cap_and_a_person_gets_what_they_ask() {

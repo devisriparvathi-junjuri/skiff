@@ -39,7 +39,7 @@ pub async fn ls(c: &Client, json: bool) -> Result<()> {
             vec![
                 print::short_id(&s.id).to_string(),
                 resolve::display_name(s).to_string(),
-                state(s.state).to_string(),
+                state_text(s),
                 role(s.role).to_string(),
                 print::tilde(&s.cwd),
                 cmd,
@@ -56,6 +56,27 @@ pub fn state(s: SessionState) -> &'static str {
         SessionState::Waiting => "waiting",
         SessionState::Idle => "idle",
         SessionState::Done => "done",
+    }
+}
+
+/// The state, with what the program reports about it (OSC 7501): what a
+/// waiting program waits for, a turn's result, its progress, a long silence.
+pub fn state_text(s: &SessionInfo) -> String {
+    let word = state(s.state);
+    let Some(p) = &s.program_status else { return word.to_string() };
+    match p.state.as_str() {
+        "blocked" => match &p.kind {
+            Some(kind) => format!("{word} ({kind})"),
+            None => word.to_string(),
+        },
+        "done" => format!("{word} (done)"),
+        "error" => format!("{word} (failed)"),
+        "working" if p.stalled => format!("{word} (no output)"),
+        "working" => match p.progress {
+            Some(n) => format!("{word} {n}%"),
+            None => word.to_string(),
+        },
+        _ => word.to_string(),
     }
 }
 
@@ -634,6 +655,21 @@ mod tests {
         s.state = state;
         s.foreground_program = fg.map(String::from);
         s
+    }
+
+    #[test]
+    fn the_state_says_what_the_program_reports() {
+        let with = |state, status: serde_json::Value| {
+            let mut x = s("agent", state, None);
+            x.program_status = serde_json::from_value(status).unwrap();
+            super::state_text(&x)
+        };
+        assert_eq!(super::state_text(&s("agent", SessionState::Idle, None)), "idle");
+        assert_eq!(with(SessionState::Waiting, serde_json::json!({"state": "blocked", "kind": "permission"})), "waiting (permission)");
+        assert_eq!(with(SessionState::Idle, serde_json::json!({"state": "done"})), "idle (done)");
+        assert_eq!(with(SessionState::Idle, serde_json::json!({"state": "error", "ended": true})), "idle (failed)");
+        assert_eq!(with(SessionState::Working, serde_json::json!({"state": "working", "progress": 40})), "working 40%");
+        assert_eq!(with(SessionState::Working, serde_json::json!({"state": "working", "stalled": true})), "working (no output)");
     }
 
     fn code(x: &SessionInfo, here: Option<&str>, shell: bool, caller: Option<&str>) -> i32 {

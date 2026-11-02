@@ -33,9 +33,12 @@ pub struct Signals {
     pub title: Option<Option<String>>,
     /// OSC 7501 bodies and full resets, in the order they came.
     pub status: Vec<StatusSignal>,
-    /// Queries the program sent that a terminal answers (DA1, DSR, colors).
-    /// A client answers them; see `session::replies`.
+    /// Queries the program sent that a terminal answers (DA1, DSR, colors,
+    /// XTVERSION, DECRQSS). A client answers them; see `session::replies`.
     pub queries: u32,
+    /// OSC 7501 probes to answer now: those parsed, and those a synchronized
+    /// update still holds. A held one is not answered again once parsed.
+    pub probes: u32,
 }
 
 /// What the program status records hear from the emulator.
@@ -45,6 +48,26 @@ pub enum StatusSignal {
     Report(Vec<u8>),
     /// A full reset (RIS): every record goes.
     Reset,
+}
+
+/// Whole OSC 7501 probes in `b`, and how far `b` is searched: up to the
+/// start of one that is not whole yet.
+fn held_probes(b: &[u8]) -> (u32, usize) {
+    const PROBE: &[u8] = b"\x1b]7501;?";
+    let (mut n, mut at) = (0, 0);
+    loop {
+        let Some(i) = b[at..].windows(PROBE.len()).position(|w| w == PROBE) else {
+            return (n, b.len().saturating_sub(PROBE.len() - 1).max(at));
+        };
+        let start = at + i;
+        let end = start + PROBE.len();
+        match (b.get(end), b.get(end + 1)) {
+            (Some(0x07), _) => (n, at) = (n + 1, end + 1),
+            (Some(0x1b), Some(b'\\')) => (n, at) = (n + 1, end + 2),
+            (None, _) | (Some(0x1b), None) => return (n, start),
+            _ => at = end,
+        }
+    }
 }
 
 /// OSC 7501 bodies kept from one feed. A program that floods more is cut off;
@@ -69,7 +92,8 @@ impl EventListener for Listener {
             }
             TermEvent::PtyWrite(_)
             | TermEvent::ColorRequest(..)
-            | TermEvent::TextAreaSizeRequest(_) => s.queries = s.queries.saturating_add(1),
+            | TermEvent::TextAreaSizeRequest(_)
+            | TermEvent::UnansweredQuery => s.queries = s.queries.saturating_add(1),
             _ => {}
         }
     }
@@ -81,6 +105,10 @@ pub struct Screen {
     signals: Listener,
     /// Hash of the text at the last `text_changed`.
     text: u64,
+    /// Probes answered from a synchronized update's held bytes, not parsed
+    /// yet, and how far those bytes were searched. See [`Self::feed`].
+    early: u32,
+    held_from: usize,
 }
 
 /// The whole terminal for a reload: both screens and their history, cursors,
@@ -119,6 +147,8 @@ impl Screen {
             parser: Processor::new(),
             signals,
             text: 0,
+            early: 0,
+            held_from: 0,
         }
     }
 
@@ -140,6 +170,8 @@ impl Screen {
             parser: Processor::restore(save.parser),
             signals,
             text: save.text,
+            early: 0,
+            held_from: 0,
         })
     }
 
@@ -155,7 +187,32 @@ impl Screen {
 
     pub fn feed(&mut self, bytes: &[u8]) -> Signals {
         self.parser.advance(&mut self.term, bytes);
-        std::mem::take(&mut *self.signals.0.lock().unwrap())
+        let mut s = std::mem::take(&mut *self.signals.0.lock().unwrap());
+        let parsed = s
+            .status
+            .iter()
+            .filter(|x| matches!(x, StatusSignal::Report(b) if crate::program_status::is_probe(b)))
+            .count() as u32;
+        let answered = parsed.min(self.early);
+        self.early -= answered;
+        s.probes = parsed - answered;
+        // A synchronized update holds its bytes until it ends, but a client
+        // answers the DA1 after a probe at once: the probe is answered now,
+        // so its reply still comes first.
+        let held = self.parser.sync_bytes();
+        if held.is_empty() {
+            self.early = 0;
+            self.held_from = 0;
+        } else {
+            if self.held_from > held.len() {
+                self.held_from = 0;
+            }
+            let (n, searched) = held_probes(&held[self.held_from..]);
+            self.held_from += searched;
+            self.early += n;
+            s.probes += n;
+        }
+        s
     }
 
     /// True when the characters on screen or the scrollback changed since the
@@ -223,9 +280,12 @@ impl Screen {
             }
             "gemini" => {
                 // Antigravity (agy): "↑/↓ Navigate · tab Amend", "↑/↓ Navigate · enter Confirm".
+                // Its slash-command menu shows "↑/↓ Navigate · enter Select · tab Complete".
                 // Gemini CLI: "Allow once", "Allow for this session", "No, suggest changes (esc)".
                 let t = self.bottom_text(10);
-                t.contains("↑/↓navigate") || (t.contains("allowonce") && t.contains("suggestchanges"))
+                (t.contains("↑/↓navigate")
+                    && (t.contains("tabamend") || t.contains("enterconfirm")))
+                    || (t.contains("allowonce") && t.contains("suggestchanges"))
             }
             "grok" => {
                 // "1/4:select │ Tab:next option │ ...", or a command's
@@ -252,8 +312,9 @@ impl Screen {
             "claude" | "codex" => t.contains("tointerrupt"),
             // "esc interrupt", and "esc again to interrupt" after one Esc.
             "opencode" => t.contains("escinterrupt") || t.contains("tointerrupt"),
-            // "(esc to cancel, 12s)".
-            "gemini" => t.contains("esctocancel"),
+            // "(esc to cancel, 12s)". Antigravity shows "esc to cancel" at
+            // its prompts and its slash-command menu too, under a "↑/↓ Navigate" list.
+            "gemini" => t.contains("esctocancel") && !t.contains("↑/↓navigate"),
             _ => false,
         }
     }
@@ -411,6 +472,17 @@ pub fn title_state(agent: &str, title: &str) -> Option<TitleState> {
             '\u{25c7}' => Some(TitleState::Ready),
             _ => None,
         },
+        // "⚠ Action Required - ⠋ - Running: … - grok" at a prompt,
+        // "⠋ - Thinking - <topic> - grok" while it works, "<topic> - grok" after.
+        "grok" => {
+            if title.contains("Action Required") {
+                Some(TitleState::Action)
+            } else if ('\u{2801}'..='\u{28ff}').contains(&first) {
+                Some(TitleState::Busy)
+            } else {
+                Some(TitleState::Ready)
+            }
+        }
         _ => None,
     }
 }
@@ -583,6 +655,34 @@ mod tests {
         assert!(s.feed(b"\x07").bell);
     }
 
+    /// A probe in a synchronized update is answered while the update holds
+    /// it, once, even split across reads; one outside is answered as parsed.
+    #[test]
+    fn a_probe_held_in_a_synchronized_update_is_answered_at_once() {
+        let mut screen = Screen::new(80, 24);
+        assert_eq!(screen.feed(b"\x1b]7501;?\x07").probes, 1);
+        let held = screen.feed(b"\x1b[?2026h\x1b]7501");
+        assert_eq!((held.probes, held.status.len()), (0, 0));
+        assert_eq!(screen.feed(b";?\x1b").probes, 0);
+        let held = screen.feed(b"\\\x1b[c x");
+        assert_eq!((held.probes, held.status.len()), (1, 0));
+        let done = screen.feed(b"\x1b[?2026l");
+        assert_eq!(done.probes, 0, "answered twice");
+        assert_eq!(done.status, [StatusSignal::Report(b"?".to_vec())]);
+        assert_eq!(screen.feed(b"\x1b]7501;?\x1b\\").probes, 1);
+    }
+
+    /// The queries a client answers and this terminal does not are counted,
+    /// so their replies are not taken for typing.
+    #[test]
+    fn xtversion_and_decrqss_are_open_queries() {
+        let mut screen = Screen::new(80, 24);
+        assert_eq!(screen.feed(b"\x1b[>q").queries, 1);
+        assert_eq!(screen.feed(b"\x1b[>0q").queries, 1);
+        assert_eq!(screen.feed(b"\x1bP$qm\x1b\\").queries, 1);
+        assert_eq!(screen.feed(b"\x1b[ q\x1bPq#0\x1b\\").queries, 0);
+    }
+
     #[test]
     fn osc_7501_is_heard_in_order_across_reads() {
         use super::StatusSignal::{Report, Reset};
@@ -699,6 +799,24 @@ mod tests {
         let gemini_work = ["⣟  Generating...", "────────────", ">", "────────────", "esc to cancel          Gemini 3.8 Flash"];
         assert!(!screen_with(&gemini_work).approval_prompt("gemini"));
         assert!(screen_with(&gemini_work).busy_line("gemini"));
+        // Antigravity's slash-command menu and its file prompt, as captured.
+        let agy_menu = [
+            "> /add-dir             Add a directory to the workspace",
+            "  /agents              List available custom agents",
+            "  ↑/↓ Navigate · enter Select · tab Complete",
+            "esc to cancel          Gemini 3.8 Flash · medium",
+        ];
+        assert!(!screen_with(&agy_menu).approval_prompt("gemini"));
+        assert!(!screen_with(&agy_menu).busy_line("gemini"));
+        let agy_file = [
+            "Allow creation of this file?",
+            "> 1. Yes, allow creation",
+            "  2. No, deny creation",
+            "  ↑/↓ Navigate · tab Amend · f full diff",
+            "esc to cancel          Gemini 3.8 Flash · medium",
+        ];
+        assert!(screen_with(&agy_file).approval_prompt("gemini"));
+        assert!(!screen_with(&agy_file).busy_line("gemini"));
         let gemini_cli = ["Allow execution of: 'ls'?", "● 1. Allow once", "  2. Allow for this session", "  3. No, suggest changes (esc)"];
         assert!(screen_with(&gemini_cli).approval_prompt("gemini"));
         let grok_cmd = ["$ rm -rf build", "  Allow once", "  Always allow this command", "  Reject"];
@@ -762,6 +880,20 @@ mod tests {
         assert_eq!(title_state("gemini", "⏲  Working… (skiff)"), Some(Busy));
         assert_eq!(title_state("gemini", "✋  Action Required (skiff)"), Some(Action));
         assert_eq!(title_state("gemini", "◇  Ready (skiff)"), Some(Ready));
+        // Grok 1.0.70, as captured.
+        assert_eq!(
+            title_state("grok", "⠋ - Waiting for response… - grok"),
+            Some(Busy)
+        );
+        assert_eq!(
+            title_state(
+                "grok",
+                "⚠ Action Required - ⠋ - Running: Write `x` - Greeting - grok"
+            ),
+            Some(Action)
+        );
+        assert_eq!(title_state("grok", "Greeting - grok"), Some(Ready));
+        assert_eq!(title_state("grok", "grok"), Some(Ready));
         assert_eq!(title_state("opencode", "OC | Fix the bug"), None);
     }
 }

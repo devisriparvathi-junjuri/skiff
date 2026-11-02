@@ -52,6 +52,7 @@ pub const SKIPPER_FILE: &str = "skipper_file";
 pub const SKIPPER_RUN: &str = "skipper_run";
 pub const AGENT_CONFIG: &str = "agent_config";
 pub const DROPS: &str = "drops";
+pub const PROGRAM_STATUS: &str = "program_status";
 
 macro_rules! identity {
     ($name:ident) => {
@@ -301,6 +302,14 @@ impl Capability {
     pub fn session_terminal() -> Self {
         Self {
             name: SESSION_TERMINAL.into(),
+            version: 1,
+        }
+    }
+    /// Sessions carry what their program reports with OSC 7501
+    /// (`program_status`). Read-only; grants no request.
+    pub fn program_status() -> Self {
+        Self {
+            name: PROGRAM_STATUS.into(),
             version: 1,
         }
     }

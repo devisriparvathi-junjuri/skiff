@@ -4,6 +4,7 @@
  *  connection checks each request again; nothing falls back to local data. */
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { type MessageKey, t } from "../i18n";
+import { offerReports } from "../workspace/programStatus";
 
 type HostCap =
   | "session_inventory"
@@ -13,6 +14,7 @@ type HostCap =
   | "session_lifecycle"
   | "session_groups"
   | "session_agents"
+  | "program_status"
   | "daemon_metrics"
   | "projects"
   | "git_status"
@@ -39,6 +41,7 @@ const MAJOR: Record<HostCap, number> = {
   session_lifecycle: 1,
   session_groups: 1,
   session_agents: 1,
+  program_status: 1,
   daemon_metrics: 1,
   projects: 1,
   git_status: 1,
@@ -69,6 +72,7 @@ const OFFERS: Record<HostCap, MessageKey> = {
   session_lifecycle: "hostCaps.session_lifecycle",
   session_groups: "hostCaps.session_groups",
   session_agents: "hostCaps.session_agents",
+  program_status: "hostCaps.program_status",
   daemon_metrics: "hostCaps.daemon_metrics",
   projects: "hostCaps.projects",
   git_status: "hostCaps.git_status",
@@ -95,6 +99,7 @@ let loading: Promise<void> | null = null;
 export function loadHostCaps(): Promise<void> {
   const load = invoke<string[]>("host_capabilities").then((list) => {
     caps = new Set(list);
+    offerReports(hostCan("program_status"));
   });
   loading = load.finally(() => {
     if (loading === load) loading = null;

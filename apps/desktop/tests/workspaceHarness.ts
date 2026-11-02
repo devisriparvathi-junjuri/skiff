@@ -52,7 +52,7 @@ export function moduleFromSource(path: string, imports: Record<string, unknown>,
   const code = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  const context = { exports: {} as any, require: (name: string) => (Object.hasOwn(imports, name) ? imports[name] : words(name) ?? imports[name] ?? {}), ...globals };
+  const context = { exports: {} as any, require: (name: string) => (Object.hasOwn(imports, name) ? imports[name] : words(name) ?? pure(name) ?? imports[name] ?? {}), ...globals };
   vm.runInNewContext(code, context, { filename: path });
   return context.exports;
 }
@@ -68,6 +68,13 @@ function words(name: string) {
     catalog = { en, i18n: moduleFromSource("../src/i18n/index.ts", { "./en": en, "./es": es, "./zh": zh }, { navigator: { language: "en-US" } }, "") };
   }
   return name.endsWith("/en") ? catalog.en : catalog.i18n;
+}
+
+// Pure modules with no Host or DOM access: the real one, unless a test passes its own.
+let reports: unknown;
+function pure(name: string) {
+  if (!/(^|\/)programStatus$/.test(name)) return undefined;
+  return (reports ??= moduleFromSource("../src/workspace/programStatus.ts", {}, {}, ""));
 }
 
 export const flush = () => new Promise<void>((resolve) => setImmediate(resolve));

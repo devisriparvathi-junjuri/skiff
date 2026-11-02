@@ -119,6 +119,19 @@ const REPLY_WINDOW_MS: u64 = 5000;
 /// Queries kept unanswered at most.
 const MAX_QUERIES: u32 = 64;
 
+/// A program that says it works yields to its own approval prompt once the
+/// prompt has stayed on screen this long after its last report: it may ask
+/// without saying so.
+const GRACE_MS: u64 = 2000;
+
+/// A program that says it works and prints nothing for this long is marked
+/// stalled: a hint that it may hang.
+const STALL_MS: u64 = 5 * 60 * 1000;
+
+/// A report that changes only its message, title or progress, or a child's,
+/// is sent at most this often. Grok changes its message at every phase.
+const STATUS_EVERY_MS: u64 = 1000;
+
 /// The screen text is checked at most this often. Each check walks every cell,
 /// and what it feeds (idle detection, the approval prompt) works in seconds.
 const SCAN: Duration = Duration::from_millis(100);
@@ -173,6 +186,17 @@ pub struct Session {
     /// last one came (Unix ms). See [`replies`].
     queries: AtomicU32,
     queried_at: AtomicU64,
+    /// Unix ms since the agent's approval prompt shows under a working
+    /// report; 0 while it does not. See [`GRACE_MS`].
+    approval_since: AtomicU64,
+    /// That prompt made the session wait, over the report.
+    raised: AtomicBool,
+    /// The report is marked stalled, so a read clears it without a lock.
+    stalled: AtomicBool,
+    /// Unix ms of the last update sent for a report, and a minor change
+    /// since then that waits to be sent. See [`STATUS_EVERY_MS`].
+    status_sent_at: AtomicU64,
+    status_dirty: AtomicBool,
     /// Emulator plus unsent bytes. One lock, so a snapshot and the live
     /// stream never overlap or leave a gap.
     screen: Mutex<ScreenState>,
@@ -312,9 +336,10 @@ impl Session {
     }
 
     /// The program in front reports its own state with OSC 7501. Its report
-    /// decides the state over the screen rules and the idle timer.
+    /// decides the state over the screen rules and the idle timer. A result
+    /// kept after the program left decides nothing.
     fn claimed(&self) -> bool {
-        self.info.lock().unwrap().program_status.is_some()
+        live(&self.info.lock().unwrap())
     }
 
     /// Takes `data` from a client as its answer to the program's queries:
@@ -405,10 +430,8 @@ impl Session {
         // client answers the DA1 query a program sends right after it, and
         // the program takes OSC 7501 as supported only when this reply comes
         // first. The writer thread keeps the order of its queue.
-        for signal in &signals.status {
-            if matches!(signal, StatusSignal::Report(body) if program_status::is_probe(body)) {
-                self.reply(program_status::PROBE_REPLY);
-            }
+        for _ in 0..signals.probes {
+            self.reply(program_status::PROBE_REPLY);
         }
         st.unscanned = true;
         if prints(chunk) {
@@ -792,6 +815,11 @@ impl SessionPool {
             records: Mutex::new(Records::default()),
             queries: AtomicU32::new(0),
             queried_at: AtomicU64::new(0),
+            approval_since: AtomicU64::new(0),
+            raised: AtomicBool::new(false),
+            stalled: AtomicBool::new(false),
+            status_sent_at: AtomicU64::new(0),
+            status_dirty: AtomicBool::new(false),
             screen: Mutex::new(ScreenState {
                 screen: Screen::new(spec.cols, spec.rows),
                 pending: Vec::new(),
@@ -882,6 +910,20 @@ impl SessionPool {
         }
         let (mut signals, scan, echo) = session.push_output(chunk);
         self.apply_status(session, std::mem::take(&mut signals.status));
+        // Output again: a stalled program is not.
+        if session.stalled.swap(false, Ordering::Relaxed) {
+            let cleared = {
+                let mut info = session.info.lock().unwrap();
+                info.program_status
+                    .as_mut()
+                    .is_some_and(|p| std::mem::take(&mut p.stalled))
+            };
+            if cleared {
+                let _ = self.events.send(Event::SessionUpdated {
+                    session: session.info(),
+                });
+            }
+        }
         if signals.queries > 0 {
             let open = session
                 .queries
@@ -923,7 +965,6 @@ impl SessionPool {
                     .unwrap_or_else(default_shell);
                 session.shell.store(true, Ordering::Relaxed);
                 let mut records = session.records.lock().unwrap();
-                records.clear();
                 // The group stays. Forget it, so the watcher reads the
                 // shell in front now instead of at its next recheck.
                 session.group.store(0, Ordering::Relaxed);
@@ -935,7 +976,7 @@ impl SessionPool {
                     info.command = shell_name;
                     info.args.clear();
                     info.agent_exit = code.strip_prefix(':').and_then(|c| c.parse().ok());
-                    info.program_status = None;
+                    end_reports(&mut records, &mut info);
                     info.clone()
                 };
                 drop(records);
@@ -984,11 +1025,10 @@ impl SessionPool {
         };
         let reported = {
             let mut records = session.records.lock().unwrap();
-            records.clear();
             let mut info = session.info.lock().unwrap();
             info.exit_code = code;
             info.state = SessionState::Done;
-            info.program_status.take().is_some()
+            end_reports(&mut records, &mut info)
         };
         session.set_reader_done();
         self.dying.lock().unwrap().retain(|s| !Arc::ptr_eq(s, session));
@@ -1014,10 +1054,19 @@ impl SessionPool {
         // A shell at its prompt reports nothing. A report while it is in
         // front comes from a command that is gone, or from printed text, and
         // no return of the prompt would ever drop it.
-        let at_prompt = session.front() == Front::Shell;
+        if session.front() == Front::Shell {
+            return;
+        }
+        // Records belong to the process group in front when they came. A
+        // report under another group is another program's: the old records
+        // went with their program.
+        let group = session.foreground_group().unwrap_or(0);
         let mut records = session.records.lock().unwrap();
+        if group != 0 && records.group != 0 && records.group != group {
+            records.clear();
+        }
         let old = records.root().map(|r| r.state);
-        for signal in signals.into_iter().filter(|_| !at_prompt) {
+        for signal in signals {
             match signal {
                 StatusSignal::Reset => records.clear(),
                 StatusSignal::Report(body) => {
@@ -1027,15 +1076,32 @@ impl SessionPool {
                 }
             }
         }
+        if !records.is_empty() {
+            records.group = group;
+        }
         let claim = records.root().map(|r| r.state);
-        let (state, ended, id) = {
+        let (state, ended, id, send) = {
             let mut info = session.info.lock().unwrap();
-            let view = records.root().map(|r| r.view());
+            // A result kept from a program that left stays while no new
+            // records replace it.
+            let view = records.view().or_else(|| {
+                info.program_status
+                    .clone()
+                    .filter(|p| p.ended && old.is_none() && records.is_empty())
+            });
             drop(records);
             if info.state == SessionState::Done || info.program_status == view {
                 return;
             }
+            let minor = matches!(
+                (&info.program_status, &view),
+                (Some(a), Some(b)) if Records::minor_change(a, b)
+            );
             info.program_status = view;
+            session.stalled.store(false, Ordering::Relaxed);
+            // The grace for an approval prompt starts again from this report.
+            session.approval_since.store(0, Ordering::Relaxed);
+            session.raised.store(false, Ordering::Relaxed);
             // The quiet time starts now, should the reports end.
             session.last_work.store(now_ms(), Ordering::Relaxed);
             if claim.is_some() {
@@ -1053,7 +1119,15 @@ impl SessionPool {
                 session.work_started.store(now_ms(), Ordering::Relaxed);
             }
             info.state = state;
-            (changed.then_some(state), ended, info.id.clone())
+            let now = now_ms();
+            let send = !minor
+                || now.saturating_sub(session.status_sent_at.load(Ordering::Relaxed))
+                    >= STATUS_EVERY_MS;
+            if send {
+                session.status_sent_at.store(now, Ordering::Relaxed);
+            }
+            session.status_dirty.store(!send, Ordering::Relaxed);
+            (changed.then_some(state), ended, info.id.clone(), send)
         };
         if let Some(state) = state {
             let _ = self.events.send(Event::State {
@@ -1067,9 +1141,91 @@ impl SessionPool {
             });
         }
         // Read again out of the lock: `info()` adds the time of the last output.
-        let _ = self.events.send(Event::SessionUpdated {
-            session: session.info(),
-        });
+        if send {
+            let _ = self.events.send(Event::SessionUpdated {
+                session: session.info(),
+            });
+        }
+    }
+
+    /// Another process group came in front of the PTY. Reports made under
+    /// the one before are its program's: they stop deciding the state, and
+    /// only a done or error stays to be read.
+    pub(crate) fn status_group(&self, session: &Session, group: u32) {
+        let (state, updated) = {
+            let mut records = session.records.lock().unwrap();
+            if records.is_empty() || records.group == 0 || records.group == group {
+                return;
+            }
+            let mut info = session.info.lock().unwrap();
+            if info.state == SessionState::Done {
+                return;
+            }
+            let changed = end_reports(&mut records, &mut info);
+            let state = program_status::session_state(None, info.state);
+            let moved = (state != info.state).then(|| {
+                info.state = state;
+                (info.id.clone(), state)
+            });
+            (moved, changed.then(|| info.clone()))
+        };
+        if let Some((session, state)) = state {
+            let _ = self.events.send(Event::State { session, state });
+        }
+        if let Some(session) = updated {
+            let _ = self.events.send(Event::SessionUpdated { session });
+        }
+    }
+
+    /// Once a tick, for a program that reports: its approval prompt that
+    /// outstayed the grace, a long silence while it says it works, and an
+    /// update held back by [`STATUS_EVERY_MS`].
+    fn status_tick(&self, s: &Session) {
+        let now = now_ms();
+        let (state, updated) = {
+            let mut info = s.info.lock().unwrap();
+            if info.state == SessionState::Done || !live(&info) {
+                return;
+            }
+            let mut changed = s.status_dirty.swap(false, Ordering::Relaxed);
+            let mut state = None;
+            let working = info
+                .program_status
+                .as_ref()
+                .is_some_and(|p| p.state == "working");
+            let quiet = now.saturating_sub(s.last_output.load(Ordering::Relaxed)) >= STALL_MS;
+            if let Some(p) = info
+                .program_status
+                .as_mut()
+                .filter(|p| working && quiet && !p.stalled)
+            {
+                p.stalled = true;
+                s.stalled.store(true, Ordering::Relaxed);
+                changed = true;
+            }
+            let since = s.approval_since.load(Ordering::Relaxed);
+            if working
+                && since != 0
+                && now.saturating_sub(since) >= GRACE_MS
+                && info.state == SessionState::Working
+                && !s.raised.swap(true, Ordering::Relaxed)
+            {
+                info.state = SessionState::Waiting;
+                state = Some((info.id.clone(), SessionState::Waiting));
+            }
+            if changed {
+                s.status_sent_at.store(now, Ordering::Relaxed);
+            }
+            (state, changed)
+        };
+        if let Some((session, state)) = state {
+            let _ = self.events.send(Event::State { session, state });
+        }
+        if updated {
+            let _ = self
+                .events
+                .send(Event::SessionUpdated { session: s.info() });
+        }
     }
 
     /// A bell outside the echo of a key. A shell rings for its own reasons.
@@ -1103,6 +1259,29 @@ impl SessionPool {
             session.busy_seen.store(true, Ordering::Relaxed);
         }
         if session.claimed() {
+            // The agent's own approval prompt under a report that it works:
+            // it may ask without saying so. The tick raises it after the
+            // grace; the prompt's end lowers it again.
+            if scan.approval {
+                let _ = session.approval_since.compare_exchange(
+                    0,
+                    now_ms(),
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                );
+            } else {
+                session.approval_since.store(0, Ordering::Relaxed);
+                let working = session
+                    .info
+                    .lock()
+                    .unwrap()
+                    .program_status
+                    .as_ref()
+                    .is_some_and(|p| p.state == "working");
+                if session.raised.swap(false, Ordering::Relaxed) && working {
+                    self.set_state(session, SessionState::Working);
+                }
+            }
             return;
         }
         let waiting = session.info.lock().unwrap().state == SessionState::Waiting;
@@ -1153,7 +1332,7 @@ impl SessionPool {
     }
 
     fn set_state(&self, session: &Session, state: SessionState) {
-        let id = {
+        let (id, dropped) = {
             let mut info = session.info.lock().unwrap();
             if info.state == state || info.state == SessionState::Done {
                 return;
@@ -1162,9 +1341,20 @@ impl SessionPool {
                 session.work_started.store(now_ms(), Ordering::Relaxed);
             }
             info.state = state;
-            info.id.clone()
+            // New work: the result a program left is read or stale.
+            let dropped = state == SessionState::Working
+                && info.program_status.as_ref().is_some_and(|p| p.ended);
+            if dropped {
+                info.program_status = None;
+            }
+            (info.id.clone(), dropped)
         };
         let _ = self.events.send(Event::State { session: id, state });
+        if dropped {
+            let _ = self.events.send(Event::SessionUpdated {
+                session: session.info(),
+            });
+        }
     }
 
     /// Records the program in front. A program that ends and leaves the shell
@@ -1204,8 +1394,7 @@ impl SessionPool {
                 info.unread = true;
                 ended = Some(info.id.clone());
                 // The shell's prompt is back: the program's reports end with it.
-                records.clear();
-                changed |= info.program_status.take().is_some();
+                changed |= end_reports(&mut records, &mut info);
             } else if agent && info.agent_exit.take().is_some() {
                 changed = true;
                 // The exit code is saved with the workspace.
@@ -1241,7 +1430,12 @@ impl SessionPool {
         let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
         let updated = {
             let mut info = session.info.lock().unwrap();
-            let changed = info.unread || info.agent_exit.is_some();
+            // A result kept after its program left is read now.
+            let kept = info.program_status.as_ref().is_some_and(|p| p.ended);
+            if kept {
+                info.program_status = None;
+            }
+            let changed = info.unread || info.agent_exit.is_some() || kept;
             info.unread = false;
             if info.agent_exit.take().is_some() {
                 self.dirty.notify_one();
@@ -1503,6 +1697,7 @@ impl SessionPool {
                     let sessions: Vec<Arc<Session>> =
                         pool.sessions.read().unwrap().values().cloned().collect();
                     for s in sessions {
+                        pool.status_tick(&s);
                         pool.idle_if_quiet(&s);
                     }
                 }
@@ -1524,7 +1719,7 @@ impl SessionPool {
             let mut info = s.info.lock().unwrap();
             let last = s.last_work.load(Ordering::Relaxed);
             let quiet = now_ms().saturating_sub(last) > IDLE_AFTER.as_millis() as u64;
-            if !quiet || info.state != SessionState::Working || info.program_status.is_some() {
+            if !quiet || info.state != SessionState::Working || live(&info) {
                 return;
             }
             info.state = SessionState::Idle;
@@ -1559,6 +1754,28 @@ impl SessionPool {
             let _ = self.events.send(Event::SessionUpdated { session });
         }
     }
+}
+
+/// A live report decides the state: one kept after its program left does not.
+fn live(info: &SessionInfo) -> bool {
+    info.program_status.as_ref().is_some_and(|p| !p.ended)
+}
+
+/// The program that reported left: it exited, its shell's prompt came back,
+/// or another one came in front. Its records go; a done or error stays to be
+/// read, marked ended, until the pane is seen or new work starts. True when
+/// `program_status` changed.
+fn end_reports(records: &mut Records, info: &mut SessionInfo) -> bool {
+    let had = records.root().is_some();
+    let kept = records.end();
+    let new = if had {
+        kept
+    } else {
+        info.program_status.clone().filter(|p| p.ended)
+    };
+    let changed = info.program_status != new;
+    info.program_status = new;
+    changed
 }
 
 /// One item for the writer thread. A pause holds the input behind it, so a
@@ -1743,7 +1960,10 @@ fn default_shell() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{prints, replies, topic, Front, Screen, ScreenState, HOLD, QUIET, SCAN};
+    use super::{
+        now_ms, prints, replies, topic, Front, Screen, ScreenState, GRACE_MS, HOLD, QUIET, SCAN,
+        STALL_MS,
+    };
     use std::time::Instant;
 
     fn state() -> ScreenState {
@@ -1813,6 +2033,8 @@ mod tests {
             replies(b"\x1bP1$r0m\x1b\\\x1b[?2004;1$y\x1b[?5u\x1b[8;24;80t"),
             Some(4)
         );
+        // XTVERSION's answer, as a terminal gives it.
+        assert_eq!(replies(b"\x1bP>|xterm.js(5.5.0)\x1b\\"), Some(1));
         // Keys, a paste, Alt+[, and a reply with a key after it are not replies.
         for keys in [
             &b"y"[..],
@@ -1979,8 +2201,104 @@ mod tests {
         assert!(feed(b"\x1bc").program_status.is_none());
         feed(b"\x1b]7501;state=error\x07");
         pool.set_front(&session, Front::Shell);
+        // The failure stays to be read, and decides nothing more.
+        let kept = session.info();
+        let status = kept.program_status.unwrap();
+        assert_eq!((status.state.as_str(), status.ended), ("error", true));
+        assert!(kept.unread && !session.claimed());
+        pool.seen(&info.id).unwrap();
         assert!(session.info().program_status.is_none());
         std::thread::sleep(Duration::from_millis(10));
+        pool.kill(&info.id).unwrap();
+    }
+
+    /// The refinements over a report: another program in front ends it, the
+    /// agent's own prompt outlasts a report that it works, a long silence is
+    /// a hint, and a message-only change waits a moment.
+    #[test]
+    fn reports_bind_to_their_program_and_yield_to_its_prompt() {
+        use skiff_core::{
+            protocol::Event,
+            session::{SessionSpec, SessionState},
+        };
+        use std::sync::atomic::Ordering::Relaxed;
+        let pool = super::SessionPool::new();
+        let info = pool
+            .create(SessionSpec {
+                command: Some("/bin/sleep".into()),
+                args: vec!["30".into()],
+                cols: 80,
+                rows: 24,
+                ..Default::default()
+            })
+            .unwrap();
+        let session = pool.get(&info.id).unwrap();
+        pool.set_front(&session, Front::Agent("codex"));
+        let feed = |bytes: &[u8]| {
+            std::thread::sleep(SCAN);
+            pool.on_output(&session, &info.id, bytes);
+            session.info()
+        };
+        let prompt = b"\r\nWould you like to run the following command?\r\nPress enter to confirm or esc to cancel\r\n";
+
+        // Another group in front: the reports were the old program's.
+        feed(b"\x1b]7501;state=done:app=codex\x07");
+        let group = session.records.lock().unwrap().group;
+        assert_ne!(group, 0, "the report took no group");
+        pool.status_group(&session, group);
+        assert!(
+            session.info().program_status.is_some(),
+            "the same group ended it"
+        );
+        pool.status_group(&session, group + 1);
+        let left = session.info().program_status.unwrap();
+        assert!(left.ended && !session.claimed(), "{left:?}");
+
+        // The prompt under a report that it works, past the grace.
+        assert_eq!(
+            feed(b"\x1b]7501;state=working\x07").state,
+            SessionState::Working
+        );
+        assert!(!session.info().program_status.unwrap().ended);
+        assert_eq!(feed(prompt).state, SessionState::Working);
+        pool.status_tick(&session);
+        assert_eq!(session.info().state, SessionState::Working, "no grace");
+        session.approval_since.store(now_ms() - GRACE_MS, Relaxed);
+        pool.status_tick(&session);
+        assert_eq!(session.info().state, SessionState::Waiting);
+        assert_eq!(
+            feed(b"\x1b[2J\x1b[Hdone deciding\r\n").state,
+            SessionState::Working
+        );
+
+        // Silence while it works.
+        session.last_output.store(now_ms() - STALL_MS, Relaxed);
+        pool.status_tick(&session);
+        assert!(session.info().program_status.unwrap().stalled);
+        assert!(!feed(b"x").program_status.unwrap().stalled);
+
+        // A message-only change waits for the tick; a state change does not.
+        let mut events = pool.events.subscribe();
+        let updates = |events: &mut tokio::sync::broadcast::Receiver<Event>| {
+            std::iter::from_fn(|| events.try_recv().ok())
+                .filter(|e| matches!(e, Event::SessionUpdated { .. }))
+                .count()
+        };
+        feed(b"\x1b]7501;state=working:msg=VGhpbmtpbmc=\x07");
+        feed(b"\x1b]7501;state=working:msg=UmVzcG9uZGluZw==\x07");
+        assert_eq!(
+            updates(&mut events),
+            0,
+            "a message-only change went out at once"
+        );
+        assert_eq!(
+            session.info().program_status.unwrap().msg.as_deref(),
+            Some("Responding")
+        );
+        pool.status_tick(&session);
+        assert_eq!(updates(&mut events), 1, "the tick did not send it");
+        feed(b"\x1b]7501;state=blocked:kind=permission\x07");
+        assert_eq!(updates(&mut events), 1);
         pool.kill(&info.id).unwrap();
     }
 

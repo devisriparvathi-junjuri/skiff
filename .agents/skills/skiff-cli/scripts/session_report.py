@@ -99,6 +99,12 @@ def report(sessions, groups, width, details=False):
                 pane.append(f"\n{session['id']}\n{program}", style="dim")
                 pane.append(f"\n{membership.get(session['id'], 'ungrouped')}", style="dim")
             style = {"working": "green", "waiting": "yellow", "done": "dim"}.get(state, "")
+            # What the program reports itself (OSC 7501): what it waits for, a failed turn.
+            reported = session.get("program_status") or {}
+            if reported.get("state") == "blocked" and reported.get("kind"):
+                state = f"{state} ({clean(reported['kind'])})"
+            elif reported.get("state") == "error":
+                state, style = f"{state} (failed)", "red"
             status = Text(state, style=style)
             if narrow:
                 pane.append(f"\n{state}", style=style)

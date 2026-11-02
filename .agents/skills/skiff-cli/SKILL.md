@@ -58,6 +58,7 @@ Use the report to show the user what is open. Use the JSON to pick a target or m
 | Read the screen | `skiff peek S [-n 40]` |
 | Wait for a stop | `skiff wait S --for idle` |
 | Wait for the first of several | `skiff wait S1 S2 --any --for idle` |
+| Wait for a turn's end | `skiff wait S --for turn` |
 | Follow state changes | `skiff events --json [S...] [--timeout SECS]` |
 | Rename, clear the name | `skiff rename S "name"`, `skiff rename S ""` |
 | Mark seen | `skiff seen S` |
@@ -136,6 +137,7 @@ Keep monitoring after a send when the user wants the result. A request only to d
 - For several children, use `skiff wait S1 S2 S3 --any --for idle`. It prints the id, name and state of the first one. Read that screen, then wait on the rest.
 - To keep your turn free, run `skiff events --json [S...]` as a background job. It has no time limit. In the foreground, give `--timeout`. With no names, it follows every session, new ones too.
 - After each `wait` exit 0 and each event, run `peek`. `idle` means quiet, not done.
+- An agent that reports its state (OSC 7501: Claude Code, Codex, Grok, Antigravity) says more. In `ls --json`, `program_status.state` is `working`, `blocked` (with `kind`: `permission`, `question` or `auth`, and `msg`), `idle`, `done` or `error`. `done` and `error` end a turn. `skiff wait S --for turn` waits for that end, and exits 4 when it was an error. Still read the screen: the report says the turn ended, not what it did.
 - Collect the result, the checks and any blocker. Do not report a task as done from the state alone.
 - For a deployment, get the agent's deployment result before you call it live. Keep local checks apart from production checks.
 - A child leaves its result on screen. For a long result, give the child a file path.
@@ -147,7 +149,8 @@ Keep monitoring after a send when the user wants the result. A request only to d
 | 0 | Every session reached the state. With `--any`: one did. |
 | 1 | Timeout. |
 | 2 | A session closed or exited first. With `--any`: every session did. |
-| 3 | A session is `waiting`. With `--for idle`, `done` or `any-not-working`, this stops the wait at once. |
+| 3 | A session is `waiting`. With `--for idle`, `done`, `any-not-working` or `turn`, this stops the wait at once. |
+| 4 | With `--for turn`: a turn ended in an error the program reported. |
 
 With `--for idle`, a known agent that shows its busy line ("esc to interrupt") is not idle yet.
 
@@ -157,7 +160,11 @@ With `--for idle`, a known agent that shows its busy line ("esc to interrupt") i
 {"event":"state","session":ID,"name":N,"state":"idle"}
 {"event":"exit","session":ID,"name":N,"code":0}
 {"event":"removed","session":ID,"name":N}
+{"event":"status","session":ID,"name":N,"program_status":{"state":"blocked","kind":"permission","msg":"..."}}
+{"event":"turn","session":ID,"name":N}
 ```
+
+A `status` line comes when what a program reports changes its state, what it waits for or its message; `program_status` is `null` once it reports nothing. A `turn` line comes when a turn ends.
 
 `events` exits 0 when `--timeout` ends or every named session is gone, 1 on an error, and 2 when a name matches no session.
 

@@ -63,6 +63,9 @@ pub enum Event {
 
     /// skiff: a full reset (RIS).
     Reset,
+
+    /// skiff: a query the terminal does not answer here (XTVERSION, DECRQSS).
+    UnansweredQuery,
 }
 
 impl Debug for Event {
@@ -83,6 +86,7 @@ impl Debug for Event {
             Event::ChildExit(status) => write!(f, "ChildExit({status:?})"),
             Event::ProgramStatus(body, _) => write!(f, "ProgramStatus({})", String::from_utf8_lossy(body)),
             Event::Reset => write!(f, "Reset"),
+            Event::UnansweredQuery => write!(f, "UnansweredQuery"),
         }
     }
 }

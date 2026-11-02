@@ -335,9 +335,9 @@ impl PendingConnection {
     /// an adapter generation for the instance, so every reconnect is
     /// NewInstance. Never a pid or peer credentials.
     pub async fn activate(self) -> anyhow::Result<SelectedHost> {
-        let (version, protocol, identity) = match self.info {
-            Some(info) => (Some(info.version), Some(info.protocol), info.identity),
-            None => (None, None, None),
+        let (version, protocol, identity, features) = match self.info {
+            Some(info) => (Some(info.version), Some(info.protocol), info.identity, info.features),
+            None => (None, None, None, Vec::new()),
         };
         let remote = self.selection.ssh_target().cloned();
         // A remote Host must say who it is. The app's bootstrap id describes
@@ -418,6 +418,13 @@ impl PendingConnection {
                 Capability::session_terminal(),
             ]
             .into_iter()
+            // Only a skiffd that says it reads OSC 7501 fills program_status.
+            .chain(
+                features
+                    .iter()
+                    .any(|f| f == skiff_core::protocol::FEATURE_PROGRAM_STATUS)
+                    .then(Capability::program_status),
+            )
             .chain(
                 mutable
                     .then(|| {

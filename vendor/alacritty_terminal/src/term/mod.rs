@@ -2230,6 +2230,12 @@ impl<T: EventListener> Handler for Term<T> {
         self.event_proxy.send_event(Event::ProgramStatus(body.to_vec(), bell_terminated));
     }
 
+    /// skiff: a query left to a client's terminal, for the listener's count.
+    #[inline]
+    fn unanswered_query(&mut self) {
+        self.event_proxy.send_event(Event::UnansweredQuery);
+    }
+
     #[inline]
     fn set_title(&mut self, title: Option<String>) {
         trace!("Setting title to '{title:?}'");

@@ -26,6 +26,7 @@ import { findRow, itemKey, listItems } from "../app/keyboard";
 import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
 import { startPreview } from "../terminal/peek";
 import { stateIcon } from "../appearance/stateIcon";
+import { stateLabel, statusSig } from "./programStatus";
 import { collapsed, DEFAULT_ACCENT, removeErrors, removing, S, selectedWorktree, sessions } from "../app/state";
 import { accent, awayPlaces, currentWorktree, place } from "../app/stateQueries";
 
@@ -110,7 +111,7 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
 }
 
 /** What a session row shows of the session's state. A kept row takes a new one in place. */
-const look = (s: SessionInfo) => JSON.stringify([s.state, s.unread, s.exit_code, s.agent_exit]);
+const look = (s: SessionInfo) => JSON.stringify([s.state, s.unread, s.exit_code, s.agent_exit, statusSig(s)]);
 
 /**
  * Writes the session's state into its row: the state class, the label, the
@@ -126,12 +127,13 @@ function applyLook(row: HTMLElement, s: SessionInfo) {
   // State shows only when it matters: waiting stands out, working pulses, done fades.
   for (const st of STATES) if (st !== s.state) row.classList.remove(`st-${st}`);
   row.classList.add(`st-${s.state}`);
-  row.setAttribute("aria-label", t("sidebar.rowLabel", { agent: agentName(s), title: taskTitle(s), state: t(`state.${s.state}`) }));
+  row.setAttribute("aria-label", t("sidebar.rowLabel", { agent: agentName(s), title: taskTitle(s), state: stateLabel(s) }));
   const mark = stateIcon(s);
   row.classList.toggle("unread-row", s.state === "idle" && mark.classList.contains("unread"));
-  // The mark is the row's last child.
+  // The mark is the row's last child. A kept mark takes the new note.
   if (!kept) row.appendChild(mark);
   else if (row.lastElementChild!.className !== mark.className) row.lastElementChild!.replaceWith(mark);
+  else (row.lastElementChild as HTMLElement).title = mark.title;
 }
 
 const STATES: SessionInfo["state"][] = ["idle", "working", "waiting", "done"];

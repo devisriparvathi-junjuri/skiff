@@ -47,6 +47,16 @@ async fn activate(
     listener: &UnixListener,
     identity: Option<serde_json::Value>,
 ) -> (anyhow::Result<SelectedHost>, Peer) {
+    activate_with(selection, listener, identity, None).await
+}
+
+/// As [`activate`], with the pong's `features` too.
+async fn activate_with(
+    selection: &HostSelection,
+    listener: &UnixListener,
+    identity: Option<serde_json::Value>,
+    features: Option<serde_json::Value>,
+) -> (anyhow::Result<SelectedHost>, Peer) {
     let (pending, peer) = tokio::join!(selection.connect(), listener.accept());
     let mut pending = pending.unwrap();
     let mut peer = BufReader::new(peer.unwrap().0);
@@ -59,6 +69,9 @@ async fn activate(
             serde_json::json!({"id":1,"type":"pong","version":"0.6.24","protocol":27,"pid":4242});
         if let Some(identity) = identity {
             pong["identity"] = identity;
+        }
+        if let Some(features) = features {
+            pong["features"] = features;
         }
         reply(&mut peer, pong).await;
     });
@@ -205,4 +218,27 @@ async fn same_instance_still_takes_a_fresh_subscription_and_snapshot() {
             rows: 24
         })
     );
+}
+
+/// A skiffd that says it reads OSC 7501 gives the Host `program_status@1`;
+/// one that predates the feature list does not.
+#[tokio::test]
+async fn program_status_is_offered_only_when_skiffd_names_it() {
+    let dir = Dir::new();
+    let socket = dir.0.join("a.sock");
+    let listener = UnixListener::bind(&socket).unwrap();
+    let selection = HostSelection::new(socket, dir.0.join("config/local-host-id"));
+    let offers = |host: &SelectedHost| {
+        host.connection()
+            .hello()
+            .capabilities
+            .iter()
+            .any(|c| c.name == skiff_host_api::PROGRAM_STATUS && c.version == 1)
+    };
+    let id = Some(identity("host-a", "run-1"));
+    let (old, _p1) = activate_with(&selection, &listener, id.clone(), None).await;
+    assert!(!offers(&old.unwrap()));
+    let features = serde_json::json!(["program_status@1"]);
+    let (new, _p2) = activate_with(&selection, &listener, id, Some(features)).await;
+    assert!(offers(&new.unwrap()));
 }

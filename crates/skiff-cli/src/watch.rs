@@ -195,9 +195,15 @@ pub struct Wake {
     /// The task's uid, for an interrupted or a pending task. For a gone
     /// pane, its open uids, or the uids skiff closed, joined with ", ".
     pub task: Option<String>,
+    /// An idle pane whose program reported its turn ended in an error (OSC 7501).
+    pub failed: bool,
 }
 
 impl Wake {
+    fn phrase(&self) -> &'static str {
+        if self.failed { "failed" } else { self.fact.phrase() }
+    }
+
     fn tail(&self) -> String {
         match (&self.task, self.fact) {
             (Some(t), Fact::Pending) => format!(": task {t} is pending: skiff ledger send {t} --enter"),
@@ -223,7 +229,7 @@ pub fn wake_line(wakes: &[Wake]) -> String {
                 return format!("the {} reported hand-off {}", w.name, w.task.as_deref().unwrap_or_default());
             }
             let who = if w.name.is_empty() { String::new() } else { format!("{} ", w.name) };
-            format!("pane {who}{} {}{}", print::short_id(&w.id), w.fact.phrase(), w.tail())
+            format!("pane {who}{} {}{}", print::short_id(&w.id), w.phrase(), w.tail())
         })
         .collect();
     // A task skiff closed, and a hand-off a project Skipper reported, is
@@ -538,7 +544,10 @@ impl Watcher {
         }
         let fact = fact?;
         let id = s.map(|s| s.id.clone()).unwrap_or_else(|| key.to_string());
-        let wake = Wake { fact, pane: key.to_string(), name: pane.name.clone(), id, task };
+        // The program said its turn ended in an error: say so, not idle.
+        let failed = fact == Fact::Idle
+            && s.and_then(|s| s.program_status.as_ref()).is_some_and(|p| p.state == "error");
+        let wake = Wake { fact, pane: key.to_string(), name: pane.name.clone(), id, task, failed };
         if fact != Fact::Waiting {
             // The newest fact for a pane replaces an older one still held.
             self.held.retain(|h| h.pane != key);
@@ -555,7 +564,7 @@ impl Watcher {
         let pane = self.panes.entry(key.clone()).or_default();
         pane.name = resolve::display_name(s).to_string();
         let fact = pane.observe(Now::Interrupted)?;
-        let wake = Wake { fact, pane: key, name: pane.name.clone(), id: s.id.clone(), task: Some(uid.to_string()) };
+        let wake = Wake { fact, pane: key, name: pane.name.clone(), id: s.id.clone(), task: Some(uid.to_string()), failed: false };
         self.held.push(wake.clone());
         Some(wake)
     }
@@ -610,6 +619,7 @@ impl Watcher {
                     name: self.panes.get(&pane).map(|p| p.name.clone()).unwrap_or_default(),
                     id: pane,
                     task: Some(r.uid.clone()),
+                    failed: false,
                 }),
             }
         }
@@ -641,6 +651,7 @@ impl Watcher {
                     .unwrap_or_else(|| format!("{} Skipper", skiff_client::skipper::scope_fleet(&r.project).unwrap_or(&r.project))),
                 id: r.pane_id.clone().unwrap_or_default(),
                 task: Some(r.uid.clone()),
+                failed: false,
             })
             .collect();
         self.held.extend(wakes.iter().cloned());
@@ -1085,7 +1096,7 @@ async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<Option<i32>>
             Some(p) => format!(" (held for plan {p})"),
             None => String::new(),
         };
-        log(format!("{} {} {}{}{to}{plan}", wake.fact.phrase(), print::short_id(&wake.id), wake.name, wake.tail()));
+        log(format!("{} {} {}{}{to}{plan}", wake.phrase(), print::short_id(&wake.id), wake.name, wake.tail()));
         if wake.fact == Fact::Waiting && o.notify {
             let title = format!("{} ({}) is waiting", wake.name, print::short_id(&wake.id));
             desktop_notify(&title, "It needs you. Answer it in its pane.");
@@ -1366,14 +1377,14 @@ pub(crate) mod tests {
 
     #[test]
     fn held_wakes_make_one_line() {
-        let w = |fact, name: &str, id: &str| Wake { fact, pane: id.into(), name: name.into(), id: id.into(), task: None };
+        let w = |fact, name: &str, id: &str| Wake { fact, pane: id.into(), name: name.into(), id: id.into(), task: None, failed: false };
         assert_eq!(wake_line(&[w(Fact::Idle, "api", "abc12345xyz")]), "[watch] pane api abc12345 is idle. Read it, then mark it seen.");
         assert_eq!(
             wake_line(&[w(Fact::Idle, "api", "abc12345"), w(Fact::Gone, "", "def67890")]),
             "[watch] pane api abc12345 is idle; pane def67890 is gone. Read them, then mark each seen."
         );
         // A gone pane with open tasks: they are reassigned or marked done, not marked seen.
-        let gone = |id: &str, t: &str| Wake { fact: Fact::Gone, pane: id.into(), name: String::new(), id: id.into(), task: Some(t.into()) };
+        let gone = |id: &str, t: &str| Wake { fact: Fact::Gone, pane: id.into(), name: String::new(), id: id.into(), task: Some(t.into()), failed: false };
         assert_eq!(
             wake_line(&[gone("4ac9e7a1", "d0e7b2f4")]),
             "[watch] pane 4ac9e7a1 is gone: task d0e7b2f4 is open. Reassign it or mark it done."
@@ -1606,6 +1617,20 @@ pub(crate) mod tests {
         assert_eq!(w.track("a", Some(&s), &[]).map(|k| k.fact), Some(Fact::Idle));
     }
 
+    /// A turn the program said ended in an error is told as failed.
+    #[test]
+    fn a_turn_that_ended_in_an_error_is_told_failed() {
+        let mut w = Watcher::default();
+        let mut s = info("a", "idle", true);
+        s.program_status = serde_json::from_value(serde_json::json!({"state": "error", "msg": "boom"})).unwrap();
+        let wake = w.track("a", Some(&s), &[]).unwrap();
+        assert_eq!((wake.fact, wake.failed), (Fact::Idle, true));
+        assert_eq!(wake_line(&[wake]), "[watch] pane a a failed. Read it, then mark it seen.");
+        let mut w = Watcher::default();
+        s.program_status = serde_json::from_value(serde_json::json!({"state": "done"})).unwrap();
+        assert!(!w.track("a", Some(&s), &[]).unwrap().failed);
+    }
+
     #[test]
     fn a_held_idle_line_goes_when_the_pane_works_or_waits() {
         for state in ["working", "waiting"] {
@@ -1655,8 +1680,8 @@ pub(crate) mod tests {
         w.closed(&[done("d0e7b2f4", "5b1c9e2a")]);
         assert!(w.held.is_empty());
         // With other lines, the others come first.
-        let idle = Wake { fact: Fact::Idle, pane: "abc12345".into(), name: "api".into(), id: "abc12345".into(), task: None };
-        let closed = Wake { fact: Fact::Closed, pane: "gone:4ac9e7a1".into(), name: String::new(), id: "4ac9e7a1".into(), task: Some("d0e7b2f4".into()) };
+        let idle = Wake { fact: Fact::Idle, pane: "abc12345".into(), name: "api".into(), id: "abc12345".into(), task: None, failed: false };
+        let closed = Wake { fact: Fact::Closed, pane: "gone:4ac9e7a1".into(), name: String::new(), id: "4ac9e7a1".into(), task: Some("d0e7b2f4".into()), failed: false };
         assert_eq!(
             wake_line(&[closed, idle]),
             "[watch] pane api abc12345 is idle; pane 4ac9e7a1 is gone: task d0e7b2f4 is done with it. Read it, then mark it seen. Tell the person, then run skiff ledger report d0e7b2f4."

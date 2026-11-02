@@ -406,6 +406,13 @@ impl<T: Timeout> Processor<T> {
         self.state.sync_state.buffer.len()
     }
 
+    /// skiff: the bytes a synchronized update holds, not parsed yet, so a
+    /// query in them can be answered before the update ends.
+    #[inline]
+    pub fn sync_bytes(&self) -> &[u8] {
+        &self.state.sync_state.buffer
+    }
+
     /// Process a new byte during a synchronized update.
     ///
     /// Returns the number of bytes processed.
@@ -665,6 +672,10 @@ pub trait Handler {
     /// after `7501;`, `?` for the probe. `bell_terminated` says how the
     /// sequence ended, so a reply can end the same way.
     fn program_status(&mut self, _body: &[u8], _bell_terminated: bool) {}
+
+    /// skiff: a query this parser does not answer, which a client's terminal
+    /// may: XTVERSION (`CSI > q`) and DECRQSS (`DCS $ q … ST`).
+    fn unanswered_query(&mut self) {}
 
     /// Reverse Index.
     ///
@@ -1357,6 +1368,10 @@ where
 
     #[inline]
     fn hook(&mut self, params: &Params, intermediates: &[u8], ignore: bool, action: char) {
+        // skiff: DECRQSS, for the count of open queries.
+        if action == 'q' && intermediates == [b'$'] && !ignore {
+            self.handler.unanswered_query();
+        }
         debug!(
             "[unhandled hook] params={:?}, ints: {:?}, ignore: {:?}, action: {:?}",
             params, intermediates, ignore, action
@@ -1817,6 +1832,8 @@ where
             ('u', []) => handler.restore_cursor_position(),
             ('X', []) => handler.erase_chars(next_param_or(1) as usize),
             ('Z', []) => handler.move_backward_tabs(next_param_or(1)),
+            // skiff: XTVERSION, for the count of open queries.
+            ('q', [b'>']) => handler.unanswered_query(),
             _ => unhandled!(),
         }
     }

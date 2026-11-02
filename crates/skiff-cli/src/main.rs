@@ -57,6 +57,9 @@ enum Cmd {
     #[command(subcommand)]
     Daemon(DaemonCmd),
     /// List sessions.
+    #[command(
+        after_help = "STATE adds what a program reports about itself (OSC 7501): `waiting (permission)`, `waiting (question)` or `waiting (auth)` for what it waits for, `idle (done)` or `idle (failed)` for how its turn ended, `working 40%` for its progress, `working (no output)` after 5 minutes without output.\nWith --json, each session carries `program_status` while its program reports: {state, kind, msg, title, progress, app, stalled, ended, children}. `ended`: the program left, and a done or error stays until the pane is seen."
+    )]
     Ls {
         #[arg(long)]
         json: bool,
@@ -172,9 +175,10 @@ enum Cmd {
         lines: Option<usize>,
     },
     /// Wait until sessions reach a state. Exit 0 when all do, 1 on timeout,
-    /// 2 when one closes or exits first, 3 when one is waiting.
+    /// 2 when one closes or exits first, 3 when one is waiting, 4 when a
+    /// turn ended in an error.
     #[command(
-        after_help = "Exit codes:\n  0  every session reached the state. With --any: one session reached it. Its id, name and state print on stdout.\n  1  timeout\n  2  a session closed or exited before it reached the state. With --any: every session did.\n  3  a session is waiting (approval prompt or bell). A person answers it in its pane.\nWith --for idle, done or any-not-working, wait stops at once when any session is waiting. --for waiting is not changed.\nWith --for idle, a known agent that is quiet but shows its busy line (\"esc to interrupt\") is not idle yet.\nIn a Skiff pane ($SKIFF_SESSION), or with no terminal on stdout, the timeout defaults to 45 seconds and is at most 60.\nAfter exit 0, read the screen with `skiff peek`: idle does not prove that an agent finished."
+        after_help = "Exit codes:\n  0  every session reached the state. With --any: one session reached it. Its id, name and state print on stdout.\n  1  timeout\n  2  a session closed or exited before it reached the state. With --any: every session did.\n  3  a session is waiting (approval prompt or bell). A person answers it in its pane.\n  4  with --for turn: a turn ended in an error the program reported.\n--for turn waits until each turn ends, a result to read: the program reported done or error (OSC 7501), or the pane's turn ended and is unread. A session whose turn ended and is not read counts at once.\nWith --for idle, done, any-not-working or turn, wait stops at once when any session is waiting. --for waiting is not changed.\nWith --for idle, a known agent that is quiet but shows its busy line (\"esc to interrupt\") is not idle yet.\nIn a Skiff pane ($SKIFF_SESSION), or with no terminal on stdout, the timeout defaults to 45 seconds and is at most 60.\nAfter exit 0, read the screen with `skiff peek`: idle does not prove that an agent finished."
     )]
     Wait {
         #[arg(required = true)]
@@ -188,10 +192,10 @@ enum Cmd {
         #[arg(long, value_name = "SECS")]
         timeout: Option<f64>,
     },
-    /// Print each state change, exit and removal as one line, for every
-    /// session or for the named ones. Runs until Ctrl+C or --timeout.
+    /// Print each state change, exit, removal, program status and turn end
+    /// as one line, for every session or for the named ones. Runs until Ctrl+C or --timeout.
     #[command(
-        after_help = "Lines: a state change prints the new state, an exit prints `exit` and the code, a closed session prints `removed`. No output or screen text prints.\nWith --json, each line is one JSON object:\n  {\"event\":\"state\",\"session\":ID,\"name\":NAME,\"state\":\"idle\"}\n  {\"event\":\"exit\",\"session\":ID,\"name\":NAME,\"code\":0}\n  {\"event\":\"removed\",\"session\":ID,\"name\":NAME}\nExit codes:\n  0  --timeout ran out, or every named session was removed\n  1  error\n  2  a name matches no session\nRun it in the background so your own turn stays free. idle means quiet, not done. After any line, read the screen with `skiff peek`."
+        after_help = "Lines: a state change prints the new state, an exit prints `exit` and the code, a closed session prints `removed`. No output or screen text prints.\nWith --json, each line is one JSON object:\n  {\"event\":\"state\",\"session\":ID,\"name\":NAME,\"state\":\"idle\"}\n  {\"event\":\"exit\",\"session\":ID,\"name\":NAME,\"code\":0}\n  {\"event\":\"removed\",\"session\":ID,\"name\":NAME}\n  {\"event\":\"status\",\"session\":ID,\"name\":NAME,\"program_status\":{\"state\":\"blocked\",\"kind\":\"permission\",\"msg\":\"…\"}}\n  {\"event\":\"turn\",\"session\":ID,\"name\":NAME}\nA `status` line prints when what the program reports (OSC 7501) changes its state, what it waits for or its message: `status blocked (permission): MSG`, `status done`, `status none` once it reports nothing. `program_status` is null then. A `turn` line (`turn ended`) prints when a turn ends: a result to read.\nExit codes:\n  0  --timeout ran out, or every named session was removed\n  1  error\n  2  a name matches no session\nRun it in the background so your own turn stays free. idle means quiet, not done. After any line, read the screen with `skiff peek`."
     )]
     Events {
         /// Default: every session, also the ones started later.

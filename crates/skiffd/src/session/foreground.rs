@@ -96,6 +96,8 @@ impl SessionPool {
             None => Front::Command,
         };
         let same_front = session.front() == front;
+        // Reports made under the group before are its program's.
+        self.status_group(session, group);
         self.set_front(session, front);
         let agent = agent.map(str::to_owned);
         let program = agent.clone().unwrap_or(name);

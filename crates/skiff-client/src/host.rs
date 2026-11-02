@@ -574,7 +574,8 @@ impl HostConnection {
 
     /// An in-process local adapter. It may advertise only the capabilities
     /// its sources serve; M1e adds `session_terminal@1` with a TerminalSource,
-    /// M1g `session_lifecycle@1` and `session_groups@1`, M3 `session_agents@1`.
+    /// M1g `session_lifecycle@1` and `session_groups@1`, M3 `session_agents@1`,
+    /// and `program_status@1` with the inventory, when skiffd reads OSC 7501.
     /// Never `sessions@1`.
     pub fn local(
         sources: LocalSources,
@@ -601,6 +602,8 @@ impl HostConnection {
                 && !(lifecycle.is_some() && c.name == skiff_host_api::SESSION_LIFECYCLE)
                 && !(groups.is_some() && c.name == skiff_host_api::SESSION_GROUPS)
                 && !(agents.is_some() && c.name == skiff_host_api::SESSION_AGENTS)
+                // A field of the inventory and its updates, from the same source.
+                && !(inventory.is_some() && c.name == skiff_host_api::PROGRAM_STATUS)
         }) {
             return Err(Error::MalformedContract {
                 message: "local adapter cannot advertise capabilities without a source".into(),

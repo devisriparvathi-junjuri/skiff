@@ -9,6 +9,7 @@ import { rune, type RuneName } from "../ui/runes";
 import { branchName, isProjectSkipper, scopeName, skipperBase, taskTitle } from "../workspace/model";
 import { faceSig, skipperFace } from "../workspace/skipperFace";
 import { stateIcon } from "../appearance/stateIcon";
+import { progressOf, statusNote, statusSig } from "../workspace/programStatus";
 
 import { button, h } from "../ui/dom";
 
@@ -53,7 +54,7 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   const grouped = inShownGroup(id);
   const away = s ? awayPlaces(s).map((a) => branchName(a.worktree)).join(", ") : "";
   // Rebuild only on change, so a click that spans a daemon event still lands.
-  const sig = s ? JSON.stringify([s.state, s.exit_code, s.agent_exit, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, grouped, away, resumeOffer(s), newestImage(), insertShown(id), faceSig(s.coordinator ? null : (s.skipper ?? null))]) : "";
+  const sig = s ? JSON.stringify([s.state, s.exit_code, s.agent_exit, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, grouped, away, resumeOffer(s), newestImage(), insertShown(id), faceSig(s.coordinator ? null : (s.skipper ?? null)), statusSig(s)]) : "";
   if (head.dataset.sig === sig) return;
   head.dataset.sig = sig;
   head.replaceChildren();
@@ -62,6 +63,22 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   head.classList.toggle("st-done", s.state === "done");
   // The state reads with the name it belongs to, not with the buttons.
   head.append(agentIcon(s), headTitle(s), stateIcon(s));
+  // What the program reports: what it waits for and asks, how its turn ended.
+  const note = statusNote(s);
+  if (note) head.appendChild(h("span", "where status-note", note));
+  // The program's own progress, along the header's lower edge.
+  const progress = progressOf(s);
+  if (progress !== null) {
+    const bar = h("span", "rp-bar head-progress");
+    bar.setAttribute("role", "progressbar");
+    bar.setAttribute("aria-valuenow", String(progress));
+    bar.setAttribute("aria-valuemin", "0");
+    bar.setAttribute("aria-valuemax", "100");
+    const fill = h("i");
+    fill.style.width = `${progress}%`;
+    bar.append(fill);
+    head.appendChild(bar);
+  }
   if (away) head.appendChild(h("span", "where mono", t("pane.workingIn", { from: at ? branchName(at.worktree) : t("sidebar.otherWhere"), away })));
   // After a restart: the agent this pane ran, and a button to get back to it.
   const offer = resumeOffer(s);

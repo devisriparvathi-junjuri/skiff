@@ -53,7 +53,7 @@ export interface SessionInfo {
   retiring?: boolean;
   /** The `skiff watch` processes registered for this session. Absent when none is, or from a daemon older than protocol 27. */
   watch?: WatchInfo | null;
-  /** The program's own OSC 7501 report while it lasts; it decides `state`. Absent when the program reports nothing, or from an older daemon. */
+  /** The program's own OSC 7501 report while it lasts; it decides `state` unless `ended`. Absent when the program reports nothing, or from an older daemon. */
   program_status?: ProgramStatus | null;
 }
 
@@ -69,6 +69,23 @@ export interface ProgramStatus {
   /** 0 to 100, while working or blocked. */
   progress?: number | null;
   app?: string | null;
+  /** Working, with no output for 5 minutes: it may hang. */
+  stalled?: boolean;
+  /** The program left; a done or error kept until the pane is seen. It decides nothing. */
+  ended?: boolean;
+  /** Its records under its own (sessions, subagents), by id. */
+  children?: ProgramChild[];
+}
+
+/** A record a program reports under its own: one of its sessions or subagents. */
+export interface ProgramChild {
+  id: string;
+  state: string;
+  kind?: string | null;
+  /** Plain text: never render it as markup. */
+  msg?: string | null;
+  title?: string | null;
+  progress?: number | null;
 }
 
 export interface DaemonMetrics {

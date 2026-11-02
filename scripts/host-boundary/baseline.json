@@ -239,7 +239,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "cb39b2203e91cc5f1df8d01ca660ed994167948f896703541d87dc60d489ad78"
+    "sha256": "1cd3e55ff3034fc29529e7073cb3730d7f50eb61df7ae34761ebd652dd9eec5d"
   },
   "apps/desktop/src-tauri/src/skiff_agent.rs": {
     "ownership": "Skipper (#166 R7): a remote Host's settings, folder, launch and watcher through HostConnection (skipper_config@1, skipper_file@1, skipper_run@1); This Mac's stay the local adapter (settings read from the config it writes) and its own process control; the watch log is LOCAL_ONLY",
@@ -347,7 +347,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "2534566c73d36227fbd2681bf518c1fec44fd559099712696b07b79b5226a42e"
+    "sha256": "4936b2ca29a1ec712ba742f9fd8b085d5341fa7cd72217156c87263f4cc0d2ba"
   },
   "apps/desktop/src/app/hosts.ts": {
     "ownership": "client policy: Host picker and label (list/select Hosts, links to Settings \u203a Hosts, clipboard opt-in) and the remote link-lost signal",
@@ -702,7 +702,7 @@
       "local provider: apps/desktop/src/workspace/canvas.ts",
       "local provider: apps/desktop/src/workspace/skipperFace.ts"
     ],
-    "sha256": "b25e2bb0bf4c4e8b65b2c6345923793571ee178b741584f4eb7dfa989dc5893a"
+    "sha256": "1359af1cf0b47e2cff92bab3131eef74414d2dd7aab24e811dd273d2bdf6f5c3"
   },
   "apps/desktop/src/terminal/peek.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -888,7 +888,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "53f08108ef84dd203c1fdc90b923c8103d00be10dbe3c5b94505b96b88fc4498"
+    "sha256": "f0d2a37b85435ef98ab97cedbe35f6508682e7edd9f953ee67a496e902bdfab6"
   },
   "apps/desktop/src/workspace/missionMotion.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -992,7 +992,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "182f4003340f0d8e50096b4221d4cc813e24681cac4719e5b147ac6a8fff729a"
+    "sha256": "3241e03502584094b9993c87d538d0320da812acc927672fc905f08602e2f75f"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

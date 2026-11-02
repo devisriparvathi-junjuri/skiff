@@ -1,10 +1,13 @@
-//! OSC 7501, the Program Status Protocol: the reports Codex and Claude Code
-//! send, replayed through the emulator, and what the pool makes of them.
+//! OSC 7501, the Program Status Protocol: the reports coding agents send,
+//! replayed through the emulator, and what the pool makes of them.
 //!
-//! The fixtures are PTY output captured from Codex 0.166.0 and Claude Code
-//! 2.1.316 on macOS, one read per line, in hex. Their visible text is blanked
-//! to `x`; escape sequences and titles are as captured. Claude Code ran with
-//! a terminal that answered its probe ("answered") and with one that did not.
+//! The fixtures are PTY output captured from Codex 0.166.0, Claude Code
+//! 2.1.316, Grok 1.0.70 and Antigravity (agy) 1.4.12 on macOS, one read per
+//! line, in hex. Their visible text is blanked to `x`; escape sequences and
+//! titles are as captured, but for the paths cut from agy's and Grok's
+//! messages and Grok's titles. Claude
+//! Code, Grok and agy ran with a terminal that answered their probe
+//! ("answered") and with one that did not.
 
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
@@ -39,6 +42,8 @@ struct Heard {
     probes: usize,
     /// The root record at each change of it.
     roots: Vec<Root>,
+    /// The root record's app at each change of it.
+    apps: Vec<Option<String>>,
     /// The session state at each change of the root record, from working.
     states: Vec<SessionState>,
     turns: usize,
@@ -74,6 +79,7 @@ fn replay(reads: &[Vec<u8>]) -> Heard {
                         as usize;
                 state = program_status::session_state(new.as_ref().map(|r| r.state), state);
                 heard.states.push(state);
+                heard.apps.push(new.as_ref().and_then(|r| r.app.clone()));
                 heard.roots.push(new.map(|r| (r.state, r.kind, r.msg)));
             }
         }
@@ -222,6 +228,161 @@ fn claude_code_unanswered_only_probes() {
         .titles
         .iter()
         .any(|t| title_state("claude", t) == Some(TitleState::Busy)));
+}
+
+/// Grok asks with XTVERSION, not DA1, and reports only once its probe is
+/// answered. Not signed in, it waits for the sign-in, and it clears its
+/// report as it quits.
+#[test]
+fn grok_answered_reports_its_sign_in() {
+    use SessionState as S;
+    use State as P;
+    let heard = same_in_any_reads("grok-1.0.70-signin-answered.hex");
+    assert_eq!(heard.probes, 1);
+    assert_eq!(
+        heard.roots,
+        [
+            Some((P::Blocked, Some(Kind::Auth), Some("Sign in to Grok".into()))),
+            None,
+        ]
+    );
+    assert_eq!(heard.apps, [Some("grok-build".into()), None]);
+    // The clear takes the sign-in prompt with it; the screen rules decide
+    // from working, and the shell's return then makes it idle.
+    assert_eq!(heard.states, [S::Waiting, S::Working]);
+    assert_eq!(heard.turns, 0);
+}
+
+#[test]
+fn grok_unanswered_only_probes() {
+    let heard = same_in_any_reads("grok-1.0.70-signin-unanswered.hex");
+    assert_eq!((heard.probes, heard.roots.len()), (1, 0));
+}
+
+/// Signed in, Grok reports each turn: `working` with what it does in
+/// `msg`, `done` at the end of a reply, `blocked` for a permission, and
+/// `idle` once a rejected permission cancels the turn. Its title keeps its
+/// spinner either way.
+#[test]
+fn grok_answered_reports_its_turns() {
+    use SessionState as S;
+    use State as P;
+    let heard = same_in_any_reads("grok-1.0.70-answered.hex");
+    assert_eq!(heard.probes, 1);
+    let working = |msg: &str| Some((P::Working, None, Some(msg.to_string())));
+    assert_eq!(
+        heard.roots,
+        [
+            Some((P::Idle, None, None)),
+            working("Waiting for response…"),
+            working("Responding"),
+            Some((P::Done, None, Some("Turn complete in 2.4s.".into()))),
+            working("Waiting for response…"),
+            working("Thinking"),
+            working("Responding"),
+            Some((
+                P::Blocked,
+                Some(Kind::Permission),
+                Some("Allow Edit to hello.txt?".into())
+            )),
+            working("Running: Write `hello.txt"),
+            Some((P::Idle, None, None)),
+            None,
+        ]
+    );
+    assert!(heard.apps[..10]
+        .iter()
+        .all(|a| a.as_deref() == Some("grok-build")));
+    assert_eq!(
+        heard.states,
+        [
+            S::Idle,
+            S::Working,
+            S::Working,
+            S::Idle,
+            S::Working,
+            S::Working,
+            S::Working,
+            S::Waiting,
+            S::Working,
+            S::Idle,
+            S::Idle
+        ]
+    );
+    assert_eq!(heard.turns, 1);
+    // Its title says the same in both modes; while it reports, the
+    // reports decide and the title rule waits.
+    let read: Vec<_> = heard
+        .titles
+        .iter()
+        .filter_map(|t| title_state("grok", t))
+        .collect();
+    assert!(read.contains(&TitleState::Busy) && read.contains(&TitleState::Action));
+}
+
+#[test]
+fn grok_unanswered_only_probes_but_keeps_its_title() {
+    let heard = same_in_any_reads("grok-1.0.70-unanswered.hex");
+    assert_eq!((heard.probes, heard.roots.len()), (1, 0));
+    // Unanswered, its title is what tells its turns and its prompt.
+    let read: Vec<_> = heard
+        .titles
+        .iter()
+        .filter_map(|t| title_state("grok", t))
+        .collect();
+    assert!(read.contains(&TitleState::Busy) && read.contains(&TitleState::Action));
+    assert_eq!(read.last(), Some(&TitleState::Ready));
+}
+
+/// Antigravity probes after its DA1 and takes a reply however late. It ends
+/// a turn with `done` and the reply's text, and a turned-down prompt with
+/// `idle`. It sets no title.
+#[test]
+fn agy_answered_reports_its_turns() {
+    use SessionState as S;
+    use State as P;
+    let heard = same_in_any_reads("agy-1.4.12-answered.hex");
+    assert_eq!(heard.probes, 1);
+    assert_eq!(
+        heard.roots,
+        [
+            Some((P::Idle, None, None)),
+            Some((P::Working, None, None)),
+            Some((P::Done, None, Some("Hi! How can I help you today?".into()))),
+            Some((P::Idle, None, None)),
+            Some((P::Working, None, None)),
+            Some((
+                P::Blocked,
+                Some(Kind::Permission),
+                Some("Approve WriteFile: Write: hello.txt".into())
+            )),
+            Some((P::Idle, None, None)),
+        ]
+    );
+    assert!(heard
+        .apps
+        .iter()
+        .all(|a| a.as_deref() == Some("antigravity")));
+    assert_eq!(
+        heard.states,
+        [
+            S::Idle,
+            S::Working,
+            S::Idle,
+            S::Idle,
+            S::Working,
+            S::Waiting,
+            S::Idle
+        ]
+    );
+    assert_eq!(heard.turns, 1);
+    assert!(heard.titles.is_empty(), "{:?}", heard.titles);
+}
+
+#[test]
+fn agy_unanswered_only_probes() {
+    let heard = same_in_any_reads("agy-1.4.12-unanswered.hex");
+    assert_eq!((heard.probes, heard.roots.len()), (1, 0));
 }
 
 fn pool() -> Arc<SessionPool> {
