@@ -144,6 +144,10 @@ export function workspaceHarness(expose = "") {
     "@tauri-apps/api/core": { invoke }, "./state": profileState,
   }, { localStorage: { getItem: (key: string) => stored.get(key) ?? null,
     setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) } }, "");
+  const profileDialogs = moduleFromSource("../src/workspace/profile/dialogs.ts", {
+    "../../ui/dialogParts": { dialogFrame: () => ({ overlay: h("div"), panel: h("div") }) },
+    "../../ui/dom": { h, button: (cls: string, text: string, run: () => void) => { const b = h("button", cls, text); b.addEventListener("click", run); return b; } },
+  }, { document, HTMLButtonElement: Element }, "");
   const imports = {
     "@tauri-apps/api/core": { invoke },
     "@tauri-apps/api/event": { listen: async (name: string, run: () => void) => { events.set(name, run); return () => {}; } },
@@ -162,6 +166,7 @@ export function workspaceHarness(expose = "") {
     "./profile/state": profileState,
     "./profile/membership": profileMembership,
     "./profile/storage": profileStorage,
+    "./profile/dialogs": profileDialogs,
   };
   profile = moduleFromSource("../src/workspace/profile.ts", imports, {
     document, requestAnimationFrame: (run: () => void) => run(),

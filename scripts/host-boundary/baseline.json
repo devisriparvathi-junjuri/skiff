@@ -909,7 +909,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "75b64056348c9da45981b271b26462658ecb7bbfc959920cc998e522d5d495b2"
+    "sha256": "a7de4f2e469f9f96e5e8d494d72e7facda6372c9a10130789046d76f6c16d4c1"
   },
   "apps/desktop/src/workspace/profile/membership.ts": {
     "ownership": "client policy: exact existing adapter only",
