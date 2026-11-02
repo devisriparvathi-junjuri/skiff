@@ -650,7 +650,8 @@ mod tests {
         use State::*;
         let (i, w, b, d) = (Some(Idle), Some(Working), Some(Blocked), Some(Done));
         // (old, new, ms, input, output) in order; the turn ends it tells.
-        let run = |steps: &[(Option<State>, Option<State>, u64, u64, u64)]| {
+        type Step = (Option<State>, Option<State>, u64, u64, u64);
+        let run = |steps: &[Step]| {
             let mut t = Turns::default();
             steps
                 .iter()
@@ -668,33 +669,25 @@ mod tests {
             [false, false, false]
         );
         // Too short, or nothing printed.
-        assert_eq!(
-            run(&[(None, i, 0, 5, 0), (i, w, 100, 6, 10), (w, i, 900, 6, 900)])[2],
-            false
-        );
-        assert_eq!(
-            run(&[(None, i, 0, 5, 0), (i, w, 100, 6, 10), (w, i, 2100, 6, 10)])[2],
-            false
-        );
+        assert!(!run(&[(None, i, 0, 5, 0), (i, w, 100, 6, 10), (w, i, 900, 6, 900)])[2]);
+        assert!(!run(&[(None, i, 0, 5, 0), (i, w, 100, 6, 10), (w, i, 2100, 6, 10)])[2]);
         // A first turn denied: straight to idle, or through a short working.
-        assert_eq!(
-            run(&[
+        assert!(
+            !run(&[
                 (None, i, 0, 5, 0),
                 (i, w, 100, 6, 10),
                 (w, b, 2100, 6, 500),
                 (b, i, 4000, 7, 600)
-            ])[3],
-            false
+            ])[3]
         );
-        assert_eq!(
-            run(&[
+        assert!(
+            !run(&[
                 (None, i, 0, 5, 0),
                 (i, w, 100, 6, 10),
                 (w, b, 2100, 6, 500),
                 (b, w, 4000, 7, 600),
                 (w, i, 4010, 7, 620)
-            ])[4],
-            false
+            ])[4]
         );
         // Once it said done, idle ends no turn again.
         assert_eq!(
