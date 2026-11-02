@@ -88,7 +88,7 @@ pub(crate) struct HostList {
     pub(super) selected: Option<String>,
     /// This computer's hostname, for the local Host's label. Empty if the
     /// system gives none.
-    local_name: String,
+    pub(super) local_name: String,
     pub(super) hosts: Vec<HostView>,
     /// The shown remote Host's clipboard permission, for the menu: given to
     /// the identity this window accepted. Each write asks `host_clipboard`.

@@ -177,7 +177,7 @@ pub(crate) struct Arrival {
     /// Skiff installed the Skiff there.
     pub(crate) managed: bool,
     /// The version this connect updated from.
-    pub(super) updated_from: Option<String>,
+    pub(crate) updated_from: Option<String>,
     /// The Skiff version of the managed install, as this app counts
     /// versions: what the check list's Skiff row compares. Never skiffd's
     /// own crate version. None: not managed, or not known.
