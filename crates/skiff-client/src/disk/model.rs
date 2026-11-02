@@ -1,4 +1,4 @@
-use super::Checkout;
+use super::checkout::Checkout;
 
 use std::path::PathBuf;
 
