@@ -888,7 +888,14 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "f0d2a37b85435ef98ab97cedbe35f6508682e7edd9f953ee67a496e902bdfab6"
+    "sha256": "a3b887e67dab22d24026b686851406cd86eaf0a3a7b60f094ccde65dd5fe81a0"
+  },
+  "apps/desktop/src/workspace/missionControl/model.ts": {
+    "ownership": "client policy: exact existing adapter only",
+    "reasons": [
+      "local provider: apps/desktop/src/workspace/ledger.ts"
+    ],
+    "sha256": "e23eff5f074bf899ac3b17d6244730a1e51c2d27c5207f52267256de0106b8de"
   },
   "apps/desktop/src/workspace/missionMotion.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
