@@ -1,7 +1,7 @@
 //! The bell and the unread flag: what sets each, for a shell, a program
 //! and an agent. One file, so every test here can use bash as the shell.
 
-use std::{os::unix::fs::PermissionsExt, path::PathBuf, sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use skiff_core::session::{SessionInfo, SessionSpec, SessionState};
 use skiffd::session::SessionPool;
@@ -36,14 +36,40 @@ fn bash(pool: &Arc<SessionPool>) -> SessionInfo {
     .unwrap()
 }
 
-/// An executable script with an agent's name, so the daemon takes it for that agent.
+/// A program with an agent's name that runs `script` with sh, so the
+/// daemon takes it for that agent. It is this test binary under that name,
+/// run as [`fake_agent_runs_its_script`] with [`FAKE_AGENT_ARGS`]. A script
+/// would not do: macOS names its process after the interpreter, and a
+/// renamed copy of a system shell is killed for its signature.
 fn fake_agent(name: &str, script: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("skiff-attention-{}-{name}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join(name);
-    std::fs::write(&file, format!("#!/bin/sh\n{script}\n")).unwrap();
-    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::copy(std::env::current_exe().unwrap(), &file).unwrap();
+    std::fs::write(file.with_extension("sh"), script).unwrap();
     file
+}
+
+const FAKE_AGENT_ARGS: [&str; 4] = [
+    "fake_agent_runs_its_script",
+    "--exact",
+    "-q",
+    "--test-threads=1",
+];
+
+/// The fake agent's body. In this binary's own run there is no script
+/// beside it, and it does nothing.
+#[test]
+fn fake_agent_runs_its_script() {
+    let script = std::env::current_exe().unwrap().with_extension("sh");
+    if !script.is_file() {
+        return;
+    }
+    let status = std::process::Command::new("/bin/sh")
+        .arg(&script)
+        .status()
+        .unwrap();
+    std::process::exit(status.code().unwrap_or(1));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -99,7 +125,13 @@ for i in 1 2 3 4 5; do printf 'recap %s\n' "$i"; sleep 0.4; done
 sleep 30"#,
     );
     let info = pool
-        .create(SessionSpec { command: Some(agent.display().to_string()), cols: 100, rows: 30, ..Default::default() })
+        .create(SessionSpec {
+            command: Some(agent.display().to_string()),
+            args: FAKE_AGENT_ARGS.map(String::from).to_vec(),
+            cols: 100,
+            rows: 30,
+            ..Default::default()
+        })
         .unwrap();
     let ready = until(&pool, &info.id, 8, "the agent did not go idle after it started", |i| i.state == SessionState::Idle).await;
     assert!(!ready.unread, "an agent that only started got the unread flag");
