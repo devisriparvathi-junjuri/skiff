@@ -1,0 +1,171 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Gummy vs plush</title>
+<style>
+:root { --u: 1px; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 13px -apple-system, system-ui, sans-serif; background: #0b0d10; }
+.bar { padding: 10px 16px; color: #ccd; font-size: 12px; } .bar label { cursor: pointer; }
+body.still .skipper-face * { animation: none !important; }
+.sheets { display: flex; flex-wrap: wrap; }
+.sheet { padding: 22px 28px 30px; flex: 1 0 auto; }
+.dark { background: #0f1216; color: #d8dde6; --dim: #7d8796; --strip: #151a20; --line: #232a34; }
+.light { background: #f5f6f8; color: #1d2430; --dim: #6b7482; --strip: #eceef2; --line: #dde1e7; }
+h2 { margin: 0 0 16px; font-size: 15px; }
+.strips { display: flex; gap: 24px; justify-content: center; }
+.strip { width: 280px; background: var(--strip); border: 1px solid var(--line); border-radius: 14px; padding: 18px 0 8px;
+  display: flex; flex-direction: column; align-items: center; }
+h3 { margin: 0 0 6px; font-size: 13px; letter-spacing: .14em; text-align: center; }
+h3 small { display: block; letter-spacing: 0; font-weight: 400; color: var(--dim); font-size: 11.5px; margin-top: 3px; }
+figure { margin: 0; padding: 22px 0 14px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+figure + figure { border-top: 1px solid var(--line); width: 100%; }
+figcaption { text-align: center; } figcaption b { font-size: 14px; }
+figcaption small { display: block; color: var(--dim); font-size: 11.5px; margin-top: 2px; }
+.only-dark .light, .only-light .dark { display: none; }
+.skipper-face { width: calc(var(--face) * var(--u)); height: calc(var(--face) * var(--u)); flex-shrink: 0; display: inline-block; line-height: 0; }
+.skipper-face svg { display: block; width: 100%; height: 100%; }
+/* Living faces. The eyes blink: they squash flat for about 150 ms, in
+   steps. Now and then the head turns. The front moves as one, on one
+   centerline: the visor, the eyes centered in it, and the Admiral's
+   button slide 1.5 units and narrow a little (92 %) as their far side
+   goes back. The depth comes from what stays back: the whole face narrows
+   to 97 % toward the near side, with no rotation, so the centerline stays
+   upright, and the Admiral's crown and band slide only 0.5 and narrow to 97 %.
+   Eased in and out over about 250 ms, held about 1.2 s, then back. A cycle
+   holds three turns: one side, the other side, then up. Each face's rhythm
+   comes in its SVG's variables (skipperAvatar.ts). Done and no-session
+   faces sleep, and reduced motion stops all of it. */
+.skipper-face .sk-eyes { transform-box: fill-box; transform-origin: center; animation: var(--blink-anim, sk-blink) var(--blink, 5s) var(--blink-delay, 0s) infinite steps(1, end); }
+.skipper-face :is(.sk-turn, .sk-cap, .sk-front) { animation-duration: var(--face-turn, 42s); animation-delay: var(--face-turn-delay, 0s); animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+.skipper-face .sk-turn { transform-origin: 16px 16px; animation-name: sk-lean; }
+.skipper-face .sk-cap { transform-box: fill-box; transform-origin: center; animation-name: sk-capslide; }
+.skipper-face .sk-front { transform-box: fill-box; transform-origin: center; animation-name: sk-slide; }
+@keyframes sk-blink { 0% { transform: scaleY(1); } 97.4% { transform: scaleY(0.1); } 100% { transform: scaleY(1); } }
+@keyframes sk-blink2 { 0% { transform: scaleY(1); } 93.6% { transform: scaleY(0.1); } 95.4% { transform: scaleY(1); } 97.4% { transform: scaleY(0.1); } 100% { transform: scaleY(1); } }
+/* the three turns, at 30 %, 63 % and 96 % of the cycle: 0.6 % in, 2.9 % held, 0.6 % back */
+@keyframes sk-lean {
+  0%, 30%, 34.1%, 63%, 67.1%, 100% { transform: translate(0, 0) scaleX(1); }
+  30.6%, 33.5% { transform: translate(calc(var(--dir, 1) * 0.45px), 0) scaleX(0.97); }
+  63.6%, 66.5% { transform: translate(calc(var(--dir, 1) * -0.45px), 0) scaleX(0.97); }
+}
+@keyframes sk-capslide {
+  0%, 30%, 34.1%, 63%, 67.1%, 95%, 99.1%, 100% { transform: translate(0, 0) scaleX(1); }
+  30.6%, 33.5% { transform: translate(calc(var(--dir, 1) * 0.5px), 0) scaleX(0.97); }
+  63.6%, 66.5% { transform: translate(calc(var(--dir, 1) * -0.5px), 0) scaleX(0.97); }
+  95.6%, 98.5% { transform: translate(0, -0.5px) scaleX(1); }
+}
+@keyframes sk-slide {
+  0%, 30%, 34.1%, 63%, 67.1%, 95%, 99.1%, 100% { transform: translate(0, 0) scaleX(1); }
+  30.6%, 33.5% { transform: translate(calc(var(--dir, 1) * 1.5px), 0) scaleX(0.92); }
+  63.6%, 66.5% { transform: translate(calc(var(--dir, 1) * -1.5px), 0) scaleX(0.92); }
+  95.6%, 98.5% { transform: translate(0, -1px) scaleX(1); }
+}
+:is(.st-done, .sk-row:not([data-session]), .skiff-agent-row:not([data-session])) .skipper-face :is(.sk-eyes, .sk-look, .sk-front, .sk-cap, .sk-turn) { animation: none; }
+@media (prefers-reduced-motion: reduce) { .skipper-face :is(.sk-eyes, .sk-look, .sk-front, .sk-cap, .sk-turn) { animation: none; } }
+
+</style></head><body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<radialGradient id="pl-shade" cx=".36" cy=".3" r=".78">
+  <stop offset="0" stop-color="#fff" stop-opacity=".42"/><stop offset=".42" stop-color="#fff" stop-opacity="0"/>
+  <stop offset=".72" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".45"/>
+</radialGradient>
+<radialGradient id="pl-shade-w" cx=".36" cy=".28" r=".8">
+  <stop offset="0" stop-color="#fff"/><stop offset=".55" stop-color="#eef0f4"/><stop offset="1" stop-color="#aeb6c4"/>
+</radialGradient>
+<linearGradient id="pl-visor" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/>
+</linearGradient>
+<filter id="pl-fur" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+  <feTurbulence type="fractalNoise" baseFrequency="1.5" numOctaves="2" seed="7" result="noise"/>
+  <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.6" xChannelSelector="R" yChannelSelector="G" result="fuzz"/>
+  <feTurbulence type="fractalNoise" baseFrequency="3.2 1.6" numOctaves="1" seed="3" result="grain"/>
+  <feColorMatrix in="grain" type="saturate" values="0" result="g"/>
+  <feBlend in="fuzz" in2="g" mode="soft-light" result="furred"/>
+  <feComposite in="furred" in2="fuzz" operator="in"/>
+</filter>
+<radialGradient id="pl-shade-g" gradientUnits="userSpaceOnUse" cx="12" cy="10" r="19">
+  <stop offset="0" stop-color="#cfcfcf"/><stop offset=".35" stop-color="#808080"/>
+  <stop offset=".7" stop-color="#6e6e6e"/><stop offset="1" stop-color="#2a2a2a"/>
+</radialGradient>
+<radialGradient id="pl-shade-p" gradientUnits="userSpaceOnUse" cx="13.5" cy="11.5" r="17.5">
+  <stop offset="0" stop-color="#b8b8b8"/><stop offset=".45" stop-color="#808080"/>
+  <stop offset=".75" stop-color="#6c6c6c"/><stop offset="1" stop-color="#3a3a3a"/>
+</radialGradient>
+<filter id="pl-gummy" x="-25%" y="-25%" width="150%" height="160%" color-interpolation-filters="sRGB">
+  <!-- the lit inner rim at the bottom: the shape's edge, blurred, pushed up, softened, kept inside -->
+  <feGaussianBlur in="SourceAlpha" stdDeviation="1.6" result="soft"/>
+  <feOffset in="soft" dy="-1.8" result="up"/>
+  <feComposite in="SourceAlpha" in2="up" operator="out" result="rim0"/>
+  <feGaussianBlur in="rim0" stdDeviation=".7" result="rim1"/>
+  <feComposite in="rim1" in2="SourceAlpha" operator="in" result="rim"/>
+  <feFlood flood-color="#fff" flood-opacity=".38"/>
+  <feComposite in2="rim" operator="in" result="glow"/>
+  <!-- the inner dark at the top edge, for depth -->
+  <feOffset in="soft" dy="1.4" result="down"/>
+  <feComposite in="SourceAlpha" in2="down" operator="out" result="top0"/>
+  <feGaussianBlur in="top0" stdDeviation=".7" result="top1"/>
+  <feComposite in="top1" in2="SourceAlpha" operator="in" result="toprim"/>
+  <feFlood flood-color="#000" flood-opacity=".3"/>
+  <feComposite in2="toprim" operator="in" result="dark"/>
+  <!-- the gloss: a light on the blurred shape as a bump map; a wide blur and a
+       low surface keep the 8-bit slopes from banding into rings -->
+  <feGaussianBlur in="SourceAlpha" stdDeviation="3.2" result="bump"/>
+  <feSpecularLighting in="bump" surfaceScale="2.4" specularConstant=".85" specularExponent="14" lighting-color="#fff" result="spec">
+    <fePointLight x="10" y="4" z="22"/>
+  </feSpecularLighting>
+  <feGaussianBlur in="spec" stdDeviation=".5" result="spec2"/>
+  <feComposite in="spec2" in2="SourceAlpha" operator="in" result="gloss"/>
+  <feMerge result="body"><feMergeNode in="SourceGraphic"/><feMergeNode in="dark"/><feMergeNode in="glow"/><feMergeNode in="gloss"/></feMerge>
+  <!-- a soft shadow under it -->
+  <feGaussianBlur in="SourceAlpha" stdDeviation="1.4" result="sb"/>
+  <feOffset in="sb" dy="1.8" result="so"/>
+  <feFlood flood-color="#000" flood-opacity=".32"/>
+  <feComposite in2="so" operator="in" result="shadow"/>
+  <feMerge><feMergeNode in="shadow"/><feMergeNode in="body"/></feMerge>
+</filter>
+<filter id="pl-plush" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+  <!-- tufts: a lower frequency with four octaves, so clumps with fine ends, not scratches -->
+  <feTurbulence type="fractalNoise" baseFrequency="1.15" numOctaves="4" seed="11" result="noise"/>
+  <!-- the outer fluff: the widest push, well blurred, faint: the soft halo of the reference -->
+  <feDisplacementMap in="SourceGraphic" in2="noise" scale="6" xChannelSelector="R" yChannelSelector="G" result="far"/>
+  <feGaussianBlur in="far" stdDeviation=".8" result="far2"/>
+  <feComponentTransfer in="far2" result="fluff1"><feFuncA type="linear" slope=".55"/></feComponentTransfer>
+  <!-- the long fur: a wide push, lightly blurred -->
+  <feDisplacementMap in="SourceGraphic" in2="noise" scale="4.2" xChannelSelector="G" yChannelSelector="R" result="long"/>
+  <feGaussianBlur in="long" stdDeviation=".35" result="fluff2"/>
+  <!-- the core: a short push, crisp -->
+  <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" xChannelSelector="R" yChannelSelector="G" result="core"/>
+  <feGaussianBlur in="core" stdDeviation=".15" result="core2"/>
+  <feMerge result="fluff"><feMergeNode in="fluff1"/><feMergeNode in="fluff2"/><feMergeNode in="core2"/></feMerge>
+  <!-- the grain: larger and blurred, low in contrast: a nap, not sandpaper -->
+  <feTurbulence type="fractalNoise" baseFrequency="1.3 .9" numOctaves="2" seed="5" result="grain"/>
+  <feColorMatrix in="grain" type="saturate" values="0" result="gg"/>
+  <feGaussianBlur in="gg" stdDeviation=".2" result="gb"/>
+  <feComponentTransfer in="gb" result="g"><feFuncR type="linear" slope=".55" intercept=".22"/><feFuncG type="linear" slope=".55" intercept=".22"/><feFuncB type="linear" slope=".55" intercept=".22"/></feComponentTransfer>
+  <feBlend in="fluff" in2="g" mode="soft-light" result="furred"/>
+  <feComposite in="furred" in2="fluff" operator="in" result="toy"/>
+  <!-- a soft contact shadow, so a white toy holds on a light theme -->
+  <feGaussianBlur in="SourceAlpha" stdDeviation="1.8" result="sb"/>
+  <feOffset in="sb" dy="1.8" result="so"/>
+  <feFlood flood-color="#000" flood-opacity=".22"/>
+  <feComposite in2="so" operator="in" result="shadow"/>
+  <feMerge><feMergeNode in="shadow"/><feMergeNode in="toy"/></feMerge>
+</filter>
+<filter id="pl-fur-sm" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+  <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="1" seed="7" result="noise"/>
+  <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.5" xChannelSelector="R" yChannelSelector="G"/>
+</filter>
+</defs></svg>
+<div class="bar"><label><input type="checkbox" id="still"> stop the animation</label> · prototypes/plush/plushAvatar.ts, finishes "gummy" and "plush" · 180 px</div>
+<div class="sheets"><section class="sheet dark" data-sheet="dark">
+<h2>Dark theme</h2>
+<div class="strips"><div class="strip"><h3>GUMMY<small>gloss, lit rim, soft shadow</small></h3><figure><span class="skipper-face" style="--face:180;--pc:#b69cff"><svg viewBox="0 0 32 32" aria-hidden="true" overflow="visible" style="--blink:4.1s;--blink-delay:-0.34s;--blink-anim:sk-blink;--face-turn:45s;--face-turn-delay:-12.04s;--dir:1"><g class="sk-turn"><g filter="url(#pl-gummy)"><rect x="2.4" y="10.6" width="27.2" height="19.4" rx="8" fill="#fff" stroke="#192230" stroke-width="1.6" stroke-linejoin="round"/><rect x="2.4" y="10.6" width="27.2" height="19.4" rx="8" fill="url(#pl-shade-w)" /></g><g class="sk-cap"><g filter="url(#pl-gummy)"><path d="M4.6 9.4C5.4 4.6 10 2 16 2s10.6 2.6 11.4 7.4z" fill="#fff" stroke="#192230" stroke-width="1.6" stroke-linejoin="round"/><path d="M4.6 9.4C5.4 4.6 10 2 16 2s10.6 2.6 11.4 7.4z" fill="url(#pl-shade-w)" /></g><rect x="4.2" y="8" width="23.6" height="4.4" rx="1.8" style="fill:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)" stroke="#192230" stroke-width="1.6" stroke-linejoin="round"/></g><g class="sk-front"><circle cx="16" cy="8.2" r="1.9" fill="#f4c430" stroke="#192230" stroke-width="1.6" stroke-linejoin="round"/><rect x="5.6" y="15.2" width="20.8" height="11.6" rx="4.8" fill="#192230"/><rect x="5.6" y="15.2" width="20.8" height="11.6" rx="4.8" fill="url(#pl-visor)"/><g class="sk-look"><g class="sk-eyes" fill="#fff"><rect x="9.2" y="17.6" width="3.4" height="6.6" rx="1.7"/><rect x="19.4" y="17.6" width="3.4" height="6.6" rx="1.7"/></g></g></g></g></svg></span><figcaption><b>Admiral</b><small>the mascot head</small></figcaption></figure><figure><span class="skipper-face" style="--face:180;--pc:#9b6bff"><svg viewBox="0 0 32 32" aria-hidden="true" overflow="visible" style="--blink:6.7s;--blink-delay:-3.94s;--blink-anim:sk-blink;--face-turn:30s;--face-turn-delay:-0.04s;--dir:-1"><g class="sk-turn"><g transform="rotate(-4 16 16)"><g filter="url(#pl-gummy)"><path d="M5 26V16a11 11 0 0 1 22 0v10z" style="fill:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000);stroke:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)" stroke-width="3" stroke-linejoin="round"/><path d="M5 26V16a11 11 0 0 1 22 0v10z" fill="url(#pl-shade-g)" stroke="url(#pl-shade-g)" stroke-width="3" stroke-linejoin="round" style="mix-blend-mode:hard-light"/></g><g class="sk-front"><rect x="6.6" y="13.1" width="16.8" height="7.8" rx="3.5" fill="#192230"/><rect x="6.6" y="13.1" width="16.8" height="7.8" rx="3.5" fill="url(#pl-visor)"/><g class="sk-look"><g class="sk-eyes" fill="#fff"><g transform="translate(10.5 17)"><circle r="2.3"/></g><g transform="translate(19.5 17)"><circle r="2.3"/></g></g></g></g></g></g></svg></span><figcaption><b>web</b><small>dome · dot eyes</small></figcaption></figure><figure><span class="skipper-face" style="--face:180;--pc:#f4a261"><svg viewBox="0 0 32 32" aria-hidden="true" overflow="visible" style="--blink:5.8s;--blink-delay:-3.54s;--blink-anim:sk-blink;--face-turn:48s;--face-turn-delay:-44.04s;--dir:1"><g class="sk-turn"><g transform="rotate(-6 16 16)"><g filter="url(#pl-gummy)"><path d="M16 5l10 6v10l-10 6-10-6V11z" style="fill:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000);stroke:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)" stroke-width="3" stroke-linejoin="round"/><path d="M16 5l10 6v10l-10 6-10-6V11z" fill="url(#pl-shade-g)" stroke="url(#pl-shade-g)" stroke-width="3" stroke-linejoin="round" style="mix-blend-mode:hard-light"/></g><g class="sk-front"><rect x="6.5" y="12.399999999999999" width="21" height="7.6000000000000005" rx="3.5" fill="#192230"/><rect x="6.5" y="12.399999999999999" width="21" height="7.6000000000000005" rx="3.5" fill="url(#pl-visor)"/><g class="sk-look"><g class="sk-eyes" fill="#fff"><g transform="translate(11.5 16)"><path d="M-2.8 1.2q2.8-4 5.6 0" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></g><g transform="translate(22.5 16)"><path d="M-2.8 1.2q2.8-4 5.6 0" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></g></g></g></g></g></g></svg></span><figcaption><b>ops</b><small>hex · glad eyes</small></figcaption></figure></div><div class="strip"><h3>PLUSH<small>long soft fur, two layers</small></h3><figure><span class="skipper-face" style="--face:180;--pc:#b69cff"><svg viewBox="0 0 32 32" aria-hidden="true" overflow="visible" style="--blink:4.1s;--blink-delay:-0.34s;--blink-anim:sk-blink;--face-turn:45s;--face-turn-delay:-12.04s;--dir:1"><g class="sk-turn"><g filter="url(#pl-plush)"><rect x="2.4" y="10.6" width="27.2" height="19.4" rx="8" fill="#fff" /><rect x="2.4" y="10.6" width="27.2" height="19.4" rx="8" fill="url(#pl-shade-w)" /></g><g class="sk-cap"><g filter="url(#pl-plush)"><path d="M4.6 9.4C5.4 4.6 10 2 16 2s10.6 2.6 11.4 7.4z" fill="#fff" /><path d="M4.6 9.4C5.4 4.6 10 2 16 2s10.6 2.6 11.4 7.4z" fill="url(#pl-shade-w)" /></g><rect x="4.2" y="8" width="23.6" height="4.4" rx="1.8" style="fill:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)" stroke="#192230" stroke-width="1.6" stroke-linejoin="round"/></g><g class="sk-front"><circle cx="16" cy="8.2" r="1.9" fill="#f4c430" stroke="#192230" stroke-width="1.6" stroke-linejoin="round"/><rect x="5.6" y="15.2" width="20.8" height="11.6" rx="4.8" fill="#192230"/><rect x="5.6" y="15.2" width="20.8" height="11.6" rx="4.8" fill="url(#pl-visor)"/><g class="sk-look"><g class="sk-eyes" fill="#fff"><rect x="9.2" y="17.6" width="3.4" height="6.6" rx="1.7"/><rect x="19.4" y="17.6" width="3.4" height="6.6" rx="1.7"/></g></g></g></g></svg></span><figcaption><b>Admiral</b><small>the mascot head</small></figcaption></figure><figure><span class="skipper-face" style="--face:180;--pc:#9b6bff"><svg viewBox="0 0 32 32" aria-hidden="true" overflow="visible" style="--blink:6.7s;--blink-delay:-3.94s;--blink-anim:sk-blink;--face-turn:30s;--face-turn-delay:-0.04s;--dir:-1"><g class="sk-turn"><g transform="rotate(-4 16 16)"><g filter="url(#pl-plush)"><path d="M5 26V16a11 11 0 0 1 22 0v10z" style="fill:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000);stroke:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)" stroke-width="3" stroke-linejoin="round"/><path d="M5 26V16a11 11 0 0 1 22 0v10z" fill="url(#pl-shade-p)" stroke="url(#pl-shade-p)" stroke-width="3" stroke-linejoin="round" style="mix-blend-mode:hard-light"/></g><g class="sk-front"><rect x="6.6" y="13.1" width="16.8" height="7.8" rx="3.5" fill="#192230"/><rect x="6.6" y="13.1" width="16.8" height="7.8" rx="3.5" fill="url(#pl-visor)"/><g class="sk-look"><g class="sk-eyes" fill="#fff"><g transform="translate(10.5 17)"><circle r="2.3"/></g><g transform="translate(19.5 17)"><circle r="2.3"/></g></g></g></g></g></g></svg></span><figcaption><b>web</b><small>dome · dot eyes</small></figcaption></figure><figure><span class="skipper-face" style="--face:180;--pc:#f4a261"><svg viewBox="0 0 32 32" aria-hidden="true" overflow="visible" style="--blink:5.8s;--blink-delay:-3.54s;--blink-anim:sk-blink;--face-turn:48s;--face-turn-delay:-44.04s;--dir:1"><g class="sk-turn"><g transform="rotate(-6 16 16)"><g filter="url(#pl-plush)"><path d="M16 5l10 6v10l-10 6-10-6V11z" style="fill:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000);stroke:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)" stroke-width="3" stroke-linejoin="round"/><path d="M16 5l10 6v10l-10 6-10-6V11z" fill="url(#pl-shade-p)" stroke="url(#pl-shade-p)" stroke-width="3" stroke-linejoin="round" style="mix-blend-mode:hard-light"/></g><g class="sk-front"><rect x="6.5" y="12.399999999999999" width="21" height="7.6000000000000005" rx="3.5" fill="#192230"/><rect x="6.5" y="12.399999999999999" width="21" height="7.6000000000000005" rx="3.5" fill="url(#pl-visor)"/><g class="sk-look"><g class="sk-eyes" fill="#fff"><g transform="translate(11.5 16)"><path d="M-2.8 1.2q2.8-4 5.6 0" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></g><g transform="translate(22.5 16)"><path d="M-2.8 1.2q2.8-4 5.6 0" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></g></g></g></g></g></g></svg></span><figcaption><b>ops</b><small>hex · glad eyes</small></figcaption></figure></div></div>
+</section><section class="sheet light" data-sheet="light">
+<h2>Light theme</h2>
+<div class="strips"><div class="strip"><h3>GUMMY<small>gloss, lit rim, soft shadow</small></h3><figure><span class="skipper-face" style="--face:180;--pc:#b69cff"><svg viewBox="0 0 32 32" aria-hidden="true" overflow="visible" style="--blink:4.1s;--blink-delay:-0.34s;--blink-anim:sk-blink;--face-turn:45s;--face-turn-delay:-12.04s;--dir:1"><g class="sk-turn"><g filter="url(#pl-gummy)"><rect x="2.4" y="10.6" width="27.2" height="19.4" rx="8" fill="#fff" stroke="#192230" stroke-width="1.6" stroke-linejoin="round"/><rect x="2.4" y="10.6" width="27.2" height="19.4" rx="8" fill="url(#pl-shade-w)" /></g><g class="sk-cap"><g filter="url(#pl-gummy)"><path d="M4.6 9.4C5.4 4.6 10 2 16 2s10.6 2.6 11.4 7.4z" fill="#fff" stroke="#192230" stroke-width="1.6" stroke-linejoin="round"/><path d="M4.6 9.4C5.4 4.6 10 2 16 2s10.6 2.6 11.4 7.4z" fill="url(#pl-shade-w)" /></g><rect x="4.2" y="8" width="23.6" height="4.4" rx="1.8" style="fill:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)" stroke="#192230" stroke-width="1.6" stroke-linejoin="round"/></g><g class="sk-front"><circle cx="16" cy="8.2" r="1.9" fill="#f4c430" stroke="#192230" stroke-width="1.6" stroke-linejoin="round"/><rect x="5.6" y="15.2" width="20.8" height="11.6" rx="4.8" fill="#192230"/><rect x="5.6" y="15.2" width="20.8" height="11.6" rx="4.8" fill="url(#pl-visor)"/><g class="sk-look"><g class="sk-eyes" fill="#fff"><rect x="9.2" y="17.6" width="3.4" height="6.6" rx="1.7"/><rect x="19.4" y="17.6" width="3.4" height="6.6" rx="1.7"/></g></g></g></g></svg></span><figcaption><b>Admiral</b><small>the mascot head</small></figcaption></figure><figure><span class="skipper-face" style="--face:180;--pc:#9b6bff"><svg viewBox="0 0 32 32" aria-hidden="true" overflow="visible" style="--blink:6.7s;--blink-delay:-3.94s;--blink-anim:sk-blink;--face-turn:30s;--face-turn-delay:-0.04s;--dir:-1"><g class="sk-turn"><g transform="rotate(-4 16 16)"><g filter="url(#pl-gummy)"><path d="M5 26V16a11 11 0 0 1 22 0v10z" style="fill:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000);stroke:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)" stroke-width="3" stroke-linejoin="round"/><path d="M5 26V16a11 11 0 0 1 22 0v10z" fill="url(#pl-shade-g)" stroke="url(#pl-shade-g)" stroke-width="3" stroke-linejoin="round" style="mix-blend-mode:hard-light"/></g><g class="sk-front"><rect x="6.6" y="13.1" width="16.8" height="7.8" rx="3.5" fill="#192230"/><rect x="6.6" y="13.1" width="16.8" height="7.8" rx="3.5" fill="url(#pl-visor)"/><g class="sk-look"><g class="sk-eyes" fill="#fff"><g transform="translate(10.5 17)"><circle r="2.3"/></g><g transform="translate(19.5 17)"><circle r="2.3"/></g></g></g></g></g></g></svg></span><figcaption><b>web</b><small>dome · dot eyes</small></figcaption></figure><figure><span class="skipper-face" style="--face:180;--pc:#f4a261"><svg viewBox="0 0 32 32" aria-hidden="true" overflow="visible" style="--blink:5.8s;--blink-delay:-3.54s;--blink-anim:sk-blink;--face-turn:48s;--face-turn-delay:-44.04s;--dir:1"><g class="sk-turn"><g transform="rotate(-6 16 16)"><g filter="url(#pl-gummy)"><path d="M16 5l10 6v10l-10 6-10-6V11z" style="fill:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000);stroke:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)" stroke-width="3" stroke-linejoin="round"/><path d="M16 5l10 6v10l-10 6-10-6V11z" fill="url(#pl-shade-g)" stroke="url(#pl-shade-g)" stroke-width="3" stroke-linejoin="round" style="mix-blend-mode:hard-light"/></g><g class="sk-front"><rect x="6.5" y="12.399999999999999" width="21" height="7.6000000000000005" rx="3.5" fill="#192230"/><rect x="6.5" y="12.399999999999999" width="21" height="7.6000000000000005" rx="3.5" fill="url(#pl-visor)"/><g class="sk-look"><g class="sk-eyes" fill="#fff"><g transform="translate(11.5 16)"><path d="M-2.8 1.2q2.8-4 5.6 0" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></g><g transform="translate(22.5 16)"><path d="M-2.8 1.2q2.8-4 5.6 0" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></g></g></g></g></g></g></svg></span><figcaption><b>ops</b><small>hex · glad eyes</small></figcaption></figure></div><div class="strip"><h3>PLUSH<small>long soft fur, two layers</small></h3><figure><span class="skipper-face" style="--face:180;--pc:#b69cff"><svg viewBox="0 0 32 32" aria-hidden="true" overflow="visible" style="--blink:4.1s;--blink-delay:-0.34s;--blink-anim:sk-blink;--face-turn:45s;--face-turn-delay:-12.04s;--dir:1"><g class="sk-turn"><g filter="url(#pl-plush)"><rect x="2.4" y="10.6" width="27.2" height="19.4" rx="8" fill="#fff" /><rect x="2.4" y="10.6" width="27.2" height="19.4" rx="8" fill="url(#pl-shade-w)" /></g><g class="sk-cap"><g filter="url(#pl-plush)"><path d="M4.6 9.4C5.4 4.6 10 2 16 2s10.6 2.6 11.4 7.4z" fill="#fff" /><path d="M4.6 9.4C5.4 4.6 10 2 16 2s10.6 2.6 11.4 7.4z" fill="url(#pl-shade-w)" /></g><rect x="4.2" y="8" width="23.6" height="4.4" rx="1.8" style="fill:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)" stroke="#192230" stroke-width="1.6" stroke-linejoin="round"/></g><g class="sk-front"><circle cx="16" cy="8.2" r="1.9" fill="#f4c430" stroke="#192230" stroke-width="1.6" stroke-linejoin="round"/><rect x="5.6" y="15.2" width="20.8" height="11.6" rx="4.8" fill="#192230"/><rect x="5.6" y="15.2" width="20.8" height="11.6" rx="4.8" fill="url(#pl-visor)"/><g class="sk-look"><g class="sk-eyes" fill="#fff"><rect x="9.2" y="17.6" width="3.4" height="6.6" rx="1.7"/><rect x="19.4" y="17.6" width="3.4" height="6.6" rx="1.7"/></g></g></g></g></svg></span><figcaption><b>Admiral</b><small>the mascot head</small></figcaption></figure><figure><span class="skipper-face" style="--face:180;--pc:#9b6bff"><svg viewBox="0 0 32 32" aria-hidden="true" overflow="visible" style="--blink:6.7s;--blink-delay:-3.94s;--blink-anim:sk-blink;--face-turn:30s;--face-turn-delay:-0.04s;--dir:-1"><g class="sk-turn"><g transform="rotate(-4 16 16)"><g filter="url(#pl-plush)"><path d="M5 26V16a11 11 0 0 1 22 0v10z" style="fill:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000);stroke:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)" stroke-width="3" stroke-linejoin="round"/><path d="M5 26V16a11 11 0 0 1 22 0v10z" fill="url(#pl-shade-p)" stroke="url(#pl-shade-p)" stroke-width="3" stroke-linejoin="round" style="mix-blend-mode:hard-light"/></g><g class="sk-front"><rect x="6.6" y="13.1" width="16.8" height="7.8" rx="3.5" fill="#192230"/><rect x="6.6" y="13.1" width="16.8" height="7.8" rx="3.5" fill="url(#pl-visor)"/><g class="sk-look"><g class="sk-eyes" fill="#fff"><g transform="translate(10.5 17)"><circle r="2.3"/></g><g transform="translate(19.5 17)"><circle r="2.3"/></g></g></g></g></g></g></svg></span><figcaption><b>web</b><small>dome · dot eyes</small></figcaption></figure><figure><span class="skipper-face" style="--face:180;--pc:#f4a261"><svg viewBox="0 0 32 32" aria-hidden="true" overflow="visible" style="--blink:5.8s;--blink-delay:-3.54s;--blink-anim:sk-blink;--face-turn:48s;--face-turn-delay:-44.04s;--dir:1"><g class="sk-turn"><g transform="rotate(-6 16 16)"><g filter="url(#pl-plush)"><path d="M16 5l10 6v10l-10 6-10-6V11z" style="fill:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000);stroke:color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)" stroke-width="3" stroke-linejoin="round"/><path d="M16 5l10 6v10l-10 6-10-6V11z" fill="url(#pl-shade-p)" stroke="url(#pl-shade-p)" stroke-width="3" stroke-linejoin="round" style="mix-blend-mode:hard-light"/></g><g class="sk-front"><rect x="6.5" y="12.399999999999999" width="21" height="7.6000000000000005" rx="3.5" fill="#192230"/><rect x="6.5" y="12.399999999999999" width="21" height="7.6000000000000005" rx="3.5" fill="url(#pl-visor)"/><g class="sk-look"><g class="sk-eyes" fill="#fff"><g transform="translate(11.5 16)"><path d="M-2.8 1.2q2.8-4 5.6 0" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></g><g transform="translate(22.5 16)"><path d="M-2.8 1.2q2.8-4 5.6 0" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></g></g></g></g></g></g></svg></span><figcaption><b>ops</b><small>hex · glad eyes</small></figcaption></figure></div></div>
+</section></div>
+<script>
+const q = new URLSearchParams(location.search), box = document.getElementById("still");
+if (q.get("sheet")) document.body.classList.add("only-" + q.get("sheet"));
+if (q.has("still")) { document.body.classList.add("still"); box.checked = true; }
+box.onchange = () => document.body.classList.toggle("still", box.checked);
+</script>
+</body></html>

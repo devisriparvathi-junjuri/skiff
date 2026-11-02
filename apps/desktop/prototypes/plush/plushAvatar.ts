@@ -10,6 +10,12 @@
  *   grain inside. The visor and the eyes stay crisp, out of the filter.
  * - "fur-sm": a lighter fur (a smaller, coarser push, no grain) for 24 to 31 px.
  *
+ * - "gummy": a candy finish for large faces: a deeper shade, a lit inner rim
+ *   at the bottom as if light passed through, a broad specular highlight
+ *   (feSpecularLighting on the blurred shape) and a soft drop shadow.
+ * - "plush": a softer, longer fur for large faces: two fur layers, a long
+ *   blurred halo under a shorter core, low-contrast grain, a rounder shade.
+ *
  * `finishFor(px)` is the adaptive pick: felt under 24 px, fur-sm to 31, fur
  * from 32.
  *
@@ -17,7 +23,7 @@
  * face adds no ids of its own. The shading is white and black at an opacity,
  * over the body's own --pc fill, so one gradient serves every color.
  */
-export type Finish = "flat" | "felt" | "fur" | "fur-sm";
+export type Finish = "flat" | "felt" | "fur" | "fur-sm" | "gummy" | "plush";
 
 export const finishFor = (px: number): Finish => (px < 24 ? "felt" : px < 32 ? "fur-sm" : "fur");
 
@@ -70,7 +76,12 @@ function rhythm(h: number): string {
 function body(shape: string, finish: Finish): string {
   const flat = `<path d="${shape}" style="fill:${FILL};stroke:${FILL}" stroke-width="3" stroke-linejoin="round"/>`;
   if (finish === "flat") return flat;
-  const shade = `<path d="${shape}" fill="url(#pl-shade)" stroke="url(#pl-shade)" stroke-width="3" stroke-linejoin="round"/>`;
+  // Gummy and plush: an opaque grey shade blended hard-light (50 % grey changes
+  // nothing), so the fill and the 3-unit stroke, which overlap inside the edge,
+  // paint once; a see-through shade doubled there into a band.
+  const g = finish === "gummy" ? "pl-shade-g" : finish === "plush" ? "pl-shade-p" : "pl-shade";
+  const blend = finish === "gummy" || finish === "plush" ? ` style="mix-blend-mode:hard-light"` : "";
+  const shade = `<path d="${shape}" fill="url(#${g})" stroke="url(#${g})" stroke-width="3" stroke-linejoin="round"${blend}/>`;
   return finish === "felt" ? flat + shade : `<g filter="url(#pl-${finish})">${flat}${shade}</g>`;
 }
 
@@ -89,10 +100,11 @@ export function plushAvatar(name: string, finish: Finish, seed = 0): string {
 /** The Admiral, with the same finish on the white head and the crown. */
 const EDGE = `stroke="${VISOR}" stroke-width="1.6" stroke-linejoin="round"`;
 export function plushAdmiral(finish: Finish): string {
-  const fur = finish === "fur" || finish === "fur-sm";
+  const fur = finish !== "flat" && finish !== "felt";
   // The ink edge stays, inside the filter, so it frays with the fur: without it a
   // white head melts into a light theme at 24 px.
-  const edge = EDGE;
+  // At the large plush finish the ink frays into dirt; there the shade's grey rim holds the white.
+  const edge = finish === "plush" ? "" : EDGE;
   const shade = (el: string) => (finish === "flat" ? "" : el.replace(/fill="#fff"/, `fill="url(#pl-shade-w)"`).replace(edge, ""));
   const wrap = (s: string) => (fur ? `<g filter="url(#pl-${finish})">${s}</g>` : s);
   const head = `<rect x="2.4" y="10.6" width="27.2" height="19.4" rx="8" fill="#fff" ${edge}/>`;
@@ -130,6 +142,74 @@ export const plushDefs = () => `<svg width="0" height="0" style="position:absolu
   <feColorMatrix in="grain" type="saturate" values="0" result="g"/>
   <feBlend in="fuzz" in2="g" mode="soft-light" result="furred"/>
   <feComposite in="furred" in2="fuzz" operator="in"/>
+</filter>
+<radialGradient id="pl-shade-g" gradientUnits="userSpaceOnUse" cx="12" cy="10" r="19">
+  <stop offset="0" stop-color="#cfcfcf"/><stop offset=".35" stop-color="#808080"/>
+  <stop offset=".7" stop-color="#6e6e6e"/><stop offset="1" stop-color="#2a2a2a"/>
+</radialGradient>
+<radialGradient id="pl-shade-p" gradientUnits="userSpaceOnUse" cx="13.5" cy="11.5" r="17.5">
+  <stop offset="0" stop-color="#b8b8b8"/><stop offset=".45" stop-color="#808080"/>
+  <stop offset=".75" stop-color="#6c6c6c"/><stop offset="1" stop-color="#3a3a3a"/>
+</radialGradient>
+<filter id="pl-gummy" x="-25%" y="-25%" width="150%" height="160%" color-interpolation-filters="sRGB">
+  <!-- the lit inner rim at the bottom: the shape's edge, blurred, pushed up, softened, kept inside -->
+  <feGaussianBlur in="SourceAlpha" stdDeviation="1.6" result="soft"/>
+  <feOffset in="soft" dy="-1.8" result="up"/>
+  <feComposite in="SourceAlpha" in2="up" operator="out" result="rim0"/>
+  <feGaussianBlur in="rim0" stdDeviation=".7" result="rim1"/>
+  <feComposite in="rim1" in2="SourceAlpha" operator="in" result="rim"/>
+  <feFlood flood-color="#fff" flood-opacity=".38"/>
+  <feComposite in2="rim" operator="in" result="glow"/>
+  <!-- the inner dark at the top edge, for depth -->
+  <feOffset in="soft" dy="1.4" result="down"/>
+  <feComposite in="SourceAlpha" in2="down" operator="out" result="top0"/>
+  <feGaussianBlur in="top0" stdDeviation=".7" result="top1"/>
+  <feComposite in="top1" in2="SourceAlpha" operator="in" result="toprim"/>
+  <feFlood flood-color="#000" flood-opacity=".3"/>
+  <feComposite in2="toprim" operator="in" result="dark"/>
+  <!-- the gloss: a light on the blurred shape as a bump map; a wide blur and a
+       low surface keep the 8-bit slopes from banding into rings -->
+  <feGaussianBlur in="SourceAlpha" stdDeviation="3.2" result="bump"/>
+  <feSpecularLighting in="bump" surfaceScale="2.4" specularConstant=".85" specularExponent="14" lighting-color="#fff" result="spec">
+    <fePointLight x="10" y="4" z="22"/>
+  </feSpecularLighting>
+  <feGaussianBlur in="spec" stdDeviation=".5" result="spec2"/>
+  <feComposite in="spec2" in2="SourceAlpha" operator="in" result="gloss"/>
+  <feMerge result="body"><feMergeNode in="SourceGraphic"/><feMergeNode in="dark"/><feMergeNode in="glow"/><feMergeNode in="gloss"/></feMerge>
+  <!-- a soft shadow under it -->
+  <feGaussianBlur in="SourceAlpha" stdDeviation="1.4" result="sb"/>
+  <feOffset in="sb" dy="1.8" result="so"/>
+  <feFlood flood-color="#000" flood-opacity=".32"/>
+  <feComposite in2="so" operator="in" result="shadow"/>
+  <feMerge><feMergeNode in="shadow"/><feMergeNode in="body"/></feMerge>
+</filter>
+<filter id="pl-plush" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+  <!-- tufts: a lower frequency with four octaves, so clumps with fine ends, not scratches -->
+  <feTurbulence type="fractalNoise" baseFrequency="1.15" numOctaves="4" seed="11" result="noise"/>
+  <!-- the outer fluff: the widest push, well blurred, faint: the soft halo of the reference -->
+  <feDisplacementMap in="SourceGraphic" in2="noise" scale="6" xChannelSelector="R" yChannelSelector="G" result="far"/>
+  <feGaussianBlur in="far" stdDeviation=".8" result="far2"/>
+  <feComponentTransfer in="far2" result="fluff1"><feFuncA type="linear" slope=".55"/></feComponentTransfer>
+  <!-- the long fur: a wide push, lightly blurred -->
+  <feDisplacementMap in="SourceGraphic" in2="noise" scale="4.2" xChannelSelector="G" yChannelSelector="R" result="long"/>
+  <feGaussianBlur in="long" stdDeviation=".35" result="fluff2"/>
+  <!-- the core: a short push, crisp -->
+  <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" xChannelSelector="R" yChannelSelector="G" result="core"/>
+  <feGaussianBlur in="core" stdDeviation=".15" result="core2"/>
+  <feMerge result="fluff"><feMergeNode in="fluff1"/><feMergeNode in="fluff2"/><feMergeNode in="core2"/></feMerge>
+  <!-- the grain: larger and blurred, low in contrast: a nap, not sandpaper -->
+  <feTurbulence type="fractalNoise" baseFrequency="1.3 .9" numOctaves="2" seed="5" result="grain"/>
+  <feColorMatrix in="grain" type="saturate" values="0" result="gg"/>
+  <feGaussianBlur in="gg" stdDeviation=".2" result="gb"/>
+  <feComponentTransfer in="gb" result="g"><feFuncR type="linear" slope=".55" intercept=".22"/><feFuncG type="linear" slope=".55" intercept=".22"/><feFuncB type="linear" slope=".55" intercept=".22"/></feComponentTransfer>
+  <feBlend in="fluff" in2="g" mode="soft-light" result="furred"/>
+  <feComposite in="furred" in2="fluff" operator="in" result="toy"/>
+  <!-- a soft contact shadow, so a white toy holds on a light theme -->
+  <feGaussianBlur in="SourceAlpha" stdDeviation="1.8" result="sb"/>
+  <feOffset in="sb" dy="1.8" result="so"/>
+  <feFlood flood-color="#000" flood-opacity=".22"/>
+  <feComposite in2="so" operator="in" result="shadow"/>
+  <feMerge><feMergeNode in="shadow"/><feMergeNode in="toy"/></feMerge>
 </filter>
 <filter id="pl-fur-sm" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
   <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="1" seed="7" result="noise"/>
