@@ -968,9 +968,13 @@ impl SessionPool {
         if signals.is_empty() {
             return;
         }
+        // A shell at its prompt reports nothing. A report while it is in
+        // front comes from a command that is gone, or from printed text, and
+        // no return of the prompt would ever drop it.
+        let at_prompt = session.front() == Front::Shell;
         let mut records = session.records.lock().unwrap();
         let old = records.root().map(|r| r.state);
-        for signal in signals {
+        for signal in signals.into_iter().filter(|_| !at_prompt) {
             match signal {
                 StatusSignal::Reset => records.clear(),
                 StatusSignal::Report(body) => {

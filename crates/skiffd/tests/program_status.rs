@@ -305,7 +305,8 @@ async fn the_probe_reply_comes_before_a_clients_da1_reply() {
 }
 
 /// A report ends with the program that sent it: here a command whose
-/// output carries one, at a shell. The prompt's return drops it.
+/// output carries one, at a shell. The prompt's return drops it, and a
+/// report printed at the prompt itself is not taken.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_shell_prompt_drops_the_report() {
     let pool = pool();
@@ -320,9 +321,18 @@ async fn the_shell_prompt_drops_the_report() {
         i.state == SessionState::Idle
     })
     .await;
+    // printf is the shell's own: the prompt is in front.
+    pool.write(&info.id, b"printf '\\033]7501;state=blocked\\007'\r")
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let ignored = pool.get(&info.id).unwrap().info();
+    assert!(
+        ignored.program_status.is_none() && ignored.state == SessionState::Idle,
+        "{ignored:?}"
+    );
     pool.write(
         &info.id,
-        b"printf '\\033]7501;state=working\\007'; sleep 2\r",
+        b"sh -c \"sleep 1.5; printf '\\033]7501;state=working\\007'; sleep 2\"\r",
     )
     .unwrap();
     until(&pool, &info.id, 4, "no report", |i| {
