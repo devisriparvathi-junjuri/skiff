@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use skiff_client::host::{
     local::{
         legacy_agents, legacy_create, legacy_delete_group, legacy_groups, legacy_kill,
-        legacy_rename,
+        legacy_order_groups, legacy_rename,
         legacy_save_group, legacy_seen, legacy_set_theme, HostSelection,
     },
     GroupSource, HostConnection, LifecycleSource, LocalSources, StatusSource,
@@ -275,6 +275,20 @@ async fn selected_lifecycle_and_groups_match_legacy_frames_results_and_errors_on
             &json!({"cmd":"delete_group","group":"g1"}),
             &ok,
             &delete
+        )
+        .await,
+        Ok(Value::Null)
+    );
+
+    let order = vec!["g2".into(), "g1".into()];
+    let reorder = op!(client, conn, |c| c.order_groups(order.clone()), |h| legacy_order_groups(&h, order.clone()), clone order);
+    assert_eq!(
+        same(
+            &mut peer,
+            &mut id,
+            &json!({"cmd":"order_groups","groups":["g2","g1"]}),
+            &ok,
+            &reorder
         )
         .await,
         Ok(Value::Null)
