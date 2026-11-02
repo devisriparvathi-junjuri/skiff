@@ -172,6 +172,36 @@ pub struct SessionInfo {
     /// restored, not in a reload handover.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watch: Option<WatchInfo>,
+    /// What the program in front last reported about itself with OSC 7501
+    /// (Program Status Protocol): its root record. While it is set, it
+    /// decides `state`. `None` when the program reports nothing, or from a
+    /// daemon older than this field. A reload keeps it; a restore does not.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub program_status: Option<ProgramStatus>,
+}
+
+/// A program's own report of its state, from OSC 7501. Strings, not enums,
+/// so a client reads a value a newer daemon adds.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct ProgramStatus {
+    /// "idle", "working", "blocked", "done" or "error". `state` shows
+    /// "blocked" as waiting, and "done" and "error" as idle.
+    pub state: String,
+    /// What a "blocked" program waits for: "permission", "question" or "auth".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// The program's message, decoded, as plain text with no control characters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub msg: Option<String>,
+    /// The program's title for the task, decoded and cleaned like `msg`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Percent done, 0 to 100, while working or blocked. `None`: no figure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<u8>,
+    /// The program's name for itself, such as "codex" or "claude-code".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<String>,
 }
 
 /// The watchers registered for a session with [`Request::Watching`].

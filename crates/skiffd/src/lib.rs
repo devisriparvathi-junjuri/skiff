@@ -4,6 +4,7 @@
 mod command;
 pub mod identity;
 pub mod paths;
+pub mod program_status;
 pub mod pty;
 pub mod screen;
 pub mod server;

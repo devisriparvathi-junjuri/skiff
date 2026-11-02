@@ -31,7 +31,22 @@ pub struct Signals {
     pub bell: bool,
     /// `Some(None)` when the program reset its title.
     pub title: Option<Option<String>>,
+    /// OSC 7501 bodies and full resets, in the order they came.
+    pub status: Vec<StatusSignal>,
 }
+
+/// What the program status records hear from the emulator.
+#[derive(Debug, PartialEq)]
+pub enum StatusSignal {
+    /// An OSC 7501 body, unread. See `program_status::parse`.
+    Report(Vec<u8>),
+    /// A full reset (RIS): every record goes.
+    Reset,
+}
+
+/// OSC 7501 bodies kept from one feed. A program that floods more is cut off;
+/// a reset always counts.
+const MAX_STATUS: usize = 64;
 
 #[derive(Clone, Default)]
 struct Listener(Arc<Mutex<Signals>>);
@@ -43,6 +58,12 @@ impl EventListener for Listener {
             TermEvent::Bell => s.bell = true,
             TermEvent::Title(t) => s.title = Some(Some(t)),
             TermEvent::ResetTitle => s.title = Some(None),
+            TermEvent::ProgramStatus(body, _) if s.status.len() < MAX_STATUS => {
+                s.status.push(StatusSignal::Report(body))
+            }
+            TermEvent::Reset if s.status.last() != Some(&StatusSignal::Reset) => {
+                s.status.push(StatusSignal::Reset)
+            }
             _ => {}
         }
     }
@@ -77,7 +98,8 @@ fn config() -> Config {
     Config {
         scrolling_history: SCROLLBACK,
         // Track the program's kitty keyboard stack, so a snapshot and a
-        // reload carry it. The daemon encodes no keys and answers no queries.
+        // reload carry it. The daemon encodes no keys, and answers no query
+        // but OSC 7501's probe (see `Session::push_output`).
         kitty_keyboard: true,
         ..Config::default()
     }
@@ -553,6 +575,35 @@ mod tests {
         assert!(!sig.bell);
         assert_eq!(sig.title, Some(Some("fix worktrees".into())));
         assert!(s.feed(b"\x07").bell);
+    }
+
+    #[test]
+    fn osc_7501_is_heard_in_order_across_reads() {
+        use super::StatusSignal::{Report, Reset};
+        let mut s = Screen::new(20, 4);
+        // Ended by BEL, and by ST split across three reads.
+        let sig = s.feed(b"a\x1b]7501;?\x07b\x1b]75");
+        assert_eq!(sig.status, [Report(b"?".to_vec())]);
+        assert!(!sig.bell, "the BEL that ends OSC 7501 is not a bell");
+        assert!(s.feed(b"01;state=work").status.is_empty());
+        // The ESC of ST ends the sequence.
+        assert_eq!(
+            s.feed(b"ing:app=codex\x1b").status,
+            [Report(b"state=working:app=codex".to_vec())]
+        );
+        assert!(s.feed(b"\\c").status.is_empty());
+        // A full reset comes in its place among the reports.
+        let sig = s.feed(b"\x1b]7501;state=idle\x1b\\\x1bc\x1b]7501;state=done\x07");
+        assert_eq!(
+            sig.status,
+            [
+                Report(b"state=idle".to_vec()),
+                Reset,
+                Report(b"state=done".to_vec())
+            ]
+        );
+        // Other OSC numbers are not reports.
+        assert!(s.feed(b"\x1b]75011;x\x07\x1b]0;t\x07").status.is_empty());
     }
 
     /// A screen of 60 columns that ends with these rows.

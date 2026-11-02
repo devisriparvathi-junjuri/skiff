@@ -41,6 +41,7 @@ use tokio::sync::broadcast;
 
 use super::{foreground, groups::prune, start_writer, Front, Park, ScreenState, Session, SessionPool, SCAN};
 use crate::{
+    program_status::Records,
     pty::{self, Pty},
     screen::{Screen, TitleState},
     shellenv,
@@ -142,6 +143,10 @@ struct SessionMeta {
     unscanned: bool,
     printed: bool,
     printed_work: bool,
+    /// The program's OSC 7501 records. The program is the same after a
+    /// reload, so its reports still stand. Empty from an older image.
+    #[serde(default)]
+    records: Records,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -297,6 +302,7 @@ impl SessionPool {
                 unscanned: st.unscanned,
                 printed: st.printed,
                 printed_work: st.printed_work,
+                records: s.records.lock().unwrap().clone(),
             });
         }
         // The reaper skips its turn while a reload runs, so no pid listed
@@ -428,6 +434,7 @@ impl SessionPool {
             front: Mutex::new(front),
             group: AtomicU32::new(m.group),
             belled: AtomicBool::new(m.belled),
+            records: Mutex::new(m.records),
             screen: Mutex::new(ScreenState {
                 screen,
                 pending: Vec::new(),
