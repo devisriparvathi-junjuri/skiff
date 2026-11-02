@@ -79,7 +79,7 @@ function pure(name: string) {
 
 export const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-export function workspaceHarness(expose = "") {
+export function workspaceHarness() {
   const document = {
     activeElement: null as Element | null,
     getElementById: () => null,
@@ -101,8 +101,6 @@ export function workspaceHarness(expose = "") {
     closedProjects: [], selectedProject: null as string | null,
   };
   const calls = { approvedExits: 0, saves: 0, guarded: false, failSave: false };
-  let diskRevision: string | null = null;
-  let savedPath: string | null = null;
   const menus: (() => void)[] = [];
   const window = {
     onCloseRequested: async (run: (e: { preventDefault(): void }) => void) => {
@@ -126,7 +124,6 @@ export function workspaceHarness(expose = "") {
         if (calls.failSave) throw new Error("disk full");
         files.set(args.path, { path: args.path, profile: structuredClone(args.profile), revision: "saved" });
         return "saved";
-      case "workspace_revision": return args.path === "/work.skiffw" ? diskRevision : null;
       default: throw new Error(`Unexpected command: ${command}`);
     }
   };
@@ -152,7 +149,7 @@ export function workspaceHarness(expose = "") {
     "@tauri-apps/api/core": { invoke },
     "@tauri-apps/api/event": { listen: async (name: string, run: () => void) => { events.set(name, run); return () => {}; } },
     "@tauri-apps/api/window": { getCurrentWindow: () => window },
-    "@tauri-apps/plugin-dialog": { save: async () => savedPath },
+    "@tauri-apps/plugin-dialog": { save: async () => null },
     "../app/state": { S },
     "../app/renderRequest": { render() {} },
     "../ui/alerts": { showError() {} },
@@ -173,7 +170,7 @@ export function workspaceHarness(expose = "") {
     window: { addEventListener() {} }, setInterval() {},
     localStorage: { getItem: (key: string) => stored.get(key) ?? null,
       setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) },
-  }, expose);
+  }, "");
   const elements = (): Element[] => {
     const walk = (el: Element): Element[] => [el, ...el.children.flatMap(walk)];
     return walk(document.body);
@@ -188,9 +185,5 @@ export function workspaceHarness(expose = "") {
       name: path, projects, fleets, folded_projects: [], folded_fleets: [], selected: null,
     } });
   };
-  return {
-    profile, S, calls, files, events, button, elements, fixture, menus, stored,
-    setDiskRevision: (revision: string | null) => (diskRevision = revision),
-    setSavePath: (path: string | null) => (savedPath = path),
-  };
+  return { profile, S, calls, files, events, button, elements, fixture };
 }
