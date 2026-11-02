@@ -56,6 +56,13 @@ pub enum Event {
 
     /// Child process exited.
     ChildExit(ExitStatus),
+
+    /// skiff: an OSC 7501 body (Program Status Protocol), and whether BEL
+    /// ended it.
+    ProgramStatus(Vec<u8>, bool),
+
+    /// skiff: a full reset (RIS).
+    Reset,
 }
 
 impl Debug for Event {
@@ -74,6 +81,8 @@ impl Debug for Event {
             Event::Bell => write!(f, "Bell"),
             Event::Exit => write!(f, "Exit"),
             Event::ChildExit(status) => write!(f, "ChildExit({status:?})"),
+            Event::ProgramStatus(body, _) => write!(f, "ProgramStatus({})", String::from_utf8_lossy(body)),
+            Event::Reset => write!(f, "Reset"),
         }
     }
 }

@@ -39,7 +39,8 @@ clap = { version = "4", features = ["derive"] }
 # skiffd reload (#69) hands the whole terminal over to a new binary: both
 # screens, history, cursors, modes, keyboard stacks and the parser mid-sequence.
 # The upstream crates keep that state private, so these copies add a save and
-# restore API. Each patched spot carries a `skiff:` comment.
+# restore API. They also hand OSC 7501 (Program Status Protocol) and a full
+# reset to skiffd. Each patched spot carries a `skiff:` comment.
 [patch.crates-io]
 alacritty_terminal = { path = "vendor/alacritty_terminal" }
 vte = { path = "vendor/vte" }
