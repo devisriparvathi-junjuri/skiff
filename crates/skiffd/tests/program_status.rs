@@ -2,9 +2,10 @@
 //! send, replayed through the emulator, and what the pool makes of them.
 //!
 //! The fixtures are PTY output captured from Codex 0.166.0, Claude Code
-//! 2.1.316 and Grok 1.0.70 on macOS, one read per line, in hex. Their visible
-//! text is blanked to `x`; escape sequences and titles are as captured.
-//! Claude Code and Grok ran with a terminal that answered their probe
+//! 2.1.316, Grok 1.0.70 and Antigravity (agy) 1.4.12 on macOS, one read per
+//! line, in hex. Their visible text is blanked to `x`; escape sequences and
+//! titles are as captured, but for a path cut from one agy message. Claude
+//! Code, Grok and agy ran with a terminal that answered their probe
 //! ("answered") and with one that did not.
 
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -254,6 +255,57 @@ fn grok_answered_reports_its_sign_in() {
 #[test]
 fn grok_unanswered_only_probes() {
     let heard = same_in_any_reads("grok-1.0.70-signin-unanswered.hex");
+    assert_eq!((heard.probes, heard.roots.len()), (1, 0));
+}
+
+/// Antigravity probes after its DA1 and takes a reply however late. It ends
+/// a turn with `done` and the reply's text, and a turned-down prompt with
+/// `idle`. It sets no title.
+#[test]
+fn agy_answered_reports_its_turns() {
+    use SessionState as S;
+    use State as P;
+    let heard = same_in_any_reads("agy-1.4.12-answered.hex");
+    assert_eq!(heard.probes, 1);
+    assert_eq!(
+        heard.roots,
+        [
+            Some((P::Idle, None, None)),
+            Some((P::Working, None, None)),
+            Some((P::Done, None, Some("Hi! How can I help you today?".into()))),
+            Some((P::Idle, None, None)),
+            Some((P::Working, None, None)),
+            Some((
+                P::Blocked,
+                Some(Kind::Permission),
+                Some("Approve WriteFile: Write: hello.txt".into())
+            )),
+            Some((P::Idle, None, None)),
+        ]
+    );
+    assert!(heard
+        .apps
+        .iter()
+        .all(|a| a.as_deref() == Some("antigravity")));
+    assert_eq!(
+        heard.states,
+        [
+            S::Idle,
+            S::Working,
+            S::Idle,
+            S::Idle,
+            S::Working,
+            S::Waiting,
+            S::Idle
+        ]
+    );
+    assert_eq!(heard.turns, 1);
+    assert!(heard.titles.is_empty(), "{:?}", heard.titles);
+}
+
+#[test]
+fn agy_unanswered_only_probes() {
+    let heard = same_in_any_reads("agy-1.4.12-unanswered.hex");
     assert_eq!((heard.probes, heard.roots.len()), (1, 0));
 }
 
