@@ -1,6 +1,15 @@
 //! Legacy local Host sources and procedural compatibility adapter.
 
-use super::*;
+use std::sync::Arc;
+
+use skiff_host_api::{Error, Request, Response};
+
+use super::super::{
+    AgentSource, GroupSource, HostConnection, InventorySource, LifecycleSource, OutputGap,
+    OutputStream, ScreenSource, SessionUpdates, StatusSource, TerminalOutput, TerminalSource,
+    UpdateGap, UpdateSource, UpdateStream,
+};
+use crate::Client;
 
 pub(super) struct LegacyReadOnly(pub(super) Arc<Client>);
 impl StatusSource for LegacyReadOnly {
