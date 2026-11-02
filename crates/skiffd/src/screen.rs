@@ -223,9 +223,12 @@ impl Screen {
             }
             "gemini" => {
                 // Antigravity (agy): "↑/↓ Navigate · tab Amend", "↑/↓ Navigate · enter Confirm".
+                // Its slash-command menu shows "↑/↓ Navigate · enter Select · tab Complete".
                 // Gemini CLI: "Allow once", "Allow for this session", "No, suggest changes (esc)".
                 let t = self.bottom_text(10);
-                t.contains("↑/↓navigate") || (t.contains("allowonce") && t.contains("suggestchanges"))
+                (t.contains("↑/↓navigate")
+                    && (t.contains("tabamend") || t.contains("enterconfirm")))
+                    || (t.contains("allowonce") && t.contains("suggestchanges"))
             }
             "grok" => {
                 // "1/4:select │ Tab:next option │ ...", or a command's
@@ -252,8 +255,9 @@ impl Screen {
             "claude" | "codex" => t.contains("tointerrupt"),
             // "esc interrupt", and "esc again to interrupt" after one Esc.
             "opencode" => t.contains("escinterrupt") || t.contains("tointerrupt"),
-            // "(esc to cancel, 12s)".
-            "gemini" => t.contains("esctocancel"),
+            // "(esc to cancel, 12s)". Antigravity shows "esc to cancel" at
+            // its prompts and its slash-command menu too, under a "↑/↓ Navigate" list.
+            "gemini" => t.contains("esctocancel") && !t.contains("↑/↓navigate"),
             _ => false,
         }
     }
@@ -411,6 +415,17 @@ pub fn title_state(agent: &str, title: &str) -> Option<TitleState> {
             '\u{25c7}' => Some(TitleState::Ready),
             _ => None,
         },
+        // "⚠ Action Required - ⠋ - Running: … - grok" at a prompt,
+        // "⠋ - Thinking - <topic> - grok" while it works, "<topic> - grok" after.
+        "grok" => {
+            if title.contains("Action Required") {
+                Some(TitleState::Action)
+            } else if ('\u{2801}'..='\u{28ff}').contains(&first) {
+                Some(TitleState::Busy)
+            } else {
+                Some(TitleState::Ready)
+            }
+        }
         _ => None,
     }
 }
@@ -699,6 +714,24 @@ mod tests {
         let gemini_work = ["⣟  Generating...", "────────────", ">", "────────────", "esc to cancel          Gemini 3.8 Flash"];
         assert!(!screen_with(&gemini_work).approval_prompt("gemini"));
         assert!(screen_with(&gemini_work).busy_line("gemini"));
+        // Antigravity's slash-command menu and its file prompt, as captured.
+        let agy_menu = [
+            "> /add-dir             Add a directory to the workspace",
+            "  /agents              List available custom agents",
+            "  ↑/↓ Navigate · enter Select · tab Complete",
+            "esc to cancel          Gemini 3.8 Flash · medium",
+        ];
+        assert!(!screen_with(&agy_menu).approval_prompt("gemini"));
+        assert!(!screen_with(&agy_menu).busy_line("gemini"));
+        let agy_file = [
+            "Allow creation of this file?",
+            "> 1. Yes, allow creation",
+            "  2. No, deny creation",
+            "  ↑/↓ Navigate · tab Amend · f full diff",
+            "esc to cancel          Gemini 3.8 Flash · medium",
+        ];
+        assert!(screen_with(&agy_file).approval_prompt("gemini"));
+        assert!(!screen_with(&agy_file).busy_line("gemini"));
         let gemini_cli = ["Allow execution of: 'ls'?", "● 1. Allow once", "  2. Allow for this session", "  3. No, suggest changes (esc)"];
         assert!(screen_with(&gemini_cli).approval_prompt("gemini"));
         let grok_cmd = ["$ rm -rf build", "  Allow once", "  Always allow this command", "  Reject"];
@@ -762,6 +795,20 @@ mod tests {
         assert_eq!(title_state("gemini", "⏲  Working… (skiff)"), Some(Busy));
         assert_eq!(title_state("gemini", "✋  Action Required (skiff)"), Some(Action));
         assert_eq!(title_state("gemini", "◇  Ready (skiff)"), Some(Ready));
+        // Grok 1.0.70, as captured.
+        assert_eq!(
+            title_state("grok", "⠋ - Waiting for response… - grok"),
+            Some(Busy)
+        );
+        assert_eq!(
+            title_state(
+                "grok",
+                "⚠ Action Required - ⠋ - Running: Write `x` - Greeting - grok"
+            ),
+            Some(Action)
+        );
+        assert_eq!(title_state("grok", "Greeting - grok"), Some(Ready));
+        assert_eq!(title_state("grok", "grok"), Some(Ready));
         assert_eq!(title_state("opencode", "OC | Fix the bug"), None);
     }
 }

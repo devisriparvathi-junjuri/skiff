@@ -262,7 +262,7 @@ fn grok_unanswered_only_probes() {
 /// Signed in, Grok reports each turn: `working` with what it does in
 /// `msg`, `done` at the end of a reply, `blocked` for a permission, and
 /// `idle` once a rejected permission cancels the turn. Its title keeps its
-/// spinner either way, and Skiff has no title rule for Grok to misread.
+/// spinner either way.
 #[test]
 fn grok_answered_reports_its_turns() {
     use SessionState as S;
@@ -310,18 +310,28 @@ fn grok_answered_reports_its_turns() {
         ]
     );
     assert_eq!(heard.turns, 1);
-    assert!(heard.titles.iter().any(|t| t.contains("Action Required")));
-    assert!(heard
+    // Its title says the same in both modes; while it reports, the
+    // reports decide and the title rule waits.
+    let read: Vec<_> = heard
         .titles
         .iter()
-        .all(|t| title_state("grok", t).is_none()));
+        .filter_map(|t| title_state("grok", t))
+        .collect();
+    assert!(read.contains(&TitleState::Busy) && read.contains(&TitleState::Action));
 }
 
 #[test]
 fn grok_unanswered_only_probes_but_keeps_its_title() {
     let heard = same_in_any_reads("grok-1.0.70-unanswered.hex");
     assert_eq!((heard.probes, heard.roots.len()), (1, 0));
-    assert!(heard.titles.iter().any(|t| t.contains("Action Required")));
+    // Unanswered, its title is what tells its turns and its prompt.
+    let read: Vec<_> = heard
+        .titles
+        .iter()
+        .filter_map(|t| title_state("grok", t))
+        .collect();
+    assert!(read.contains(&TitleState::Busy) && read.contains(&TitleState::Action));
+    assert_eq!(read.last(), Some(&TitleState::Ready));
 }
 
 /// Antigravity probes after its DA1 and takes a reply however late. It ends
