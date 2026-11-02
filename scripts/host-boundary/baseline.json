@@ -178,7 +178,15 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "dd2c652aabdcf25ebf8adb35a786bb4f09e17177b5f88febed16b1695196d0dc"
+    "sha256": "4368cd2f83f9a536cc8b4ac6afea66c7e256011e945b1229468714bf742a3290"
+  },
+  "apps/desktop/src-tauri/src/hosts/store.rs": {
+    "ownership": "client policy: this client's own SSH install and update jobs, with its own exe folder and build id (#166); legacy local adapter otherwise",
+    "reasons": [
+      "fs",
+      "process"
+    ],
+    "sha256": "485880c9fd54b05e8123d458c18dff33113b8f9e24b54916351f9af72a926395"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
