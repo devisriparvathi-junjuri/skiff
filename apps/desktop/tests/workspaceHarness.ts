@@ -79,7 +79,7 @@ function pure(name: string) {
 
 export const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-export function workspaceHarness() {
+export function workspaceHarness(expose = "") {
   const document = {
     activeElement: null as Element | null,
     getElementById: () => null,
@@ -101,6 +101,9 @@ export function workspaceHarness() {
     closedProjects: [], selectedProject: null as string | null,
   };
   const calls = { approvedExits: 0, saves: 0, guarded: false, failSave: false };
+  let diskRevision: string | null = null;
+  let savedPath: string | null = null;
+  const menus: (() => void)[] = [];
   const window = {
     onCloseRequested: async (run: (e: { preventDefault(): void }) => void) => {
       events.set("window-close", () => run({ preventDefault() {} }));
@@ -123,6 +126,7 @@ export function workspaceHarness() {
         if (calls.failSave) throw new Error("disk full");
         files.set(args.path, { path: args.path, profile: structuredClone(args.profile), revision: "saved" });
         return "saved";
+      case "workspace_revision": return args.path === "/work.skiffw" ? diskRevision : null;
       default: throw new Error(`Unexpected command: ${command}`);
     }
   };
@@ -130,10 +134,11 @@ export function workspaceHarness() {
     "@tauri-apps/api/core": { invoke },
     "@tauri-apps/api/event": { listen: async (name: string, run: () => void) => { events.set(name, run); return () => {}; } },
     "@tauri-apps/api/window": { getCurrentWindow: () => window },
-    "@tauri-apps/plugin-dialog": { save: async () => null },
+    "@tauri-apps/plugin-dialog": { save: async () => savedPath },
     "../app/state": { S },
     "../app/renderRequest": { render() {} },
     "../ui/alerts": { showError() {} },
+    "../ui/contextMenu": { ctxMenu: { open(_x: number, _y: number, _title: string, _entries: unknown, done: () => void) { menus.push(done); } } },
     "../ui/dom": { h, button: (cls: string, text: string, run: () => void) => {
       const b = h("button", cls, text); b.addEventListener("click", run); return b;
     } },
@@ -149,7 +154,7 @@ export function workspaceHarness() {
     window: { addEventListener() {} }, setInterval() {},
     localStorage: { getItem: (key: string) => stored.get(key) ?? null,
       setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) },
-  }, "");
+  }, expose);
   const elements = (): Element[] => {
     const walk = (el: Element): Element[] => [el, ...el.children.flatMap(walk)];
     return walk(document.body);
@@ -164,5 +169,9 @@ export function workspaceHarness() {
       name: path, projects, fleets, folded_projects: [], folded_fleets: [], selected: null,
     } });
   };
-  return { profile, S, calls, files, events, button, elements, fixture };
+  return {
+    profile, S, calls, files, events, button, elements, fixture, menus, stored,
+    setDiskRevision: (revision: string | null) => (diskRevision = revision),
+    setSavePath: (path: string | null) => (savedPath = path),
+  };
 }
