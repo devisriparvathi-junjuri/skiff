@@ -31,8 +31,6 @@ use read::{container, head, join, keep, live, one, pane, print_one, print_rows, 
 #[cfg(test)]
 use read::{close_gone_in, open_tasks_at, unreported_at};
 #[cfg(test)]
-use paths::container_folder;
-#[cfg(test)]
 use schema::{OWNER, TASKS, UIDS};
 #[cfg(test)]
 use skiff_client::ledger::{OPEN, VERSION, WORKING};
