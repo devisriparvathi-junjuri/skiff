@@ -35,12 +35,10 @@ import { t, tn, upper } from "../i18n";
 import { createMembership } from "./profile/membership";
 import { canon, createWorkspaceState, emptyProfile, trimPath } from "./profile/state";
 import type { Doc, Profile } from "./profile/state";
+import { fileName, forget, forgetLast, last as lastPath, read, recents, remember, revision, write as writeFile } from "./profile/storage";
 export type { Profile } from "./profile/state";
 
 const EXT = "skiffw";
-const LAST_KEY = "skiff.workspace.last";
-const RECENT_KEY = "skiff.workspace.recent";
-const RECENT_MAX = 8;
 
 const state = createWorkspaceState();
 const membership = createMembership(state, { announce, changed, showView });
@@ -81,46 +79,8 @@ state.setHooks({ announce, changed });
 
 // ── Files ──────────────────────────────────────────────────────────────────
 
-interface Loaded {
-  path: string;
-  profile: Profile;
-  revision: string;
-}
-
-function storedList(key: string): string[] {
-  try {
-    const v: unknown = JSON.parse(localStorage.getItem(key) ?? "[]");
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function store(key: string, value: string | null) {
-  try {
-    if (value === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
-  } catch {
-    /* it lasts for this run */
-  }
-}
-
-const recents = () => storedList(RECENT_KEY);
-
-function remember(path: string) {
-  store(RECENT_KEY, JSON.stringify([path, ...recents().filter((x) => x !== path)].slice(0, RECENT_MAX)));
-  store(LAST_KEY, path);
-}
-
-function forget(path: string) {
-  store(RECENT_KEY, JSON.stringify(recents().filter((x) => x !== path)));
-  render();
-}
-
-const fileName = (path: string) => path.split("/").pop() ?? path;
-
 /** Makes the read file the document, Clean, and shows it. */
-function commit(l: Loaded | null, focus = true) {
+function commit(l: Awaited<ReturnType<typeof read>> | null, focus = true) {
   state.doc = l
     ? { path: l.path, profile: l.profile, base: canon(l.profile), revision: l.revision, disk: "ok", kept: false, answered: false }
     : null;
@@ -138,7 +98,7 @@ function commitUntitled() {
   state.autoOpened.clear();
   state.allWork = false;
   useTreeView(state.treeView);
-  store(LAST_KEY, null);
+  forgetLast();
   wasEdited = false;
   showView();
 }
@@ -156,10 +116,6 @@ function showView(focus = true) {
   if (focus) requestAnimationFrame(() => home()?.focus());
 }
 
-async function read(path: string): Promise<Loaded> {
-  return invoke<Loaded>("workspace_read", { path });
-}
-
 /** Writes the document to `path`. `expect`: the revision there now, null for no file. */
 async function write(path: string, expect: string | null): Promise<boolean> {
   if (!state.doc) return false;
@@ -169,7 +125,7 @@ async function write(path: string, expect: string | null): Promise<boolean> {
   render();
   announce(t("workspace.savingSay"));
   try {
-    const revision = await invoke<string>("workspace_write", { path, profile: snap, expect });
+    const revision = await writeFile(path, snap, expect);
     d.path = path;
     d.revision = revision;
     d.base = canon(snap);
@@ -224,7 +180,7 @@ async function saveAsNow(): Promise<boolean> {
   }
   let expect: string | null;
   try {
-    expect = await invoke<string | null>("workspace_revision", { path });
+    expect = await revision(path);
   } catch (e) {
     showError(e);
     return false;
@@ -285,12 +241,12 @@ export function leave(what: string, go: () => Promise<boolean>): Promise<boolean
 
 /** Reads `path` and opens it. A bad file leaves the document as it was. */
 async function openNow(path: string): Promise<boolean> {
-  let l: Loaded;
+  let l: Awaited<ReturnType<typeof read>>;
   try {
     l = await read(path);
   } catch (e) {
     const known = recents().includes(path);
-    showError(t("workspace.cannotOpen", { error: String(e) }), known ? { label: t("workspace.removeRecent"), run: async () => forget(path) } : undefined);
+    showError(t("workspace.cannotOpen", { error: String(e) }), known ? { label: t("workspace.removeRecent"), run: async () => forget(path, render) } : undefined);
     return false;
   }
   commit(l);
@@ -328,7 +284,7 @@ export function closeWorkspace() {
   if (!state.doc) return;
   void leave(t("workspace.leaveClose"), async () => {
     commit(null);
-    store(LAST_KEY, null);
+    forgetLast();
     return true;
   });
 }
@@ -361,7 +317,7 @@ async function checkDisk() {
   const d = state.doc;
   let now: Doc["disk"];
   try {
-    const rev = await invoke<string | null>("workspace_revision", { path: d.path });
+    const rev = await revision(d.path!);
     now = rev === null ? "missing" : rev === d.revision ? "ok" : "changed";
   } catch {
     now = "missing";
@@ -378,7 +334,7 @@ async function checkDisk() {
 async function reload() {
   await exclusive(async () => {
     if (!state.doc?.path) return false;
-    let l: Loaded;
+    let l: Awaited<ReturnType<typeof read>>;
     try {
       l = await read(state.doc.path);
     } catch (e) {
@@ -803,7 +759,7 @@ export async function startWorkspaces() {
   const launch = await invoke<string | null>("workspace_launch_file").catch(() => null);
   let last: string | null = null;
   try {
-    last = localStorage.getItem(LAST_KEY);
+    last = lastPath();
   } catch {
     /* none */
   }
@@ -812,9 +768,9 @@ export async function startWorkspaces() {
     try {
       commit(await read(path), false);
     } catch (e) {
-      store(LAST_KEY, null);
+      forgetLast();
       const known = recents().includes(path);
-      showError(t("workspace.cannotOpenStart", { error: String(e) }), known ? { label: t("workspace.removeRecent"), run: async () => forget(path) } : undefined);
+      showError(t("workspace.cannotOpenStart", { error: String(e) }), known ? { label: t("workspace.removeRecent"), run: async () => forget(path, render) } : undefined);
     }
   }
   state.ready = true;

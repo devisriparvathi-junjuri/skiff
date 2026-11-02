@@ -140,6 +140,10 @@ export function workspaceHarness(expose = "") {
   const profileMembership = moduleFromSource("../src/workspace/profile/membership.ts", {
     "../../app/state": { S }, "../../ui/contextMenu": { ctxMenu: { open(_x: number, _y: number, _title: string, _entries: unknown, done: () => void) { menus.push(done); } } },
   }, {}, "");
+  const profileStorage = moduleFromSource("../src/workspace/profile/storage.ts", {
+    "@tauri-apps/api/core": { invoke }, "./state": profileState,
+  }, { localStorage: { getItem: (key: string) => stored.get(key) ?? null,
+    setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) } }, "");
   const imports = {
     "@tauri-apps/api/core": { invoke },
     "@tauri-apps/api/event": { listen: async (name: string, run: () => void) => { events.set(name, run); return () => {}; } },
@@ -157,6 +161,7 @@ export function workspaceHarness(expose = "") {
     "./view": { selectProject: (name: string) => { S.selectedProject = name; } },
     "./profile/state": profileState,
     "./profile/membership": profileMembership,
+    "./profile/storage": profileStorage,
   };
   profile = moduleFromSource("../src/workspace/profile.ts", imports, {
     document, requestAnimationFrame: (run: () => void) => run(),
