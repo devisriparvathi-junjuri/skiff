@@ -53,6 +53,22 @@ export interface SessionInfo {
   retiring?: boolean;
   /** The `skiff watch` processes registered for this session. Absent when none is, or from a daemon older than protocol 27. */
   watch?: WatchInfo | null;
+  /** The program's own OSC 7501 report while it lasts; it decides `state`. Absent when the program reports nothing, or from an older daemon. */
+  program_status?: ProgramStatus | null;
+}
+
+/** OSC 7501 (Program Status Protocol). `state` shows "blocked" as waiting, and "done" and "error" as idle. */
+export interface ProgramStatus {
+  /** "idle", "working", "blocked", "done" or "error". */
+  state: string;
+  /** What a blocked program waits for: "permission", "question" or "auth". */
+  kind?: string | null;
+  /** Plain text: never render it as markup. */
+  msg?: string | null;
+  title?: string | null;
+  /** 0 to 100, while working or blocked. */
+  progress?: number | null;
+  app?: string | null;
 }
 
 export interface DaemonMetrics {

@@ -44,6 +44,7 @@ pub fn project_session(value: core::SessionInfo) -> Result<api::InventorySession
         skipper,
         retiring,
         watch,
+        program_status,
     } = value;
     Ok(api::InventorySession {
         id,
@@ -79,6 +80,7 @@ pub fn project_session(value: core::SessionInfo) -> Result<api::InventorySession
         project_skipper: skipper,
         retiring,
         watch: watch.map(project_watch),
+        program_status: program_status.map(project_program_status),
     })
 }
 
@@ -112,6 +114,25 @@ fn project_watch(value: core::WatchInfo) -> api::WatchInfo {
         pids,
         failure: failure.map(project_failure),
         follows,
+    }
+}
+
+fn project_program_status(value: core::ProgramStatus) -> api::ProgramStatus {
+    let core::ProgramStatus {
+        state,
+        kind,
+        msg,
+        title,
+        progress,
+        app,
+    } = value;
+    api::ProgramStatus {
+        state,
+        kind,
+        msg,
+        title,
+        progress,
+        app,
     }
 }
 
@@ -166,6 +187,7 @@ pub fn restore_session(value: api::InventorySession) -> core::SessionInfo {
         project_skipper: skipper,
         retiring,
         watch,
+        program_status,
     } = value;
     core::SessionInfo {
         id,
@@ -198,6 +220,7 @@ pub fn restore_session(value: api::InventorySession) -> core::SessionInfo {
         skipper,
         retiring,
         watch: watch.map(restore_watch),
+        program_status: program_status.map(restore_program_status),
     }
 }
 
@@ -231,6 +254,25 @@ fn restore_watch(value: api::WatchInfo) -> core::WatchInfo {
         pids,
         failure: failure.map(restore_failure),
         follows,
+    }
+}
+
+fn restore_program_status(value: api::ProgramStatus) -> core::ProgramStatus {
+    let api::ProgramStatus {
+        state,
+        kind,
+        msg,
+        title,
+        progress,
+        app,
+    } = value;
+    core::ProgramStatus {
+        state,
+        kind,
+        msg,
+        title,
+        progress,
+        app,
     }
 }
 

@@ -22,8 +22,9 @@ use skiff_core::{
 use tokio::sync::{broadcast, Notify};
 
 use crate::{
+    program_status::{self, Records},
     pty::{self, Pty},
-    screen::{title_state, Screen, Signals, TitleState},
+    screen::{title_state, Screen, Signals, StatusSignal, TitleState},
     workspace::{SavedSession, Workspace},
 };
 
@@ -158,6 +159,9 @@ pub struct Session {
     group: AtomicU32,
     /// `waiting` came from a bell, so input answers it.
     belled: AtomicBool,
+    /// What the program in front reported with OSC 7501. Locked before `info`
+    /// when both are.
+    records: Mutex<Records>,
     /// Emulator plus unsent bytes. One lock, so a snapshot and the live
     /// stream never overlap or leave a gap.
     screen: Mutex<ScreenState>,
@@ -286,6 +290,22 @@ impl Session {
         (st.screen.snapshot(), self.output.subscribe())
     }
 
+    /// Writes the daemon's own answer to a query from the program. It is not
+    /// the user's input: it opens no echo window, answers no bell and counts
+    /// no input.
+    fn reply(&self, data: &[u8]) {
+        self.queued.fetch_add(1, Ordering::AcqRel);
+        if self.input.send(Input::Reply(data.to_vec())).is_err() {
+            self.queued.fetch_sub(1, Ordering::AcqRel);
+        }
+    }
+
+    /// The program in front reports its own state with OSC 7501. Its report
+    /// decides the state over the screen rules and the idle timer.
+    fn claimed(&self) -> bool {
+        self.info.lock().unwrap().program_status.is_some()
+    }
+
     /// True shortly after input: output now is the program answering a key.
     fn echoing(&self) -> bool {
         now_ms().saturating_sub(self.last_input.load(Ordering::Relaxed)) < ECHO_MS
@@ -353,6 +373,15 @@ impl Session {
         let front = self.front();
         let mut st = self.screen.lock().unwrap();
         let signals = st.screen.feed(chunk);
+        // The probe is answered before these bytes reach a client. A
+        // client answers the DA1 query a program sends right after it, and
+        // the program takes OSC 7501 as supported only when this reply comes
+        // first. The writer thread keeps the order of its queue.
+        for signal in &signals.status {
+            if matches!(signal, StatusSignal::Report(body) if program_status::is_probe(body)) {
+                self.reply(program_status::PROBE_REPLY);
+            }
+        }
         st.unscanned = true;
         if prints(chunk) {
             st.printed = true;
@@ -705,6 +734,7 @@ impl SessionPool {
             skipper: spec.skipper.filter(|p| !p.trim().is_empty()),
             retiring: false,
             watch: None,
+            program_status: None,
         };
 
         let (input, queued, wrote) = start_writer(&id, &pty)?;
@@ -731,6 +761,7 @@ impl SessionPool {
             front: Mutex::new(if is_shell { Front::Shell } else { Front::Program }),
             group: AtomicU32::new(0),
             belled: AtomicBool::new(false),
+            records: Mutex::new(Records::default()),
             screen: Mutex::new(ScreenState {
                 screen: Screen::new(spec.cols, spec.rows),
                 pending: Vec::new(),
@@ -816,7 +847,8 @@ impl SessionPool {
             let mut info = session.info.lock().unwrap();
             info.output_bytes = info.output_bytes.saturating_add(chunk.len() as u64);
         }
-        let (signals, scan, echo) = session.push_output(chunk);
+        let (mut signals, scan, echo) = session.push_output(chunk);
+        self.apply_status(session, std::mem::take(&mut signals.status));
         // A bell that answers a key is no call: the user is at the
         // keys. The BEL that ends a title sequence is not a bell.
         if signals.bell && !echo {
@@ -847,6 +879,8 @@ impl SessionPool {
                     .map(|s| s.to_string_lossy().into_owned())
                     .unwrap_or_else(default_shell);
                 session.shell.store(true, Ordering::Relaxed);
+                let mut records = session.records.lock().unwrap();
+                records.clear();
                 // The group stays. Forget it, so the watcher reads the
                 // shell in front now instead of at its next recheck.
                 session.group.store(0, Ordering::Relaxed);
@@ -858,8 +892,10 @@ impl SessionPool {
                     info.command = shell_name;
                     info.args.clear();
                     info.agent_exit = code.strip_prefix(':').and_then(|c| c.parse().ok());
+                    info.program_status = None;
                     info.clone()
                 };
+                drop(records);
                 let _ = self.events.send(Event::SessionUpdated { session: info });
                 self.dirty.notify_one();
             } else {
@@ -903,11 +939,14 @@ impl SessionPool {
                 pty::Reap::Running => std::thread::sleep(Duration::from_millis(20)),
             }
         };
-        {
+        let reported = {
+            let mut records = session.records.lock().unwrap();
+            records.clear();
             let mut info = session.info.lock().unwrap();
             info.exit_code = code;
             info.state = SessionState::Done;
-        }
+            info.program_status.take().is_some()
+        };
         session.set_reader_done();
         self.dying.lock().unwrap().retain(|s| !Arc::ptr_eq(s, session));
         let _ = self.events.send(Event::State {
@@ -915,12 +954,88 @@ impl SessionPool {
             state: SessionState::Done,
         });
         let _ = self.events.send(Event::Exit { session: sid.to_string(), code });
+        if reported {
+            let _ = self.events.send(Event::SessionUpdated {
+                session: session.info(),
+            });
+        }
+    }
+
+    /// Applies what the program reported with OSC 7501, in order. While a
+    /// root record lives, it decides the state; see
+    /// [`program_status::session_state`] and [`program_status::ends_turn`].
+    fn apply_status(&self, session: &Session, signals: Vec<StatusSignal>) {
+        if signals.is_empty() {
+            return;
+        }
+        // A shell at its prompt reports nothing. A report while it is in
+        // front comes from a command that is gone, or from printed text, and
+        // no return of the prompt would ever drop it.
+        let at_prompt = session.front() == Front::Shell;
+        let mut records = session.records.lock().unwrap();
+        let old = records.root().map(|r| r.state);
+        for signal in signals.into_iter().filter(|_| !at_prompt) {
+            match signal {
+                StatusSignal::Reset => records.clear(),
+                StatusSignal::Report(body) => {
+                    if let Some(report) = program_status::parse(&body) {
+                        records.apply(report);
+                    }
+                }
+            }
+        }
+        let claim = records.root().map(|r| r.state);
+        let (state, ended, id) = {
+            let mut info = session.info.lock().unwrap();
+            let view = records.root().map(|r| r.view());
+            drop(records);
+            if info.state == SessionState::Done || info.program_status == view {
+                return;
+            }
+            info.program_status = view;
+            // The quiet time starts now, should the reports end.
+            session.last_work.store(now_ms(), Ordering::Relaxed);
+            if claim.is_some() {
+                session.belled.store(false, Ordering::Relaxed);
+            }
+            let ended = program_status::ends_turn(old, claim);
+            if ended {
+                info.unread = true;
+                session.fresh.store(false, Ordering::Relaxed);
+                session.busy_seen.store(false, Ordering::Relaxed);
+            }
+            let state = program_status::session_state(claim, info.state);
+            let changed = info.state != state;
+            if changed && state == SessionState::Working && info.state == SessionState::Idle {
+                session.work_started.store(now_ms(), Ordering::Relaxed);
+            }
+            info.state = state;
+            (changed.then_some(state), ended, info.id.clone())
+        };
+        if let Some(state) = state {
+            let _ = self.events.send(Event::State {
+                session: id.clone(),
+                state,
+            });
+        }
+        if ended {
+            let _ = self.events.send(Event::TurnEnded {
+                session: id.clone(),
+            });
+        }
+        // Read again out of the lock: `info()` adds the time of the last output.
+        let _ = self.events.send(Event::SessionUpdated {
+            session: session.info(),
+        });
     }
 
     /// A bell outside the echo of a key. A shell rings for its own reasons.
     /// A supported agent says what it wants on the screen, and its bell does
     /// not say why it rang. For every other program the bell is the call.
     fn bell(&self, session: &Session) {
+        if session.claimed() {
+            return;
+        }
         if matches!(session.front(), Front::Command | Front::Program) {
             session.belled.store(true, Ordering::Relaxed);
             self.set_state(session, SessionState::Waiting);
@@ -944,6 +1059,9 @@ impl SessionPool {
         if scan.busy {
             session.busy_seen.store(true, Ordering::Relaxed);
         }
+        if session.claimed() {
+            return;
+        }
         let waiting = session.info.lock().unwrap().state == SessionState::Waiting;
         let asks = *session.title_state.lock().unwrap() == Some(TitleState::Action);
         if scan.approval || asks {
@@ -964,7 +1082,9 @@ impl SessionPool {
         let Front::Agent(agent) = session.front() else { return };
         let state = title.and_then(|t| title_state(agent, t));
         let old = std::mem::replace(&mut *session.title_state.lock().unwrap(), state);
-        if old == state {
+        // A program that reports with OSC 7501 is read by its reports alone.
+        // Claude Code drops its spinner from the title once it reports.
+        if old == state || session.claimed() {
             return;
         }
         match state {
@@ -1024,6 +1144,7 @@ impl SessionPool {
             let _ = session.waker.notify();
         }
         let (state, updated, ended) = {
+            let mut records = session.records.lock().unwrap();
             let mut info = session.info.lock().unwrap();
             if info.state == SessionState::Done {
                 return;
@@ -1039,6 +1160,9 @@ impl SessionPool {
                 changed = !info.unread;
                 info.unread = true;
                 ended = Some(info.id.clone());
+                // The shell's prompt is back: the program's reports end with it.
+                records.clear();
+                changed |= info.program_status.take().is_some();
             } else if agent && info.agent_exit.take().is_some() {
                 changed = true;
                 // The exit code is saved with the workspace.
@@ -1353,7 +1477,7 @@ impl SessionPool {
             let mut info = s.info.lock().unwrap();
             let last = s.last_work.load(Ordering::Relaxed);
             let quiet = now_ms().saturating_sub(last) > IDLE_AFTER.as_millis() as u64;
-            if !quiet || info.state != SessionState::Working {
+            if !quiet || info.state != SessionState::Working || info.program_status.is_some() {
                 return;
             }
             info.state = SessionState::Idle;
@@ -1395,6 +1519,8 @@ impl SessionPool {
 pub(crate) enum Input {
     Bytes(Vec<u8>),
     Pause(Duration),
+    /// The daemon's answer to a query, not typed: no latency trace.
+    Reply(Vec<u8>),
 }
 
 /// The thread that writes input to the PTY, its count of writes queued, and
@@ -1427,6 +1553,16 @@ fn start_writer(id: &str, pty: &Pty) -> Result<(std::sync::mpsc::Sender<Input>, 
                         }
                     }
                     Input::Pause(d) => std::thread::sleep(d),
+                    Input::Reply(data) => {
+                        if open
+                            && writer
+                                .write_all(&data)
+                                .and_then(|_| writer.flush())
+                                .is_err()
+                        {
+                            open = false;
+                        }
+                    }
                 }
                 count.fetch_sub(1, Ordering::AcqRel);
             }
@@ -1574,6 +1710,105 @@ mod tests {
         assert!(!prints(b"\x1b[?2026h\x1b[?25l\x1b[43;16H\x1b[?25h\x1b[?2026l"));
         assert!(prints(b"\x1b[38;2;215;119;87m*\x1b[39m"));
         assert!(prints("\x1b[3G✻".as_bytes()));
+    }
+
+    /// While an agent reports with OSC 7501, its reports decide the state:
+    /// not its approval prompt, its title, its bell or the quiet time. With
+    /// no report left, those rules decide again.
+    #[test]
+    fn an_agents_reports_win_over_the_screen_and_the_timer() {
+        use skiff_core::{
+            protocol::Event,
+            session::{SessionSpec, SessionState},
+        };
+        use std::time::Duration;
+        let pool = super::SessionPool::new();
+        let info = pool
+            .create(SessionSpec {
+                command: Some("/bin/sleep".into()),
+                args: vec!["30".into()],
+                cols: 80,
+                rows: 24,
+                ..Default::default()
+            })
+            .unwrap();
+        let session = pool.get(&info.id).unwrap();
+        pool.set_front(&session, Front::Agent("codex"));
+        let mut events = pool.events.subscribe();
+        // Each feed is scanned, as a read after a quiet moment is.
+        let feed = |bytes: &[u8]| {
+            std::thread::sleep(SCAN);
+            pool.on_output(&session, &info.id, bytes);
+            session.info()
+        };
+        let prompt = b"\r\nWould you like to run the following command?\r\nPress enter to confirm or esc to cancel\r\n";
+
+        let now = feed(b"\x1b]7501;state=working:app=codex\x1b\\");
+        assert_eq!(now.state, SessionState::Working);
+        assert_eq!(now.program_status.unwrap().app.as_deref(), Some("codex"));
+        assert_eq!(
+            feed(prompt).state,
+            SessionState::Working,
+            "the screen rules overrode the report"
+        );
+        assert_eq!(
+            feed(b"\x1b]0;[ ! ] Action Required\x07\x07").state,
+            SessionState::Working,
+            "the title or bell overrode it"
+        );
+        session
+            .last_work
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+        pool.idle_if_quiet(&session);
+        assert_eq!(
+            session.info().state,
+            SessionState::Working,
+            "the idle timer overrode it"
+        );
+
+        let asked =
+            feed(b"\x1b]7501;state=blocked:app=codex:kind=question:msg=UGljayBhIGJyYW5jaA==\x1b\\");
+        assert_eq!(asked.state, SessionState::Waiting);
+        let status = asked.program_status.unwrap();
+        assert_eq!(
+            (status.kind.as_deref(), status.msg.as_deref()),
+            (Some("question"), Some("Pick a branch"))
+        );
+        pool.write(&info.id, b"x").unwrap();
+        assert_eq!(
+            session.info().state,
+            SessionState::Waiting,
+            "input answered it as if it were a bell"
+        );
+
+        let done = feed(b"\x1b]7501;state=done:app=codex\x1b\\");
+        assert_eq!((done.state, done.unread), (SessionState::Idle, true));
+        assert_eq!(
+            done.program_status.unwrap().state,
+            "done",
+            "done is told apart from idle"
+        );
+        feed(b"\x1b]7501;state=done:app=codex\x1b\\");
+        let ended = std::iter::from_fn(|| events.try_recv().ok())
+            .filter(|e| matches!(e, Event::TurnEnded { .. }))
+            .count();
+        assert_eq!(ended, 1, "a repeated done ended a second turn");
+
+        // Cleared, the prompt still on screen counts again.
+        let cleared = feed(b"\x1b]7501;state=clear\x1b\\");
+        assert!(cleared.program_status.is_none());
+        assert_eq!(feed(prompt).state, SessionState::Waiting);
+
+        // A full reset drops the reports, and so does the shell's prompt.
+        assert!(feed(b"\x1b]7501;state=working\x07")
+            .program_status
+            .is_some());
+        assert!(feed(b"\x1bc").program_status.is_none());
+        feed(b"\x1b]7501;state=error\x07");
+        pool.set_front(&session, Front::Shell);
+        assert!(session.info().program_status.is_none());
+        std::thread::sleep(Duration::from_millis(10));
+        pool.kill(&info.id).unwrap();
     }
 
     /// The pty's size, read back from the kernel.

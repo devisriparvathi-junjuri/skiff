@@ -661,6 +661,11 @@ pub trait Handler {
     /// Reset terminal state.
     fn reset_state(&mut self) {}
 
+    /// skiff: OSC 7501, the Program Status Protocol. `body` is everything
+    /// after `7501;`, `?` for the probe. `bell_terminated` says how the
+    /// sequence ended, so a reply can end the same way.
+    fn program_status(&mut self, _body: &[u8], _bell_terminated: bool) {}
+
     /// Reverse Index.
     ///
     /// Move the active position to the same horizontal position on the
@@ -1389,6 +1394,10 @@ where
         }
 
         match params[0] {
+            // skiff: Program Status Protocol. Its values hold no `;`, so the
+            // params joined back are the body as sent.
+            b"7501" => self.handler.program_status(&params[1..].join(&b';'), bell_terminated),
+
             // Set window title.
             b"0" | b"2" => {
                 if params.len() >= 2 {

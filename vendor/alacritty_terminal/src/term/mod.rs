@@ -1859,6 +1859,8 @@ impl<T: EventListener> Handler for Term<T> {
         self.mode.insert(TermMode::default());
 
         self.event_proxy.send_event(Event::CursorBlinkingChange);
+        // skiff: a full reset drops the program's status records.
+        self.event_proxy.send_event(Event::Reset);
         self.mark_fully_damaged();
     }
 
@@ -2220,6 +2222,12 @@ impl<T: EventListener> Handler for Term<T> {
 
         let style = self.cursor_style.get_or_insert(self.config.default_cursor_style);
         style.shape = shape;
+    }
+
+    /// skiff: OSC 7501 goes to the listener as it came.
+    #[inline]
+    fn program_status(&mut self, body: &[u8], bell_terminated: bool) {
+        self.event_proxy.send_event(Event::ProgramStatus(body.to_vec(), bell_terminated));
     }
 
     #[inline]
