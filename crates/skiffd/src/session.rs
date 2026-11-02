@@ -430,10 +430,8 @@ impl Session {
         // client answers the DA1 query a program sends right after it, and
         // the program takes OSC 7501 as supported only when this reply comes
         // first. The writer thread keeps the order of its queue.
-        for signal in &signals.status {
-            if matches!(signal, StatusSignal::Report(body) if program_status::is_probe(body)) {
-                self.reply(program_status::PROBE_REPLY);
-            }
+        for _ in 0..signals.probes {
+            self.reply(program_status::PROBE_REPLY);
         }
         st.unscanned = true;
         if prints(chunk) {
@@ -2035,6 +2033,8 @@ mod tests {
             replies(b"\x1bP1$r0m\x1b\\\x1b[?2004;1$y\x1b[?5u\x1b[8;24;80t"),
             Some(4)
         );
+        // XTVERSION's answer, as a terminal gives it.
+        assert_eq!(replies(b"\x1bP>|xterm.js(5.5.0)\x1b\\"), Some(1));
         // Keys, a paste, Alt+[, and a reply with a key after it are not replies.
         for keys in [
             &b"y"[..],
