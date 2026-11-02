@@ -1,3 +1,4 @@
+/** Project and fleet membership of the open workspace, and the sidebar and tree menu entries that change it. */
 import { S } from "../../app/state";
 import type { Project } from "../../platform/types";
 import { ctxMenu } from "../../ui/contextMenu";

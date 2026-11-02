@@ -1,3 +1,4 @@
+/** The one workspace document and what follows from it: the profile, edited, shows, the ledger scope, missing references and the tree view. */
 import { render } from "../../app/renderRequest";
 import { S } from "../../app/state";
 import type { Project } from "../../platform/types";

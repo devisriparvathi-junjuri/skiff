@@ -1,3 +1,4 @@
+/** The choice dialog and its Tab trap. */
 import { dialogFrame } from "../../ui/dialogParts";
 import { button, h } from "../../ui/dom";
 import { t } from "../../i18n";

@@ -1,3 +1,4 @@
+/** Mission control's pure model helpers: the text a card matches, and when a session last did anything. */
 import type { Project, SessionInfo } from "../../platform/types";
 import type { Entry } from "../ledger";
 import { ledgerTitle } from "../ledger";

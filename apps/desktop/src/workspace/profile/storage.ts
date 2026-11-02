@@ -1,3 +1,4 @@
+/** The workspace file on disk (read, write, revision) and the recent list in localStorage. */
 import { invoke } from "@tauri-apps/api/core";
 import type { Profile } from "./state";
 
