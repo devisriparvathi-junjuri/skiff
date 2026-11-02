@@ -96,7 +96,7 @@ impl SessionPool {
 
     /// Writes the registry's view of `id` into its info, and sends
     /// `SessionUpdated` when it changed.
-    pub(super) fn publish_watch(&self, id: &str) {
+    fn publish_watch(&self, id: &str) {
         let Some(session) = self.get(id) else { return };
         let watch = {
             let w = self.watchers.lock().unwrap();

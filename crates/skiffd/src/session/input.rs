@@ -33,7 +33,7 @@ impl Session {
     /// a query is open and `data` holds only replies. An answer is no input
     /// from the user: it opens no echo window, answers no bell and counts no
     /// input, so a `skiff send` that checks for typing is not refused by it.
-    pub(super) fn take_replies(&self, data: &[u8]) -> bool {
+    fn take_replies(&self, data: &[u8]) -> bool {
         let open = self.queries.load(Ordering::Relaxed);
         if open == 0
             || now_ms().saturating_sub(self.queried_at.load(Ordering::Relaxed)) > REPLY_WINDOW_MS

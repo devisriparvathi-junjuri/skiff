@@ -217,7 +217,7 @@ impl SessionPool {
 
     /// What one read brought, or the end of a synchronized update that held
     /// it: the reports, open queries, the bell, the screen rules, the title.
-    pub(super) fn apply_read(
+    fn apply_read(
         &self,
         session: &Arc<Session>,
         sid: &str,
@@ -328,7 +328,7 @@ impl SessionPool {
     /// Waits for the child to exit, then records its exit. Only this pid is
     /// reaped, never another child of the daemon. A reload can pause the
     /// wait; the exit is reaped and recorded in one step, before or after.
-    pub(super) fn reap(&self, session: &Arc<Session>, sid: &str) {
+    fn reap(&self, session: &Arc<Session>, sid: &str) {
         let pid = session.info.lock().unwrap().pid;
         let code = loop {
             session.park_point();
