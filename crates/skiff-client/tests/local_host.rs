@@ -71,6 +71,35 @@ impl StatusSource for Fake {
 }
 
 #[tokio::test]
+async fn local_compatibility_barrel_keeps_selection_activation_and_a_legacy_read() {
+    let dir = Dir::new();
+    let socket = dir.0.join("a.sock");
+    let listener = UnixListener::bind(&socket).unwrap();
+    let selection = skiff_client::host::local::HostSelection::new(
+        socket,
+        dir.0.join("config/local-host-id"),
+    );
+    let (pending, peer) = tokio::join!(selection.connect(), listener.accept());
+    let host = pending.unwrap().activate().await.unwrap();
+    let connection = host.connection();
+    let status = skiff_client::host::local::connection_status(&connection);
+    let mut peer = BufReader::new(peer.unwrap().0);
+    let (status, ()) = tokio::join!(status, async {
+        let mut line = String::new();
+        peer.read_line(&mut line).await.unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&line).unwrap(),
+            serde_json::json!({"id":1,"cmd":"ping"})
+        );
+        peer.get_mut()
+            .write_all(b"{\"id\":1,\"type\":\"pong\",\"version\":\"fixture\",\"protocol\":27}\n")
+            .await
+            .unwrap();
+    });
+    assert_eq!(status.unwrap(), ("fixture".into(), 27));
+}
+
+#[tokio::test]
 async fn version_capability_and_identity_errors_never_call_a_fallback_source() {
     let source = Arc::new(Fake {
         calls: AtomicUsize::new(0),
