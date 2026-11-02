@@ -4,7 +4,9 @@ import { moduleFromSource } from "./workspaceHarness.ts";
 
 /** The real module over a Host that offers `program_status@1`, or not. */
 function status(offered: boolean) {
-  return moduleFromSource("../src/workspace/programStatus.ts", { "../app/hostCaps": { hostCan: (cap: string) => offered && cap === "program_status" } }, {}, "");
+  const m = moduleFromSource("../src/workspace/programStatus.ts", {}, {}, "");
+  m.offerReports(offered);
+  return m;
 }
 
 const session = (state: string, unread: boolean, program_status: unknown) =>

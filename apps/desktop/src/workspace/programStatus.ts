@@ -2,13 +2,19 @@
  *  marks, labels and Mission control. Only when the Host offers
  *  `program_status@1`. The program's text is plain text: it goes into
  *  `textContent` and attributes, never into markup. */
-import { hostCan } from "../app/hostCaps";
 import { type MessageKey, t, tn } from "../i18n";
 import type { ProgramStatus, SessionInfo } from "../platform/types";
 
+/** The Host offers `program_status@1`. `hostCaps` sets it with each answer;
+ *  before the first one, a surface stays as it is. */
+let offered = true;
+export function offerReports(on: boolean) {
+  offered = on;
+}
+
 /** The report, when the Host offers it. */
 export function reported(s: SessionInfo): ProgramStatus | null {
-  return hostCan("program_status") ? (s.program_status ?? null) : null;
+  return offered ? (s.program_status ?? null) : null;
 }
 
 /** The program said its turn ended in an error, and the pane is not read yet. */

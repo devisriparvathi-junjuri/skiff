@@ -10,7 +10,7 @@ function caps(offered: string[] | (() => Promise<string[]>)) {
     if (command === "host_capabilities") return typeof offered === "function" ? offered() : offered;
     return `${command} done`;
   };
-  const mod = moduleFromSource("../src/app/hostCaps.ts", { "@tauri-apps/api/core": { invoke } }, { Promise, Set, Error }, "");
+  const mod = moduleFromSource("../src/app/hostCaps.ts", { "@tauri-apps/api/core": { invoke }, "../workspace/programStatus": { offerReports: () => {} } }, { Promise, Set, Error }, "");
   return { mod, calls };
 }
 
@@ -73,4 +73,15 @@ test("M3: the agent list has its own capability; without it nothing is asked", a
   await assert.rejects(old.mod.hostInvoke("session_agents", "list_agents"), /This Host does not offer an agent list\./);
   assert.deepEqual(old.calls, []);
   assert.ok(calls.some(([c]) => c === "list_agents"));
+});
+
+test("each answer tells the report words whether the Host offers program_status@1", async () => {
+  const told: boolean[] = [];
+  let offered = [...LOCAL, "program_status@1"];
+  const invoke = async () => offered;
+  const mod = moduleFromSource("../src/app/hostCaps.ts", { "@tauri-apps/api/core": { invoke }, "../workspace/programStatus": { offerReports: (on: boolean) => told.push(on) } }, { Promise, Set, Error }, "");
+  await mod.loadHostCaps();
+  offered = LOCAL;
+  await mod.loadHostCaps();
+  assert.deepEqual(told, [true, false]);
 });
