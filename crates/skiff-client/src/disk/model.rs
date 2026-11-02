@@ -1,3 +1,5 @@
+//! The tree as the page reads it in JSON, the policy constants, and the words of a verdict.
+
 use super::checkout::Checkout;
 
 use std::path::PathBuf;

@@ -1,3 +1,5 @@
+//! The walk of the folder into nodes, the names it keeps, and the fold of a big folder into one row.
+
 use super::{
     checkout::{checkout, mtime},
     model::{Kind, Node, Verdict, FOLD_FILES, KEEP},

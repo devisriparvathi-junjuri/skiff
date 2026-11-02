@@ -1,3 +1,5 @@
+//! Repository, worktree and branch operations, each a plain `git -C <dir>` call.
+
 use super::{git_run, Deadline, GIT_TIMEOUT, PREFLIGHT_LIMIT};
 
 use std::{

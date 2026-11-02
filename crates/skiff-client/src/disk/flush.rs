@@ -1,3 +1,5 @@
+//! The flush: the expected plan, the removal of stale items, and the automatic and work-folder flushes.
+
 use super::{
     checkout::{checkout, git, mtime, now_secs, plain_repo, Checkout, Repo},
     model::{words, Expected, Flushed, Node, Verdict},

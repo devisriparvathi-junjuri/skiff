@@ -1,3 +1,5 @@
+//! `git` run with a deadline and an output limit, in the folder the root holds open.
+
 use super::Root;
 
 use std::{

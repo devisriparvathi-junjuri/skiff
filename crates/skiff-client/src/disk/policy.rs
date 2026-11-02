@@ -1,3 +1,5 @@
+//! The rule: the ledger's rows and the live panes as signals, and the verdict of each node.
+
 use super::{
     checkout::{now_secs, Checkout},
     model::{Kind, Node, Usage, Verdict, Work, HOLD_LOOSE, HOLD_WORK},

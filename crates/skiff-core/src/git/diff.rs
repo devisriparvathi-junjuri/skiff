@@ -1,3 +1,5 @@
+//! The diff of one changed file or of the whole worktree: the script, the bounded run and its cap.
+
 use super::{branch_base, branch_base_with, git, git_bounded, open_beneath, Beneath, Deadline, Root};
 
 use crate::shell::shell_quote;

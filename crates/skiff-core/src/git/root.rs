@@ -1,3 +1,5 @@
+//! The worktree root held open, what the worktree changed, and the safe reads beneath the root.
+
 use super::{bounded, branch_base_with, git_bounded, git_in, Deadline, GIT_TIMEOUT, PREFLIGHT_LIMIT, STATUS_LIMIT};
 
 use std::{

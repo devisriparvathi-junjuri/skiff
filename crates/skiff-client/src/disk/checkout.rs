@@ -1,3 +1,5 @@
+//! Git checkouts in the tree: their repository, found by hand, and their state, asked of a git that runs no program.
+
 use std::{
     path::{Path, PathBuf},
     process::Command,
