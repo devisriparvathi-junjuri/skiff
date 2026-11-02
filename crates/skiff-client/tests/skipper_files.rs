@@ -5,11 +5,8 @@
 use skiff_client::skipper::{self, Scope, Status};
 use skiff_core::config;
 
-static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 #[test]
 fn instruction_files_are_written_once_and_keep_their_status() {
-    let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
     let root = std::env::temp_dir().join(format!("skiff-skipper-files-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let home = root.join("home");
