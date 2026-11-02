@@ -174,10 +174,9 @@
       "fs",
       "process",
       "read_to_string",
-      "skiff_agent",
-      "skiff_core"
+      "skiff_agent"
     ],
-    "sha256": "93d05081e74b2cb08be4dce0d84912f3e3f5ab16941de0553a6c49fc7655afb7"
+    "sha256": "ceb78c87dd63740edcdc5a6fd92dc837a7ea1817e60a3cb842b47b25eae6d31d"
   },
   "apps/desktop/src-tauri/src/hosts/form.rs": {
     "ownership": "client policy: this client's own SSH install and update jobs, with its own exe folder and build id (#166); legacy local adapter otherwise",
@@ -195,6 +194,14 @@
       "read_to_string"
     ],
     "sha256": "f5aecaa726deca2471af3aa579f9f3c0934a50bb505b211f82e2d130dffc25a3"
+  },
+  "apps/desktop/src-tauri/src/hosts/provision.rs": {
+    "ownership": "client policy: this client's own SSH install and update jobs, with its own exe folder and build id (#166); legacy local adapter otherwise",
+    "reasons": [
+      "env",
+      "skiff_core"
+    ],
+    "sha256": "3138a0d6ea68b954a229c3ad4f0fdf14d92aee3fc73295d6a5a14ebb68b9f409"
   },
   "apps/desktop/src-tauri/src/hosts/store.rs": {
     "ownership": "client policy: this client's own SSH install and update jobs, with its own exe folder and build id (#166); legacy local adapter otherwise",
