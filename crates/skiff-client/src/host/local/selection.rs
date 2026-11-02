@@ -1,6 +1,7 @@
 //! Local and SSH endpoint selection and connection lifetime.
 
 use super::*;
+use super::legacy::{LegacyReadOnly, LegacySessions, LegacyTerminal};
 
 struct Selection {
     /// The local daemon's socket, or for SSH the private directory that
