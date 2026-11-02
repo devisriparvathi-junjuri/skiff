@@ -1,10 +1,11 @@
-//! OSC 7501, the Program Status Protocol: the reports Codex and Claude Code
-//! send, replayed through the emulator, and what the pool makes of them.
+//! OSC 7501, the Program Status Protocol: the reports coding agents send,
+//! replayed through the emulator, and what the pool makes of them.
 //!
 //! The fixtures are PTY output captured from Codex 0.166.0, Claude Code
 //! 2.1.316, Grok 1.0.70 and Antigravity (agy) 1.4.12 on macOS, one read per
 //! line, in hex. Their visible text is blanked to `x`; escape sequences and
-//! titles are as captured, but for a path cut from one agy message. Claude
+//! titles are as captured, but for the paths cut from agy's and Grok's
+//! messages and Grok's titles. Claude
 //! Code, Grok and agy ran with a terminal that answered their probe
 //! ("answered") and with one that did not.
 
@@ -256,6 +257,71 @@ fn grok_answered_reports_its_sign_in() {
 fn grok_unanswered_only_probes() {
     let heard = same_in_any_reads("grok-1.0.70-signin-unanswered.hex");
     assert_eq!((heard.probes, heard.roots.len()), (1, 0));
+}
+
+/// Signed in, Grok reports each turn: `working` with what it does in
+/// `msg`, `done` at the end of a reply, `blocked` for a permission, and
+/// `idle` once a rejected permission cancels the turn. Its title keeps its
+/// spinner either way, and Skiff has no title rule for Grok to misread.
+#[test]
+fn grok_answered_reports_its_turns() {
+    use SessionState as S;
+    use State as P;
+    let heard = same_in_any_reads("grok-1.0.70-answered.hex");
+    assert_eq!(heard.probes, 1);
+    let working = |msg: &str| Some((P::Working, None, Some(msg.to_string())));
+    assert_eq!(
+        heard.roots,
+        [
+            Some((P::Idle, None, None)),
+            working("Waiting for response…"),
+            working("Responding"),
+            Some((P::Done, None, Some("Turn complete in 2.4s.".into()))),
+            working("Waiting for response…"),
+            working("Thinking"),
+            working("Responding"),
+            Some((
+                P::Blocked,
+                Some(Kind::Permission),
+                Some("Allow Edit to hello.txt?".into())
+            )),
+            working("Running: Write `hello.txt"),
+            Some((P::Idle, None, None)),
+            None,
+        ]
+    );
+    assert!(heard.apps[..10]
+        .iter()
+        .all(|a| a.as_deref() == Some("grok-build")));
+    assert_eq!(
+        heard.states,
+        [
+            S::Idle,
+            S::Working,
+            S::Working,
+            S::Idle,
+            S::Working,
+            S::Working,
+            S::Working,
+            S::Waiting,
+            S::Working,
+            S::Idle,
+            S::Idle
+        ]
+    );
+    assert_eq!(heard.turns, 1);
+    assert!(heard.titles.iter().any(|t| t.contains("Action Required")));
+    assert!(heard
+        .titles
+        .iter()
+        .all(|t| title_state("grok", t).is_none()));
+}
+
+#[test]
+fn grok_unanswered_only_probes_but_keeps_its_title() {
+    let heard = same_in_any_reads("grok-1.0.70-unanswered.hex");
+    assert_eq!((heard.probes, heard.roots.len()), (1, 0));
+    assert!(heard.titles.iter().any(|t| t.contains("Action Required")));
 }
 
 /// Antigravity probes after its DA1 and takes a reply however late. It ends
