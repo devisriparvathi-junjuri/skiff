@@ -929,7 +929,7 @@
     "reasons": [
       "@tauri-apps/api/event"
     ],
-    "sha256": "5003a408e96ac2603972d3fc07bea23afce5fb71c3474896be056dba58e8bb7e"
+    "sha256": "2627c3ee462fdd36b70c7d5fc920dca539007d49482d7818c8133cb61b0468b3"
   },
   "apps/desktop/src/workspace/menus.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -1083,7 +1083,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "3241e03502584094b9993c87d538d0320da812acc927672fc905f08602e2f75f"
+    "sha256": "2d61990d23f667291c95cd323e223342435ceb50dc6c2ce0152ba20b6f0b36e0"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

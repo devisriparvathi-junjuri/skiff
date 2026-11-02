@@ -213,10 +213,12 @@ function look(r: Entry): Look {
   if (r.elsewhere) return { ...base, st: r.state === "done" || r.state === "pending" ? r.state : "sent", pane: null, where: t("ledger.elsewhere") };
   // Done because the pane went: it has no result to show for it.
   if (r.state === "done") return { ...base, st: r.gone_at ? "gone" : "done" };
+  // Not sent yet: no agent was on it, so a pane that went takes nothing from it.
+  if (r.state === "pending") return { ...base, st: "pending" };
   if (!s) return { ...base, st: "gone" };
-  const restarted = r.state !== "pending" && r.pane_gen !== null && !!s.started_at && s.started_at !== r.pane_gen;
+  const restarted = r.pane_gen !== null && !!s.started_at && s.started_at !== r.pane_gen;
   if (restarted) return { ...base, st: "interrupted" };
-  if (r.state === "pending" || r.state === "blocked") return { ...base, st: r.state };
+  if (r.state === "blocked") return { ...base, st: r.state };
   if (s.state === "waiting") return { ...base, st: "approval" };
   if (s.state === "done") return { ...base, st: "exited" };
   return { ...base, st: "sent" };
