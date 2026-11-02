@@ -2,12 +2,12 @@
 //! replayed through the emulator, and what the pool makes of them.
 //!
 //! The fixtures are PTY output captured from Codex 0.166.0, Claude Code
-//! 2.1.316, Grok 1.0.70 and Antigravity (agy) 1.4.12 on macOS, one read per
-//! line, in hex. Their visible text is blanked to `x`; escape sequences and
-//! titles are as captured, but for the paths cut from agy's and Grok's
-//! messages and Grok's titles. Claude
-//! Code, Grok and agy ran with a terminal that answered their probe
-//! ("answered") and with one that did not.
+//! 2.1.316, Grok 1.0.70, Antigravity (agy) 1.4.12 and OpenCode 2.2.5 on
+//! macOS, one read per line, in hex. Their visible text is blanked to `x`;
+//! escape sequences and titles are as captured, but for the paths cut from
+//! agy's and Grok's messages and Grok's titles. Claude Code, Grok, agy and
+//! OpenCode ran with a terminal that answered their probe ("answered") and
+//! with one that did not.
 
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
@@ -539,4 +539,39 @@ async fn the_shell_prompt_drops_the_report() {
     .await;
     assert_eq!(back.state, SessionState::Idle);
     pool.kill(&info.id).unwrap();
+}
+
+/// OpenCode 2.2.5 reports whether or not its probe is answered. A turn is
+/// `working`, with a child record for its session that it clears at the
+/// end, and the root goes back to `idle`: it sends no `done` or `error`,
+/// so no turn end is read from its reports, and no `clear` as it quits.
+#[test]
+fn opencode_reports_in_both_modes_and_ends_turns_with_idle() {
+    use SessionState as S;
+    use State as P;
+    for name in [
+        "opencode-2.2.5-answered.hex",
+        "opencode-2.2.5-unanswered.hex",
+    ] {
+        let heard = same_in_any_reads(name);
+        assert_eq!(heard.probes, 1, "{name}");
+        let states: Vec<_> = heard
+            .roots
+            .iter()
+            .map(|r| r.as_ref().map(|r| r.0))
+            .collect();
+        assert_eq!(
+            states,
+            [
+                Some(P::Idle),
+                Some(P::Working),
+                Some(P::Working),
+                Some(P::Idle)
+            ],
+            "{name}"
+        );
+        assert!(heard.apps.iter().all(|a| a.as_deref() == Some("opencode")));
+        assert_eq!(heard.states, [S::Idle, S::Working, S::Working, S::Idle]);
+        assert_eq!(heard.turns, 0, "{name}");
+    }
 }
