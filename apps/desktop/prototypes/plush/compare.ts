@@ -4,6 +4,10 @@
  * faces: the Admiral and two Skippers of other shapes, colors and eyes.
  * The faces blink and turn as in the app; a checkbox stops them.
  * `?sheet=dark` or `?sheet=light` shows one sheet; `?still` starts stopped.
+ * `?gif` is for a looping recording: no bar, and a forced rhythm that loops
+ * in 10 s: a blink every 5 s, and two head turns in each 10 s (one side,
+ * then the other, each held about 1.2 s), each face at its own phase. In the
+ * app a turn comes only every 10 to 18 s.
  * Run: node --experimental-strip-types compare.ts
  */
 import { readFileSync, writeFileSync } from "node:fs";
@@ -55,6 +59,26 @@ figure + figure { border-top: 1px solid var(--line); width: 100%; }
 figcaption { text-align: center; } figcaption b { font-size: 14px; }
 figcaption small { display: block; color: var(--dim); font-size: 11.5px; margin-top: 2px; }
 .only-dark .light, .only-light .dark { display: none; }
+.gif .bar { display: none; }
+.gif .skipper-face svg { --blink: 5s !important; --face-turn: 10s !important; }
+.gif .skipper-face .sk-turn { animation-name: skg-lean !important; }
+.gif .skipper-face .sk-cap { animation-name: skg-capslide !important; }
+.gif .skipper-face .sk-front { animation-name: skg-slide !important; }
+@keyframes skg-lean {
+  0%, 20%, 34.5%, 60%, 74.5%, 100% { transform: translate(0, 0) scaleX(1); }
+  22.5%, 32% { transform: translate(calc(var(--dir, 1) * 0.45px), 0) scaleX(0.97); }
+  62.5%, 72% { transform: translate(calc(var(--dir, 1) * -0.45px), 0) scaleX(0.97); }
+}
+@keyframes skg-capslide {
+  0%, 20%, 34.5%, 60%, 74.5%, 100% { transform: translate(0, 0) scaleX(1); }
+  22.5%, 32% { transform: translate(calc(var(--dir, 1) * 0.5px), 0) scaleX(0.97); }
+  62.5%, 72% { transform: translate(calc(var(--dir, 1) * -0.5px), 0) scaleX(0.97); }
+}
+@keyframes skg-slide {
+  0%, 20%, 34.5%, 60%, 74.5%, 100% { transform: translate(0, 0) scaleX(1); }
+  22.5%, 32% { transform: translate(calc(var(--dir, 1) * 1.5px), 0) scaleX(0.92); }
+  62.5%, 72% { transform: translate(calc(var(--dir, 1) * -1.5px), 0) scaleX(0.92); }
+}
 ${faceCss}
 </style></head><body>
 ${plushDefs()}
@@ -63,6 +87,7 @@ ${plushDefs()}
 <script>
 const q = new URLSearchParams(location.search), box = document.getElementById("still");
 if (q.get("sheet")) document.body.classList.add("only-" + q.get("sheet"));
+if (q.has("gif")) document.body.classList.add("gif");
 if (q.has("still")) { document.body.classList.add("still"); box.checked = true; }
 box.onchange = () => document.body.classList.toggle("still", box.checked);
 </script>
